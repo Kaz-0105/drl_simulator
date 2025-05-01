@@ -11,7 +11,7 @@ class Config(Object):
         with open('layout/config.yaml', 'r') as file:
             data = yaml.safe_load(file)
 
-            self.layout = data['simulator']['layout']
+            self.network_name = data['simulator']['network_name']
             self.simulation_time = data['simulator']['simulation_time']
 
 
