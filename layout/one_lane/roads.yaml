@@ -1,0 +1,16 @@
+- id: 1
+  intersection_ids: [null, 1]
+- id: 2
+  intersection_ids: [1, null]
+- id: 3
+  intersection_ids: [1, null]
+- id: 4
+  intersection_ids: [null, 1]
+- id: 5
+  intersection_ids: [null, 1]
+- id: 6
+  intersection_ids: [1, null]
+- id: 7
+  intersection_ids: [1, null]
+- id: 8
+  intersection_ids: [null, 1]

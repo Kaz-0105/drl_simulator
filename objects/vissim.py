@@ -17,6 +17,5 @@ class Vissim(Object):
         self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')
         self.com.LoadLayout(os.getcwd() + '\\layout\\' + network_name + '\\network.layx')
 
-
         
         
