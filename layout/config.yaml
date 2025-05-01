@@ -1,0 +1,3 @@
+simulator :
+  layout: 'one_lane'
+  simulation_time: 500
