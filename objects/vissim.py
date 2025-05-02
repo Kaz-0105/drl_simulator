@@ -2,13 +2,16 @@ from config.config import Config
 from libs.object import Object
 import win32com.client
 import os
+from objects.network import Network
 
 class Vissim(Object):
-    def __init__(self, config: Config):
+    def __init__(self, config):
         super().__init__()
         self.config = config
 
         self.getVissimCom()
+
+        self.network = Network(self)
     
     def getVissimCom(self):
         network_name = self.config.network_name

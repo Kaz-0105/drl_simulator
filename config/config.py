@@ -1,4 +1,5 @@
 import yaml
+import pandas as pd
 from libs.object import Object 
 
 class Config(Object):
@@ -16,16 +17,12 @@ class Config(Object):
             self.simulation_time = data['simulator']['simulation_time']
 
     def readRoads(self):
-        with open('layout/' + self.network_name + '/roads.yaml', 'r') as file:
-            data = yaml.safe_load(file)
-            self.roads = data['roads']
-            self.road_link_tags = data['road_link_tags']
+        self.roads_df = pd.read_csv('layout/' + self.network_name + '/roads.csv')
+        self.road_link_tags_df = pd.read_csv('layout/' + self.network_name + '/road_link_tags.csv')
 
     def readIntersections(self):
-        with open('layout/' + self.network_name + '/intersections.yaml', 'r') as file:
-            data = yaml.safe_load(file)
-            self.intersections = data['intersections']
-            self.intersection_road_tags = data['intersection_road_tags']
+        self.intersections_df = pd.read_csv('layout/' + self.network_name + '/intersections.csv')
+        self.intersection_road_tags_df = pd.read_csv('layout/' + self.network_name + '/intersection_road_tags.csv')
             
 
 
