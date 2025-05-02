@@ -1,5 +1,6 @@
 from libs.container import Container
 from libs.object import Object
+from objects.links import Links
 
 class Roads(Container): 
     def __init__(self, upper_object, options = None):
@@ -45,3 +46,10 @@ class Road(Object):
         self.roads = roads
         self.id = int(road_df['id'])
         self.max_speed = int(road_df['max_speed'])
+
+        self.links = Links(self)
+        self.link_types = {}
+
+    def addLink(self, link, link_type):
+        self.links.add(link)
+        self.link_types[link.get('id')] = link_type
