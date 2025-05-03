@@ -16,19 +16,19 @@ class Roads(Container):
     
     def makeElements(self):
         if hasattr(self, 'network'):
-            roads_df = self.config.get('roads_df')
-            for _, road_df in roads_df.iterrows():
-                self.add(Road(road_df, self))
+            roads = self.config.get('roads')
+            for _, road in roads.iterrows():
+                self.add(Road(road, self))
         elif hasattr(self, 'intersection'):
-            tags_df = self.config.get('intersection_road_tags_df')
-            target_tags_df = tags_df[tags_df['intersection_id'] == self.intersection.get('id') & (tags_df['type'] == self.type)]
+            tags = self.config.get('intersection_road_tags')
+            target_tags = tags[tags['intersection_id'] == self.intersection.get('id') & (tags['type'] == self.type)]
 
             network = self.intersection.getNetwork()
             roads = network.roads
 
-            for _, tag_df in target_tags_df.iterrows():
-                road = roads[tag_df['road_id']]
-                self.add(road, tag_df['order_id'])
+            for _, tag in target_tags.iterrows():
+                road = roads[tag['road_id']]
+                self.add(road, tag['order_id'])
 
                 if self.type == 'input':
                     road.set('output_intersection', self.intersection)
@@ -40,12 +40,12 @@ class Roads(Container):
             
 
 class Road(Object):
-    def __init__(self, road_df, roads):
+    def __init__(self, road, roads):
         super().__init__()
         self.config = roads.config
         self.roads = roads
-        self.id = int(road_df['id'])
-        self.max_speed = int(road_df['max_speed'])
+        self.id = int(road['id'])
+        self.max_speed = int(road['max_speed'])
 
         self.links = Links(self)
         self.link_types = {}
