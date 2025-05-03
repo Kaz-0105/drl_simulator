@@ -16,3 +16,11 @@ class Network(Object):
         self.intersections = Intersections(self)
         self.links = Links(self)
         self.vehicle_inputs = VehicleInputs(self)
+
+        self.setParametersToVissim()
+
+    def setParametersToVissim(self):
+        for vehicle_input in self.vehicle_inputs.getAll():
+            input_volume = vehicle_input.link.get('input_volume')
+            vehicle_input.com.SetAttValue('Volume(1)', input_volume)
+
