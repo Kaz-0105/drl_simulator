@@ -2,6 +2,7 @@ from libs.object import Object
 from objects.roads import Roads
 from objects.intersections import Intersections
 from objects.links import Links
+from objects.vehicle_inputs import VehicleInputs
 
 class Network(Object):
     def __init__(self, vissim):
@@ -14,3 +15,4 @@ class Network(Object):
         self.roads = Roads(self)
         self.intersections = Intersections(self)
         self.links = Links(self)
+        self.vehicle_inputs = VehicleInputs(self)

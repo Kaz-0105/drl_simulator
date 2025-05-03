@@ -9,6 +9,7 @@ class Links(Container):
             self.network = upper_object
             self.com = self.network.com.Links
             self.makeElements()
+            self.setInputs()
             self.makeLinkConnections()
             self.makeRoadConnections()
         elif upper_object.__class__.__name__ == 'Link':
@@ -20,6 +21,12 @@ class Links(Container):
     def makeElements(self):
         for link_com in self.com.GetAll():
             self.add(Link(link_com, self))
+    
+    def setInputs(self):
+        tags = self.config.get('link_input_tags')
+        for _, tag in tags.iterrows():
+            link = self[int(tag['link_id'])]
+            link.set('input_volume', int(tag['input_volume']))
     
     def makeLinkConnections(self):
         for link in self.getAll():
@@ -36,17 +43,17 @@ class Links(Container):
             to_link.from_links.add(link)
         
     def makeRoadConnections(self):
-        tags_df = self.config.get('road_link_tags_df')
+        tags = self.config.get('road_link_tags')
         network = self.network
         roads = network.roads
 
-        for _, tag_df in tags_df.iterrows():
-            road = roads[tag_df['road_id']]
-            link = self[tag_df['link_id']]
+        for _, tag in tags.iterrows():
+            road = roads[tag['road_id']]
+            link = self[tag['link_id']]
             
-            road.addLink(link, tag_df['type'])
+            road.addLink(link, tag['type'])
 
-            link.set('type', tag_df['type'])
+            link.set('type', tag['type'])
             link.set('road', road)
 
         for link in self.findAll({'type': 'connector'}):

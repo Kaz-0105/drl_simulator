@@ -11,17 +11,17 @@ class Intersections(Container):
         self.makeElements()
 
     def makeElements(self):
-        intersections_df = self.config.get('intersections_df')
-        for _, intersection_df in intersections_df.iterrows():
-            self.add(Intersection(intersection_df, self))
+        intersections = self.config.get('intersections')
+        for _, intersection in intersections.iterrows():
+            self.add(Intersection(intersection, self))
 
 class Intersection(Object):
-    def __init__(self, intersection_df, intersections):
+    def __init__(self, intersection, intersections):
         super().__init__()
         self.config = intersections.config
         self.intersections = intersections
-        self.id = int(intersection_df['id'])
-        self.num_roads = int(intersection_df['num_roads'])
+        self.id = int(intersection['id'])
+        self.num_roads = int(intersection['num_roads'])
 
         self.connectRoads()
     
