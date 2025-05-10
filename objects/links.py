@@ -1,21 +1,44 @@
 from libs.container import Container
 from libs.object import Object
+from objects.vehicle_routing_decisions import VehicleRoutes
 
 class Links(Container):
     def __init__(self, upper_object, options = None):
+        # 継承
         super().__init__()
+        
+        # 設定オブジェクトを取得
         self.config = upper_object.config
+
+        # 上位のオブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
+            # 上位の紐づくオブジェクトを取得
             self.network = upper_object
+
+            # comオブジェクトを取得
             self.com = self.network.com.Links
+
+            # 下位の紐づくオブジェクトを初期化
             self.makeElements()
+
+            # 設定ファイルから流入量に関する情報を取得
             self.setInputs()
+
+            # link同士を紐づける
             self.makeLinkConnections()
+
+            # roadオブジェクトと紐づける
             self.makeRoadConnections()
+
         elif upper_object.__class__.__name__ == 'Link':
+            # 上位の紐づくオブジェクトを取得
             self.link = upper_object
+
+            # タイプを取得（from or to）
             self.type = options['type']
+
         elif upper_object.__class__.__name__ == 'Road':
+            # 上位の紐づくオブジェクトを取得
             self.road = upper_object
 
     def makeElements(self):
@@ -68,33 +91,65 @@ class Links(Container):
                 link.set('road', from_link.road)
 
 class Link(Object):
-    def __init__(self, link_com, links):
+    def __init__(self, com, links):
+        # 継承
         super().__init__()
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = links.config
         self.links = links
-        self.com = link_com
 
+        # comオブジェクトを取得
+        self.com = com
+
+        # IDを取得
         self.id = self.com.AttValue('No')
 
+        # リンクの種類を設定（リンク, コネクタ）
         if self.com.AttValue('ToLink') is None:
             self.type = 'link'
         else:
             self.type = 'connector'
         
+        # 紐づくリンクを格納するコンテナを初期化
         self.from_links = Links(self, {'type': 'from'})
         self.to_links = Links(self, {'type': 'to'})
-    
-    @property
-    def from_link(self):
-        if self.type == 'link':
-            raise Exception('from_link is not available for link objects which type is link.')
-        
-        return self.from_links.getAll()[0]
 
-    @property
-    def to_link(self):
-        if self.type == 'link':
-            raise Exception('to_link is not available for link objects which type is link.')
-        
-        return self.to_links.getAll()[0]
+        # 下位の紐づくオブジェクトを初期化
+        self.lanes = Lanes(self)
+    
+
+class Lanes(Container):
+    def __init__(self, link):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = link.config
+        self.link = link
+
+        # comオブジェクトを取得
+        self.com = self.link.com.Lanes
+
+        # 下位の紐づくオブジェクトを初期化
+        self.makeElements()
+    
+    def makeElements(self):
+        for lane_com in self.com.GetAll():
+            self.add(Lane(lane_com, self))
+
+class Lane(Object):
+    def __init__(self, com, lanes):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = lanes.config
+        self.lanes = lanes
+
+        # comオブジェクトを取得
+        self.com = com
+
+        # IDを取得
+        self.id = int(self.com.AttValue('Index'))
+
         

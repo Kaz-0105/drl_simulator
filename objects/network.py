@@ -4,6 +4,8 @@ from objects.intersections import Intersections
 from objects.links import Links
 from objects.vehicle_inputs import VehicleInputs
 from objects.vehicle_routing_decisions import VehicleRoutingDecisions
+from objects.signal_heads import SignalHeads
+from objects.signal_controllers import SignalControllers
 
 class Network(Object):
     def __init__(self, vissim):
@@ -23,6 +25,8 @@ class Network(Object):
         self.links = Links(self)
         self.vehicle_inputs = VehicleInputs(self)
         self.vehicle_routing_decisions = VehicleRoutingDecisions(self)
+        self.signal_heads = SignalHeads(self)
+        self.signal_controllers = SignalControllers(self)
 
         # Vissimに各種パラメータを反映
         self.setParametersToVissim()

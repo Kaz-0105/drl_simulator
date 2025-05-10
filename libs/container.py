@@ -1,6 +1,6 @@
-from libs.object import Object
+from libs.common import Common
 
-class Container(Object):
+class Container(Common):
     def __init__(self):
         super().__init__()
         self.elements = {}

@@ -2,6 +2,7 @@ from libs.container import Container
 from libs.object import Object
 import math
 from functools import reduce
+from objects.signal_heads import SignalHeads
 
 class VehicleRoutingDecisions(Container):
     def __init__(self, network):
@@ -46,8 +47,9 @@ class VehicleRoutingDecisions(Container):
                 connector_com = vehicle_route.com.DestLink
                 connector = self.network.links[int(connector_com.AttValue('No'))]
 
-                # vehicle_routeオブジェクトにlinkオブジェクトを紐づける
+                # それぞれに対して紐づける
                 vehicle_route.set('connector', connector)
+                connector.set('vehicle_route', vehicle_route)
     
     def setDirectionsForVehicleRoutes(self):
         for vehicle_routing_decision in self.getAll():
@@ -71,7 +73,7 @@ class VehicleRoutingDecisions(Container):
             # vehicle_routeオブジェクトに方向を設定
             for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
                 connector = vehicle_route.get('connector')
-                to_link = connector.to_link
+                to_link = connector.to_links.getAll()[0]
                 vehicle_route.set('direction_id', road_direction_map[to_link.road.get('id')])       
 
     def setTurnRatio(self):
@@ -159,7 +161,7 @@ class VehicleRoutes(Container):
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routing_decision.config
         self.vehicle_routing_decision = vehicle_routing_decision
-        
+    
         # 対応するComオブジェクトを取得
         self.com = self.vehicle_routing_decision.com.VehRoutSta
 
@@ -185,3 +187,6 @@ class VehicleRoute(Object):
 
         # IDを取得
         self.id = self.com.AttValue('No')
+
+        # signal_headオブジェクトを格納するコンテナを初期化
+        self.signal_heads = SignalHeads(self)

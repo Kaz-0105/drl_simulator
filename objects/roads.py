@@ -1,25 +1,41 @@
 from libs.container import Container
 from libs.object import Object
 from objects.links import Links
+from objects.signal_controllers import SignalGroups
 
 class Roads(Container): 
     def __init__(self, upper_object, options = None):
+        # 継承
         super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = upper_object.config
+
+        # 上位の紐づくオブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
+            # 上位の紐づくオブジェクトを取得
             self.network = upper_object
+
+            # 要素オブジェクトを初期化
             self.makeElements()
+
         elif upper_object.__class__.__name__ == 'Intersection':
+            # 上位の紐づくオブジェクトを取得
             self.intersection = upper_object
+
+            # タイプを設定（input/output）
             self.type = options['type']
+
+            # 要素オブジェクトを設定
             self.makeElements()
     
     def makeElements(self):
-        if hasattr(self, 'network'):
+        # 上位の紐づくオブジェクトによって分岐
+        if self.has('network'):
             roads = self.config.get('roads')
             for _, road in roads.iterrows():
                 self.add(Road(road, self))
-        elif hasattr(self, 'intersection'):
+        elif self.has('intersection'):
             tags = self.config.get('intersection_road_tags')
             target_tags = tags[tags['intersection_id'] == self.intersection.get('id') & (tags['type'] == self.type)]
 
@@ -40,14 +56,30 @@ class Roads(Container):
             
 class Road(Object):
     def __init__(self, road, roads):
+        # 継承
         super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = roads.config
         self.roads = roads
+
+        # IDを取得
         self.id = int(road['id'])
+
+        # 法定速度を設定
         self.max_speed = int(road['max_speed'])
 
+        # 紐づくlinkオブジェクトを格納するコンテナを初期化
         self.links = Links(self)
+
+        # リンクのタイプを格納する辞書型配列を初期化
         self.link_types = {}
+
+        # 紐づくSignalGroupオブジェクトを格納するコンテナを初期化
+        self.signal_groups = SignalGroups(self)
+
+        # SignalGroupオブジェクトの信号方向との対応関係を示す辞書型配列を初期化
+        self.direction_signal_group_map = {}
 
     def addLink(self, link, link_type):
         self.links.add(link)
