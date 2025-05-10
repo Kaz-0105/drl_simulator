@@ -22,7 +22,6 @@ class VehicleRoutingDecisions(Container):
 
         # vehicle_routeオブジェクトに方向（左折，直進，右折など）を設定
         self.setDirectionsForVehicleRoutes()
-
     
     def makeElements(self):
         for vehicle_routing_decision_com in self.com.GetAll():
@@ -101,7 +100,7 @@ class VehicleRoutingDecision(Object):
                 direction_num_veh_routes[direction_id] = 1
             else:
                 direction_num_veh_routes[direction_id] += 1
-                
+
         return direction_num_veh_routes
 
 class VehicleRoutes(Container):
