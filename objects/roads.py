@@ -38,7 +38,6 @@ class Roads(Container):
             if self.count() != self.intersection.get('num_roads'):
                 raise Exception(f"Intersection {self.intersection.get('id')} has {self.intersection.get('num_roads')} roads, but roads object has {self.count()} {self.type} roads.")
             
-
 class Road(Object):
     def __init__(self, road, roads):
         super().__init__()

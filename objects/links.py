@@ -83,4 +83,18 @@ class Link(Object):
         
         self.from_links = Links(self, {'type': 'from'})
         self.to_links = Links(self, {'type': 'to'})
+    
+    @property
+    def from_link(self):
+        if self.type == 'link':
+            raise Exception('from_link is not available for link objects which type is link.')
+        
+        return self.from_links.getAll()[0]
+
+    @property
+    def to_link(self):
+        if self.type == 'link':
+            raise Exception('to_link is not available for link objects which type is link.')
+        
+        return self.to_links.getAll()[0]
         
