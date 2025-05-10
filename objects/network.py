@@ -3,20 +3,28 @@ from objects.roads import Roads
 from objects.intersections import Intersections
 from objects.links import Links
 from objects.vehicle_inputs import VehicleInputs
+from objects.vehicle_routing_decisions import VehicleRoutingDecisions
 
 class Network(Object):
     def __init__(self, vissim):
+        # 継承
         super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vissim.config
         self.vissim = vissim
 
+        # 対応するComオブジェクトを取得
         self.com = self.vissim.com.Net
 
+        # 下位の紐づくオブジェクトを初期化
         self.roads = Roads(self)
         self.intersections = Intersections(self)
         self.links = Links(self)
         self.vehicle_inputs = VehicleInputs(self)
+        self.vehicle_routing_decisions = VehicleRoutingDecisions(self)
 
+        # Vissimに各種パラメータを反映
         self.setParametersToVissim()
 
     def setParametersToVissim(self):
