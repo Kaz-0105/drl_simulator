@@ -53,3 +53,15 @@ class Road(Object):
     def addLink(self, link, link_type):
         self.links.add(link)
         self.link_types[link.get('id')] = link_type
+    
+    def getMainLink(self):
+        for link_id, link_type in self.link_types.items():
+            if link_type == 'main':
+                return self.links[link_id]
+
+    def getVehicleRoutingDecision(self):
+        main_link = self.getMainLink()
+        if main_link.has('vehicle_routing_decision'):
+            return main_link.vehicle_routing_decision
+        else:
+            return None

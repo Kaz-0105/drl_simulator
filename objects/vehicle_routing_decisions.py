@@ -17,11 +17,23 @@ class VehicleRoutingDecisions(Container):
         # 要素オブジェクトを初期化
         self.makeElements()
 
+        # linkクラスに紐づける
+        self.makeLinkConnections()
+
     
     def makeElements(self):
         for vehicle_routing_decision_com in self.com.GetAll():
             self.add(VehicleRoutingDecision(vehicle_routing_decision_com, self))
+    
+    def makeLinkConnections(self):
+        for vehicle_routing_decision in self.getAll():
+            # linkオブジェクトを取得
+            link_com = vehicle_routing_decision.com.Link
+            link = self.network.links[int(link_com.AttValue('No'))]
 
+            # それぞれに対して紐づける
+            vehicle_routing_decision.set('link', link)
+            link.set('vehicle_routing_decision', vehicle_routing_decision)
 
 class VehicleRoutingDecision(Object):
     def __init__(self, com, vehicle_routing_decisions):
