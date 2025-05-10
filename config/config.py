@@ -15,9 +15,7 @@ class Config(Object):
         self.link_input_tags = pd.read_csv('layout/' + self.network_name + '/link_input_tags.csv')
         self.intersection_turn_ratio_tags = pd.read_csv('layout/' + self.network_name + '/intersection_turn_ratio_tags.csv')
 
-        self.getTurnRatioTemplates()
-
-        print('test')
+        self.getNumRoadTurnRatioMap()
     
     def readConfigFile(self):
         with open('layout/config.yaml', 'r') as file:
@@ -25,10 +23,10 @@ class Config(Object):
             self.network_name = data['simulator']['network_name']
             self.simulation_time = data['simulator']['simulation_time']
 
-    def getTurnRatioTemplates(self):
-        self.road_turn_ratio_templates_map = {}
+    def getNumRoadTurnRatioMap(self):
+        self.num_road_turn_ratio_map = {}
         for num_roads in [3, 4, 5]:
-            self.road_turn_ratio_templates_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv')
+            self.num_road_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv')
         
             
 

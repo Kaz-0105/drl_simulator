@@ -28,7 +28,13 @@ class Network(Object):
         self.setParametersToVissim()
 
     def setParametersToVissim(self):
+        # 流入量をセット
         for vehicle_input in self.vehicle_inputs.getAll():
             input_volume = vehicle_input.link.get('input_volume')
             vehicle_input.com.SetAttValue('Volume(1)', input_volume)
+
+        # 旋回率をセット
+        for vehicle_routing_decision in self.vehicle_routing_decisions.getAll():
+            for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
+                vehicle_route.com.SetAttValue('RelFlow(1)', vehicle_route.get('turn_ratio'))
 

@@ -1,6 +1,7 @@
 from libs.container import Container
 from libs.object import Object
-
+import math
+from functools import reduce
 
 class VehicleRoutingDecisions(Container):
     def __init__(self, network):
@@ -22,6 +23,9 @@ class VehicleRoutingDecisions(Container):
 
         # vehicle_routeオブジェクトに方向（左折，直進，右折など）を設定
         self.setDirectionsForVehicleRoutes()
+
+        # パラメータを設定
+        self.setTurnRatio()
     
     def makeElements(self):
         for vehicle_routing_decision_com in self.com.GetAll():
@@ -68,7 +72,48 @@ class VehicleRoutingDecisions(Container):
             for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
                 connector = vehicle_route.get('connector')
                 to_link = connector.to_link
-                vehicle_route.set('direction_id', road_direction_map[to_link.road.get('id')])            
+                vehicle_route.set('direction_id', road_direction_map[to_link.road.get('id')])       
+
+    def setTurnRatio(self):
+        # 設定ファイルから旋回率に関する情報を取得
+        tags = self.config.get('intersection_turn_ratio_tags')
+        templates_map = self.config.get('num_road_turn_ratio_map')
+
+        for vehicle_routing_decision in self.getAll():
+            # 紐づくroadオブジェクトとintersectionオブジェクトを取得
+            road = vehicle_routing_decision.getRoad()
+            intersection = vehicle_routing_decision.getIntersection()
+
+            # 紐づく交差点の道路数を取得（十字路，三差路，五差路など）
+            num_roads = intersection.get('num_roads')
+            
+            # 交差点のIDと道路の順番を示すIDを取得
+            intersection_id = intersection.get('id')
+            road_order_map = intersection.getRoadOrderMap()
+            road_order_id = road_order_map[road.get('id')]
+
+            # 該当する設定ファイル内のレコードを取得
+            target_tag = tags[
+                (tags['intersection_id'] == intersection_id) &
+                (tags['road_order_id'] == road_order_id)
+            ]
+            target_tag = target_tag.iloc[0]
+
+            # テンプレートIDに対応するレコードを取得
+            templates = templates_map[num_roads]
+            target_template = templates[templates['id'] == target_tag['turn_ratio_template_id']]
+            target_template = target_template.iloc[0]
+
+            # 進路方向ごとのvehicle_routeオブジェクトの数を取得
+            direction_num_veh_routes_map = vehicle_routing_decision.getDirectionNumVehRoutesMap()
+
+            # 最小公倍数を計算
+            lcm_number = reduce(math.lcm, list(direction_num_veh_routes_map.values()))
+
+            # 各vehicle_routeオブジェクトに旋回率をセット
+            for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
+                direction_id = vehicle_route.get('direction_id')
+                vehicle_route.set('turn_ratio', int(target_template['ratio' + str(direction_id)] / direction_num_veh_routes_map[direction_id] * lcm_number))
 
 class VehicleRoutingDecision(Object):
     def __init__(self, com, vehicle_routing_decisions):
@@ -91,7 +136,10 @@ class VehicleRoutingDecision(Object):
     def getRoad(self):
         return self.link.road
     
-    def getDirectionNumVehRoutes(self):
+    def getIntersection(self):
+        return self.link.road.output_intersection
+    
+    def getDirectionNumVehRoutesMap(self):
         direction_num_veh_routes = {}
         for vehicle_route in self.vehicle_routes.getAll():
             direction_id = vehicle_route.get('direction_id')
