@@ -1,3 +1,3 @@
 simulator :
-  network_name: 'one_lane'
+  network_name: 'two_lane'
   simulation_time: 500

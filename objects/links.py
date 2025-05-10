@@ -57,7 +57,6 @@ class Links(Container):
             link.set('road', road)
 
         for link in self.findAll({'type': 'connector'}):
-            print(link.get('id'))
             from_link = link.from_links.getAll()[0]
             to_link = link.to_links.getAll()[0]
 
