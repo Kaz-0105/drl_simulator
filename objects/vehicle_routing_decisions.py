@@ -73,7 +73,7 @@ class VehicleRoutingDecisions(Container):
             # vehicle_routeオブジェクトに方向を設定
             for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
                 connector = vehicle_route.get('connector')
-                to_link = connector.to_link
+                to_link = connector.to_links.getAll()[0]
                 vehicle_route.set('direction_id', road_direction_map[to_link.road.get('id')])       
 
     def setTurnRatio(self):

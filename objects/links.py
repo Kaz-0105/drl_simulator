@@ -117,20 +117,6 @@ class Link(Object):
         # 下位の紐づくオブジェクトを初期化
         self.lanes = Lanes(self)
     
-    @property
-    def from_link(self):
-        if self.type == 'link':
-            raise Exception('from_link is not available for link objects which type is link.')
-        
-        return self.from_links.getAll()[0]
-
-    @property
-    def to_link(self):
-        if self.type == 'link':
-            raise Exception('to_link is not available for link objects which type is link.')
-        
-        return self.to_links.getAll()[0]
-    
 
 class Lanes(Container):
     def __init__(self, link):
