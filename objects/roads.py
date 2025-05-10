@@ -38,7 +38,6 @@ class Roads(Container):
             if self.count() != self.intersection.get('num_roads'):
                 raise Exception(f"Intersection {self.intersection.get('id')} has {self.intersection.get('num_roads')} roads, but roads object has {self.count()} {self.type} roads.")
             
-
 class Road(Object):
     def __init__(self, road, roads):
         super().__init__()
@@ -53,3 +52,15 @@ class Road(Object):
     def addLink(self, link, link_type):
         self.links.add(link)
         self.link_types[link.get('id')] = link_type
+    
+    def getMainLink(self):
+        for link_id, link_type in self.link_types.items():
+            if link_type == 'main':
+                return self.links[link_id]
+
+    def getVehicleRoutingDecision(self):
+        main_link = self.getMainLink()
+        if main_link.has('vehicle_routing_decision'):
+            return main_link.vehicle_routing_decision
+        else:
+            return None

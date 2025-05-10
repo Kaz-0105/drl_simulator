@@ -31,4 +31,14 @@ class Intersection(Object):
     
     def getNetwork(self):
         return self.intersections.network
+    
+    def getRoadOrderMap(self):
+        road_order_map = {}
+        for order_id, road in self.input_roads.elements.items():
+            road_order_map[road.get('id')] = order_id
+        
+        for order_id, road in self.output_roads.elements.items():
+            road_order_map[road.get('id')] = order_id
+
+        return road_order_map
 

@@ -8,6 +8,12 @@ class Object:
     
     def set(self, property_name, value):
         setattr(self, property_name, value)
+    
+    def has(self, property_name):
+        return hasattr(self, property_name)
+    
+    def getPropertyNames(self):
+        return list(self.__dict__.keys())
 
     def __eq__(self, other):
         self_class_name = self.__class__.__name__
