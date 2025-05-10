@@ -1,5 +1,6 @@
 from libs.container import Container
 from libs.object import Object
+from objects.signal_heads import SignalHeads
 
 class SignalControllers(Container):
     def __init__(self, network):
@@ -53,11 +54,24 @@ class SignalGroups(Container):
 
         # 下位の紐づくオブジェクトを初期化
         self.makeElements()
+
+        # signal_groupとsignal_headを紐づける
+        self.makeSignalHeadConnections()
     
     def makeElements(self):
         for signal_group_com in self.com.GetAll():
             self.add(SignalGroup(signal_group_com, self))
+    
+    def makeSignalHeadConnections(self):
+        for signal_group in self.getAll():
+            signal_heads = signal_group.signal_heads
+            
+            for signal_head_com in signal_heads.com.GetAll():
+                signal_head_id = int(signal_head_com.AttValue('No'))
+                signal_heads.add(self.getNetwork().signal_heads[signal_head_id])
 
+    def getNetwork(self):
+        return self.signal_controller.signal_controllers.network
 
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):
@@ -73,3 +87,6 @@ class SignalGroup(Object):
 
         # IDを取得
         self.id = int(self.com.AttValue('No'))
+
+        # signal_headを格納するコンテナを初期化
+        self.signal_heads = SignalHeads(self)

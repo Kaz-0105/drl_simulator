@@ -28,6 +28,13 @@ class SignalHeads(Container):
         elif upper_object.__class__.__name__ == 'VehicleRoute':
             # 上位の紐づくオブジェクトを取得
             self.vehicle_route = upper_object
+        
+        elif upper_object.__class__.__name__ == 'SignalGroup':
+            # 上位の紐づくオブジェクトを取得
+            self.signal_group = upper_object
+
+            # comオブジェクトを取得
+            self.com = self.signal_group.com.SigHeads
     
     def makeElements(self):
         for signal_head_com in self.com.GetAll():
