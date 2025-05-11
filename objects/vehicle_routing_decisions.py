@@ -3,6 +3,8 @@ from libs.object import Object
 import math
 from functools import reduce
 from objects.signal_heads import SignalHeads
+from objects.travel_time_measurements import TravelTimeMeasurements
+from objects.delay_measurements import DelayMeasurements
 
 class VehicleRoutingDecisions(Container):
     def __init__(self, network):
@@ -134,6 +136,12 @@ class VehicleRoutingDecision(Object):
 
         # 下位の紐づくオブジェクトを初期化
         self.vehicle_routes = VehicleRoutes(self)
+
+        # travel_time_measurementオブジェクトを紐づけるためのコンテナを初期化
+        self.travel_time_measurements = TravelTimeMeasurements(self)
+
+        # delay_measurementオブジェクトを紐づけるためのコンテナを初期化
+        self.delay_measurements = DelayMeasurements(self)
     
     def getRoad(self):
         return self.link.road
