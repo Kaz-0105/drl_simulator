@@ -1,10 +1,10 @@
-from config.config import Config
-from libs.object import Object
+from libs.common import Common
 import win32com.client
 import os
 from objects.network import Network
+from objects.simulation import Simulation
 
-class Vissim(Object):
+class Vissim(Common):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -12,6 +12,10 @@ class Vissim(Object):
         self.getVissimCom()
 
         self.network = Network(self)
+
+        self.simulation = Simulation(self)
+
+        print('test')
     
     def getVissimCom(self):
         network_name = self.config.network_name

@@ -1,8 +1,8 @@
 import yaml
 import pandas as pd
-from libs.object import Object 
+from libs.common import Common 
 
-class Config(Object):
+class Config(Common):
     def __init__(self):
         super().__init__()
 
