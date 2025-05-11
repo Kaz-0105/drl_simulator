@@ -1,7 +1,7 @@
 from libs.container import Container
 from libs.object import Object
 
-class VehicleTravelTimeMeasurements(Container):
+class TravelTimeMeasurements(Container):
     def __init__(self, network):
         # 継承
         super().__init__()
@@ -17,17 +17,17 @@ class VehicleTravelTimeMeasurements(Container):
         self.makeElements()
     
     def makeElements(self):
-        for veh_trav_time_measurement_com in self.com.GetAll():
-            self.add(VehicleTravelTimeMeasurement(veh_trav_time_measurement_com, self))
+        for travel_time_measurement_com in self.com.GetAll():
+            self.add(TravelTimeMeasurement(travel_time_measurement_com, self))
 
-class VehicleTravelTimeMeasurement(Object):
-    def __init__(self, com, veh_trav_time_measurements):
+class TravelTimeMeasurement(Object):
+    def __init__(self, com, travel_time_measurements):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = veh_trav_time_measurements.config
-        self.veh_trav_time_measurements = veh_trav_time_measurements
+        self.config = travel_time_measurements.config
+        self.travel_time_measurements = travel_time_measurements
 
         # 対応するComオブジェクトを取得
         self.com = com

@@ -7,7 +7,7 @@ from objects.vehicle_routing_decisions import VehicleRoutingDecisions
 from objects.signal_heads import SignalHeads
 from objects.signal_controllers import SignalControllers
 from objects.queue_counters import QueueCounters
-from objects.vehicle_travel_time_measurements import VehicleTravelTimeMeasurements
+from objects.travel_time_measurements import TravelTimeMeasurements
 from objects.delay_measurements import DelayMeasurements
 
 class Network(Object):
@@ -31,7 +31,7 @@ class Network(Object):
         self.signal_heads = SignalHeads(self)
         self.signal_controllers = SignalControllers(self)
         self.queue_counters = QueueCounters(self)
-        self.veh_trav_time_measurements = VehicleTravelTimeMeasurements(self)
+        self.travel_time_measurements = TravelTimeMeasurements(self)
         self.delay_measurements = DelayMeasurements(self)
 
         # Vissimに各種パラメータを反映
