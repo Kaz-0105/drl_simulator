@@ -9,6 +9,7 @@ from objects.signal_controllers import SignalControllers
 from objects.queue_counters import QueueCounters
 from objects.travel_time_measurements import TravelTimeMeasurements
 from objects.delay_measurements import DelayMeasurements
+from objects.data_collections import DataCollectionPoints, DataCollectionMeasurements
 
 class Network(Object):
     def __init__(self, vissim):
@@ -33,6 +34,8 @@ class Network(Object):
         self.queue_counters = QueueCounters(self)
         self.travel_time_measurements = TravelTimeMeasurements(self)
         self.delay_measurements = DelayMeasurements(self)
+        self.data_collection_points = DataCollectionPoints(self)
+        self.data_collection_measurements = DataCollectionMeasurements(self)
 
         # Vissimに各種パラメータを反映
         self.setParametersToVissim()
