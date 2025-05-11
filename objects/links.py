@@ -1,6 +1,5 @@
 from libs.container import Container
 from libs.object import Object
-from objects.vehicle_routing_decisions import VehicleRoutes
 
 class Links(Container):
     def __init__(self, upper_object, options = None):
@@ -40,6 +39,10 @@ class Links(Container):
         elif upper_object.__class__.__name__ == 'Road':
             # 上位の紐づくオブジェクトを取得
             self.road = upper_object
+        
+        elif upper_object.__class__.__name__ == 'TravelTimeMeasurement':
+            # 上位の紐づくオブジェクトを取得
+            self.travel_time_measurement = upper_object
 
     def makeElements(self):
         for link_com in self.com.GetAll():
