@@ -6,6 +6,7 @@ from objects.vehicle_inputs import VehicleInputs
 from objects.vehicle_routing_decisions import VehicleRoutingDecisions
 from objects.signal_heads import SignalHeads
 from objects.signal_controllers import SignalControllers
+from objects.queue_counters import QueueCounters
 
 class Network(Object):
     def __init__(self, vissim):
@@ -27,6 +28,7 @@ class Network(Object):
         self.vehicle_routing_decisions = VehicleRoutingDecisions(self)
         self.signal_heads = SignalHeads(self)
         self.signal_controllers = SignalControllers(self)
+        self.queue_counters = QueueCounters(self)
 
         # Vissimに各種パラメータを反映
         self.setParametersToVissim()
