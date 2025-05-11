@@ -28,6 +28,10 @@ class TravelTimeMeasurements(Container):
         elif upper_object.__class__.__name__ == 'VehicleRoutingDecision':
             # 上位の紐づくオブジェクトを取得
             self.vehicle_routing_decision = upper_object
+        
+        elif upper_object.__class__.__name__ == 'Link':
+            # 上位の紐づくオブジェクトを取得
+            self.link = upper_object
     
     def makeElements(self):
         for travel_time_measurement_com in self.com.GetAll():
@@ -53,11 +57,19 @@ class TravelTimeMeasurements(Container):
             if end_link.get('type') != 'connector':
                 raise ValueError('Every end link must be a connector link.')
 
-            # それぞれに紐づける
+            # travel_time_measurementオブジェクトにlinkオブジェクトを紐づける
             links.add(start_link)
             links.add(end_link)
-            start_link.set('travel_time_measurement', travel_time_measurement)
-            end_link.set('travel_time_measurement', travel_time_measurement)
+
+            # travel_time_measurementのコンテナが存在しない場合は作成
+            if start_link.has('travel_time_measurements') == False:
+                start_link.set('travel_time_measurements', TravelTimeMeasurements(start_link))
+            if end_link.has('travel_time_measurements') == False:
+                end_link.set('travel_time_measurements', TravelTimeMeasurements(end_link))
+
+            # linkオブジェクトにtravel_time_measurementオブジェクトを紐づける  
+            start_link.travel_time_measurements.add(travel_time_measurement)
+            end_link.travel_time_measurements.add(travel_time_measurement)    
 
             # travel_time_measurement側にはさらにマップに情報を保存
             type_link_map['start'] = start_link.get('id')
@@ -100,11 +112,11 @@ class TravelTimeMeasurement(Object):
     
     @property
     def start_link(self):
-        return self.travel_time_measurements.network.links[self.type_link_map['start']]
+        return self.links[self.type_link_map['start']]
     
     @property
     def end_link(self):
-        return self.travel_time_measurements.network.links[self.type_link_map['end']]
+        return self.links[self.type_link_map['end']]
 
     @property
     def direction_id(self):

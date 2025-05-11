@@ -4,6 +4,7 @@ import math
 from functools import reduce
 from objects.signal_heads import SignalHeads
 from objects.travel_time_measurements import TravelTimeMeasurements
+from objects.delay_measurements import DelayMeasurements
 
 class VehicleRoutingDecisions(Container):
     def __init__(self, network):
@@ -138,6 +139,9 @@ class VehicleRoutingDecision(Object):
 
         # travel_time_measurementオブジェクトを紐づけるためのコンテナを初期化
         self.travel_time_measurements = TravelTimeMeasurements(self)
+
+        # delay_measurementオブジェクトを紐づけるためのコンテナを初期化
+        self.delay_measurements = DelayMeasurements(self)
     
     def getRoad(self):
         return self.link.road
@@ -156,10 +160,6 @@ class VehicleRoutingDecision(Object):
                 direction_num_veh_routes[direction_id] += 1
 
         return direction_num_veh_routes
-    
-    @property
-    def road(self):
-        return self.link.road
 
 class VehicleRoutes(Container):
     def __init__(self, vehicle_routing_decision):
