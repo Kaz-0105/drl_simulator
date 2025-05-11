@@ -2,6 +2,7 @@ from libs.container import Container
 from libs.object import Object
 from objects.links import Links
 from objects.signal_controllers import SignalGroups
+from objects.queue_counters import QueueCounters
 
 class Roads(Container): 
     def __init__(self, upper_object, options = None):
@@ -96,3 +97,10 @@ class Road(Object):
             return main_link.vehicle_routing_decision
         else:
             return None
+    
+    @property
+    def queue_counters(self):
+        return QueueCounters(self)
+        
+    
+    
