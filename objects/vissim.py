@@ -11,9 +11,8 @@ class Vissim(Common):
 
         self.getVissimCom()
 
-        self.network = Network(self)
-
         self.simulation = Simulation(self)
+        self.network = Network(self)
 
         print('test')
     
