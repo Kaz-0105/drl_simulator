@@ -1,3 +1,5 @@
 venv/
 *.db
 *.err
+**/__pycache__/
+**/network.results/
