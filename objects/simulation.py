@@ -1,4 +1,5 @@
 from libs.common import Common
+from concurrent.futures import ThreadPoolExecutor
 
 class Simulation(Common):
     def __init__(self, vissim):
@@ -12,3 +13,42 @@ class Simulation(Common):
         # comオブジェクトを取得
         self.com = self.vissim.com.Simulation
 
+        # 現在時刻と終了時刻を取得
+        self.current_time = self.com.AttValue('SimSec')
+        self.end_time = self.config.get('simulation_time')
+
+        # シード値を取得
+        self.random_seed = self.config.get('random_seed')
+
+        # タイムステップを取得
+        self.time_step = self.config.get('time_step')
+
+        # vissimに反映
+        self.setParametersToVissim()
+
+    def setParametersToVissim(self):
+        self.com.SetAttValue('RandSeed', self.random_seed)
+        self.com.SetAttValue('SimPeriod', self.end_time + 1) # Vissimの仕様上、終了時刻に達するとネットワークの情報が消えるので１秒長くして消えないようにする
+
+    def run(self):
+        control_method = self.config.get('control_method')
+
+        if control_method == 'drl':
+            with ThreadPoolExecutor() as executor:
+                while self.current_time < self.end_time:
+                    # # ネットワークの更新
+                    # self.network.updateEnvironment()
+
+                    # # コントローラを動かす
+                    # self.network.controllers.run()
+
+                    # Vissimを1ステップ進める
+                    self.runSingleStep()
+
+    def runSingleStep(self):
+        # タイムステップ分進める
+        self.com.SetAttValue('SimBreakAt', self.current_time + self.time_step)
+        self.com.RunContinuous()
+
+        # 現在時刻を更新
+        self.current_time = self.com.AttValue('SimSec')

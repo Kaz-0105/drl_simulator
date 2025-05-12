@@ -41,6 +41,10 @@ class Network(Object):
         # controllerオブジェクトの初期化
         self.controllers = Controllers(self)
 
+        # simulationオブジェクトと紐づける
+        self.simulation = self.vissim.simulation
+        self.simulation.set('network', self)
+
         # Vissimに各種パラメータを反映
         self.setParametersToVissim()
 
