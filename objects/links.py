@@ -1,5 +1,7 @@
 from libs.container import Container
 from libs.object import Object
+from pandas import DataFrame
+import copy
 
 class Links(Container):
     def __init__(self, upper_object, options = None):
@@ -8,9 +10,11 @@ class Links(Container):
         
         # 設定オブジェクトを取得
         self.config = upper_object.config
-
+        
         # 上位のオブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
+            self.executor = upper_object.executor
+
             # 上位の紐づくオブジェクトを取得
             self.network = upper_object
 
@@ -96,13 +100,32 @@ class Links(Container):
                 road.addLink(link, 'connector')
                 link.set('type', 'connector')
                 link.set('road', from_link.road)
+    
+    def updateData(self):
+        # 要素オブジェクトの更新
+        for link in self.getAll():
+            link.updateData()
+        
+        # 終わるまで待機
+        self.executor.wait()
 
+        # 車線ごとに車両データを分割
+        for link in self.getAll():
+            link.lanes.updateData()
+
+        # 終わるまで待機
+        self.executor.wait()
+
+        print('test')
+        
 class Link(Object):
     def __init__(self, com, links):
         # 継承
         super().__init__()
+
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = links.config
+        self.executor = links.executor
         self.links = links
 
         # comオブジェクトを取得
@@ -123,7 +146,72 @@ class Link(Object):
 
         # 下位の紐づくオブジェクトを初期化
         self.lanes = Lanes(self)
+
+        # linkの長さを取得
+        self.length_info = {'length': self.com.AttValue('Length2D')}
+        if self.type == 'connector':
+            self.length_info['to_pos'] = self.com.AttValue('ToPos')
+            self.length_info['from_pos'] = self.com.AttValue('FromPos')
     
+    def updateData(self):
+        # 車両データを取得
+        self.getVehicleDataFromVissim()
+
+        # 非同期処理で車両データを整形
+        self.executor.submit(self.makeFormattedVehicleData)
+    
+    def getVehicleDataFromVissim(self):
+        # Vissimから車両データを取得
+        self.vehicle_data = {}
+        self.vehicle_data['id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('No')]
+        self.vehicle_data['position'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Pos')]
+        self.vehicle_data['in_queue'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('InQueue')]
+        self.vehicle_data['speed'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Speed')]
+        self.vehicle_data['lane_id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Lane')]
+        self.vehicle_data['vehicle_route'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('VehRoutSta')]
+    
+    def makeFormattedVehicleData(self):
+        # 車両が存在しない場合は空のDataFrameを返す
+        if len(self.vehicle_data['id']) == 0:
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane', 'link_id', 'road_id', 'direction_id']
+            self.vehicle_data = DataFrame(columns = column_names)
+            return
+        
+        # linkのIDを追加
+        self.vehicle_data['link_id'] = [self.id] * len(self.vehicle_data['id'])
+
+        # roadのIDを追加
+        if self.has('road'):
+            self.vehicle_data['road_id'] = [self.road.get('id')] * len(self.vehicle_data['id'])
+        else:
+            self.vehicle_data['road_id'] = [None] * len(self.vehicle_data['id'])
+
+        # positionとspeedを少数点第1位までに丸める
+        self.vehicle_data['position'] = [round(position, 1) for position in self.vehicle_data['position']]
+        self.vehicle_data['speed'] = [round(speed, 1) for speed in self.vehicle_data['speed']]
+
+        # in_queueをbool型に変換
+        self.vehicle_data['in_queue'] = [bool(in_queue) for in_queue in self.vehicle_data['in_queue']]
+
+        # laneをint型に変換
+        self.vehicle_data['lane_id'] = [int(lane.replace(str(self.id) + '-', '')) for lane in self.vehicle_data['lane_id']]
+        
+        # vehicle_routeを方向に変換
+        vehicle_routing_decisions = self.links.network.vehicle_routing_decisions
+        direction_ids = []
+        for vehicle_route_str in self.vehicle_data['vehicle_route']:
+            if vehicle_route_str is None:
+                direction_ids.append(None)
+            else:
+                vehicle_routing_decision_id, vehicle_route_id = tuple([int(id) for id in vehicle_route_str.split('-')])
+                vehicle_route = vehicle_routing_decisions[vehicle_routing_decision_id].vehicle_routes[vehicle_route_id]
+                direction_ids.append(vehicle_route.get('direction_id'))
+        
+        self.vehicle_data['direction_id'] = direction_ids
+        self.vehicle_data.pop('vehicle_route')
+            
+        self.vehicle_data = DataFrame(self.vehicle_data)
+        return
 
 class Lanes(Container):
     def __init__(self, link):
@@ -132,6 +220,7 @@ class Lanes(Container):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = link.config
+        self.executor = link.executor
         self.link = link
 
         # comオブジェクトを取得
@@ -143,6 +232,12 @@ class Lanes(Container):
     def makeElements(self):
         for lane_com in self.com.GetAll():
             self.add(Lane(lane_com, self))
+    
+    def updateData(self):
+        # 要素オブジェクトの更新
+        for lane in self.getAll():
+            # 車両データを取得（非同期処理）
+            self.executor.submit(lane.updateData)
 
 class Lane(Object):
     def __init__(self, com, lanes):
@@ -151,6 +246,7 @@ class Lane(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = lanes.config
+        self.executor = lanes.executor
         self.lanes = lanes
 
         # comオブジェクトを取得
@@ -158,5 +254,22 @@ class Lane(Object):
 
         # IDを取得
         self.id = int(self.com.AttValue('Index'))
+
+    def updateData(self):
+        # 車両データを取得
+        vehicle_data = self.lanes.link.get('vehicle_data')
+
+        if vehicle_data.shape[0] == 0:
+            # 車両データが存在しない場合は空のDataFrameを返す
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id']
+            self.vehicle_data = DataFrame(columns = column_names)
+            return
+
+        # 車両データを取得
+        self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id]
+
+
+        
+        
 
         

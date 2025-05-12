@@ -34,20 +34,30 @@ class Simulation(Common):
         control_method = self.config.get('control_method')
 
         if control_method == 'drl':
-            with ThreadPoolExecutor() as executor:
-                while self.current_time < self.end_time:
-                    # # ネットワークの更新
-                    # self.network.updateEnvironment()
+            # デバッグ用
+            self.runForDebug()
+            
+            while self.current_time < self.end_time:
+                # ネットワークの更新
+                self.network.updateData()
 
-                    # # コントローラを動かす
-                    # self.network.controllers.run()
+                # # コントローラを動かす
+                # self.network.controllers.run()
 
-                    # Vissimを1ステップ進める
-                    self.runSingleStep()
+                # Vissimを1ステップ進める
+                self.runSingleStep()
 
     def runSingleStep(self):
         # タイムステップ分進める
         self.com.SetAttValue('SimBreakAt', self.current_time + self.time_step)
+        self.com.RunContinuous()
+
+        # 現在時刻を更新
+        self.current_time = self.com.AttValue('SimSec')
+
+    def runForDebug(self):
+        # 30秒進める
+        self.com.SetAttValue('SimBreakAt', self.current_time + 30)
         self.com.RunContinuous()
 
         # 現在時刻を更新

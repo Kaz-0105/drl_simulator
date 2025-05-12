@@ -11,6 +11,7 @@ from objects.travel_time_measurements import TravelTimeMeasurements
 from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints, DataCollectionMeasurements
 from objects.controllers import Controllers
+from concurrent.futures import ThreadPoolExecutor
 
 class Network(Object):
     def __init__(self, vissim):
@@ -19,6 +20,7 @@ class Network(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vissim.config
+        self.executor = vissim.executor
         self.vissim = vissim
 
         # 対応するComオブジェクトを取得
@@ -58,4 +60,15 @@ class Network(Object):
         for vehicle_routing_decision in self.vehicle_routing_decisions.getAll():
             for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
                 vehicle_route.com.SetAttValue('RelFlow(1)', vehicle_route.get('turn_ratio'))
+    
+    def updateData(self):
+        # ネットワークの更新
+        self.links.updateData()
+        self.queue_counters.updateData()
+        self.delay_measurements.updateData()
+
+            
+
+            
+
 
