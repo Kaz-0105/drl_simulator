@@ -24,9 +24,16 @@ class Config(Common):
     def readConfigFile(self):
         with open('layout/config.yaml', 'r') as file:
             data = yaml.safe_load(file)
+
+            # simulatorの基本情報について
             self.network_name = data['simulator']['network_name']
             self.control_method = data['simulator']['control_method']
             self.simulation_time = data['simulator']['simulation_time']
+            self.random_seed = data['simulator']['random_seed']
+            self.time_step = data['simulator']['time_step']
+
+            # DRLに関する情報について
+            self.drl_info = data['drl']
 
     def getNumRoadTurnRatioMap(self):
         self.num_road_turn_ratio_map = {}

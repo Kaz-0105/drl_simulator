@@ -22,6 +22,12 @@ class Vissim(Common):
         
         self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')
         self.com.LoadLayout(os.getcwd() + '\\layout\\' + network_name + '\\network.layx')
+    
+    def run(self):
+        self.simulation.run()
+    
+    def exit(self):
+        self.com.Exit()
 
         
         

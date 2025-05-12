@@ -1,4 +1,10 @@
 simulator :
   network_name: 'two_lane'
   control_method: 'drl'
-  simulation_time: 500
+  simulation_time: 50
+  random_seed: 1
+  time_step: 2
+
+drl:
+  method: 'ddpg'
+  learning_flg: true
