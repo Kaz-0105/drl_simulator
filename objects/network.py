@@ -11,7 +11,6 @@ from objects.travel_time_measurements import TravelTimeMeasurements
 from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints, DataCollectionMeasurements
 from objects.controllers import Controllers
-from concurrent.futures import ThreadPoolExecutor
 
 class Network(Object):
     def __init__(self, vissim):
@@ -63,7 +62,7 @@ class Network(Object):
     
     def updateData(self):
         # ネットワークの更新
-        self.links.updateData()
+        self.roads.updateData()
         self.queue_counters.updateData()
         self.delay_measurements.updateData()
 

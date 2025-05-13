@@ -9,6 +9,7 @@ class TravelTimeMeasurements(Container):
 
         # 設定オブジェクトを取得
         self.config = upper_object.config
+        self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
@@ -98,6 +99,7 @@ class TravelTimeMeasurement(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = travel_time_measurements.config
+        self.executor = travel_time_measurements.executor
         self.travel_time_measurements = travel_time_measurements
 
         # 対応するComオブジェクトを取得

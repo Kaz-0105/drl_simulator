@@ -10,11 +10,10 @@ class Links(Container):
         
         # 設定オブジェクトを取得
         self.config = upper_object.config
+        self.executor = upper_object.executor
         
         # 上位のオブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
-            self.executor = upper_object.executor
-
             # 上位の紐づくオブジェクトを取得
             self.network = upper_object
 
@@ -112,11 +111,6 @@ class Links(Container):
         # 車線ごとに車両データを分割
         for link in self.getAll():
             link.lanes.updateData()
-
-        # 終わるまで待機
-        self.executor.wait()
-
-        print('test')
         
 class Link(Object):
     def __init__(self, com, links):
@@ -173,7 +167,7 @@ class Link(Object):
     def makeFormattedVehicleData(self):
         # 車両が存在しない場合は空のDataFrameを返す
         if len(self.vehicle_data['id']) == 0:
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane', 'link_id', 'road_id', 'direction_id']
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id']
             self.vehicle_data = DataFrame(columns = column_names)
             return
         

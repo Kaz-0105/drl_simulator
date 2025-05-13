@@ -9,6 +9,7 @@ class DelayMeasurements(Container):
 
         # 設定オブジェクトを取得
         self.config = upper_object.config
+        self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
             # 上位の紐づくオブジェクトを取得
@@ -104,6 +105,7 @@ class DelayMeasurement(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = delay_measurements.config
+        self.executor = delay_measurements.executor
         self.delay_measurements = delay_measurements
 
         # 対応するComオブジェクトを取得

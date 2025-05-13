@@ -13,6 +13,7 @@ class VehicleRoutingDecisions(Container):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = network.config
+        self.executor = network.executor
         self.network = network
 
         # 対応するComオブジェクトを取得
@@ -126,6 +127,7 @@ class VehicleRoutingDecision(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routing_decisions.config
+        self.executor = vehicle_routing_decisions.executor
         self.vehicle_routing_decisions = vehicle_routing_decisions
 
         # 対応するComオブジェクトを取得
@@ -168,6 +170,7 @@ class VehicleRoutes(Container):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routing_decision.config
+        self.executor = vehicle_routing_decision.executor
         self.vehicle_routing_decision = vehicle_routing_decision
     
         # 対応するComオブジェクトを取得
@@ -188,6 +191,7 @@ class VehicleRoute(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routes.config
+        self.executor = vehicle_routes.executor
         self.vehicle_routes = vehicle_routes
 
         # 対応するComオブジェクトを取得
