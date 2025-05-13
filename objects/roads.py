@@ -122,13 +122,21 @@ class Road(Object):
     
     def summarizeData(self):
         # 車両データを初期化
-        columns_name = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id']
-        self.vehicle_data = DataFrame(columns = columns_name)
+        self.vehicle_data = None
         
-        # 車両データを取得
         for link in self.links.getAll():
+            # 車両データを取得
             vehicle_data = link.get('vehicle_data')
-            self.vehicle_data = pd.concat([self.vehicle_data, vehicle_data], ignore_index=True)
+
+            # 車両データが空の場合はスキップ
+            if vehicle_data.shape[0] == 0:
+                continue
+                
+            # 車両データをroadにまとめる
+            if self.vehicle_data is None:
+                self.vehicle_data = vehicle_data
+            else:
+                self.vehicle_data = pd.concat([self.vehicle_data, vehicle_data], ignore_index=True)
 
         
     

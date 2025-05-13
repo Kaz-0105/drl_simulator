@@ -1,5 +1,6 @@
 from libs.container import Container
 from libs.object import Object
+import pandas as pd
 
 class QueueCounters(Container):
     def __init__(self, upper_object):
@@ -8,6 +9,7 @@ class QueueCounters(Container):
 
         # 設定オブジェクトを取得
         self.config = upper_object.config
+        self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
             # 上位の紐づくオブジェクトを取得
@@ -48,6 +50,16 @@ class QueueCounters(Container):
             # linkオブジェクトと紐づける
             queue_counter.set('link', link)
             link.set('queue_counter', queue_counter)
+    
+    def updateData(self):
+        # Comオブジェクトからデータを取得
+        queue_counter_ids = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('No')]
+        queue_lengths = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('QLen(Current, Last)')]
+
+        # データを要素オブジェクトにセット（非同期処理）
+        for index, queue_counter_id in enumerate(queue_counter_ids):
+            queue_counter = self[queue_counter_id]
+            self.executor.submit(queue_counter.updateData, queue_lengths[index])
 
 class QueueCounter(Object):
     def __init__(self, com, queue_counters):
@@ -56,6 +68,7 @@ class QueueCounter(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = queue_counters.config
+        self.executor = queue_counters.executor
         self.queue_counters = queue_counters
 
         # 対応するComオブジェクトを取得
@@ -63,3 +76,32 @@ class QueueCounter(Object):
 
         # IDを取得
         self.id = self.com.AttValue('No')
+
+        # current_queue_lengthを初期化
+        self.current_queue_length = 0
+
+        # queue_lengths（時系列データ）を初期化
+        self.queue_lengths = None
+
+    @property
+    def network(self):
+        return self.queue_counters.network
+    
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
+
+    def updateData(self, queue_length):
+        # current_queue_lengthを更新
+        self.current_queue_length = round(queue_length, 1)
+
+        # queue_lengthsを更新
+        new_queue_length = pd.DataFrame({'time': [self.current_time], 'queue_length': [self.current_queue_length]})
+
+        if self.queue_lengths is None:
+            self.queue_lengths = new_queue_length
+        else:
+            self.queue_lengths = pd.concat([self.queue_lengths, new_queue_length], ignore_index = True)
+
+        
+        

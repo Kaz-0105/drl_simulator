@@ -66,6 +66,9 @@ class Network(Object):
         self.queue_counters.updateData()
         self.delay_measurements.updateData()
 
+        # 並列処理が終わるまで待機
+        self.executor.wait()
+
             
 
             
