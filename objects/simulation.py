@@ -1,5 +1,4 @@
 from libs.common import Common
-from concurrent.futures import ThreadPoolExecutor
 
 class Simulation(Common):
     def __init__(self, vissim):
