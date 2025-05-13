@@ -3,11 +3,13 @@ import win32com.client
 import os
 from objects.network import Network
 from objects.simulation import Simulation
+from libs.executor import Executor
 
 class Vissim(Common):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.executor = Executor(self.config.get('max_workers'))
 
         self.getVissimCom()
 

@@ -6,6 +6,7 @@ class Intersections(Container):
     def __init__(self, network):
         super().__init__()
         self.config = network.config
+        self.executor = network.executor
         self.network = network
 
         self.makeElements()
@@ -19,7 +20,9 @@ class Intersection(Object):
     def __init__(self, intersection, intersections):
         super().__init__()
         self.config = intersections.config
+        self.executor = intersections.executor
         self.intersections = intersections
+        
         self.id = int(intersection['id'])
         self.num_roads = int(intersection['num_roads'])
 

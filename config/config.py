@@ -31,6 +31,7 @@ class Config(Common):
             self.simulation_time = data['simulator']['simulation_time']
             self.random_seed = data['simulator']['random_seed']
             self.time_step = data['simulator']['time_step']
+            self.max_workers = data['simulator']['max_workers']
 
             # DRLに関する情報について
             self.drl_info = data['drl']

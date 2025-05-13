@@ -19,6 +19,7 @@ class Network(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vissim.config
+        self.executor = vissim.executor
         self.vissim = vissim
 
         # 対応するComオブジェクトを取得
@@ -58,4 +59,18 @@ class Network(Object):
         for vehicle_routing_decision in self.vehicle_routing_decisions.getAll():
             for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
                 vehicle_route.com.SetAttValue('RelFlow(1)', vehicle_route.get('turn_ratio'))
+    
+    def updateData(self):
+        # ネットワークの更新
+        self.roads.updateData()
+        self.queue_counters.updateData()
+        self.delay_measurements.updateData()
+
+        # 並列処理が終わるまで待機
+        self.executor.wait()
+
+            
+
+            
+
 
