@@ -249,6 +249,10 @@ class Lane(Object):
         # IDを取得
         self.id = int(self.com.AttValue('Index'))
 
+    @property
+    def length_info(self):
+        return self.lanes.link.length_info
+
     def updateData(self):
         # 車両データを取得
         vehicle_data = self.lanes.link.get('vehicle_data')
@@ -260,7 +264,7 @@ class Lane(Object):
             return
 
         # 車両データを取得
-        self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id]
+        self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id].copy()
 
 
         

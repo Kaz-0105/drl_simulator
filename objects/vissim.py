@@ -15,8 +15,6 @@ class Vissim(Common):
 
         self.simulation = Simulation(self)
         self.network = Network(self)
-
-        print('test')
     
     def getVissimCom(self):
         network_name = self.config.network_name

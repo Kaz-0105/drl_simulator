@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
+import numpy as np
 
 class DRLController(BaseController):
     def __init__(self, controllers, intersection):
@@ -13,6 +14,9 @@ class DRLController(BaseController):
         self.intersection = intersection
         intersection.set('controller', self)
 
+        # drl_infoを取得
+        self.drl_info = self.config.get('drl_info')
+
         # モデルのロードor初期化
         if self.config.get('drl_info')['method'] =='a2c':
             model_path = Path('models/a2c.pth')
@@ -22,6 +26,77 @@ class DRLController(BaseController):
                 self.model = torch.load(model_path)
             else:
                 self.model = A2CNet(self)
+
+    def run(self):
+        # 状態量の取得
+        state = self.getStates()
+
+    def getStates(self):
+        if self.config.get('drl_info')['method'] == 'a2c':
+            states = {}
+
+            for road in self.intersection.input_roads.getAll():
+                road_states ={}
+                for link in road.links.getAll():
+                    # connectorはsubと一緒に扱うためここではスキップ
+                    if link.get('type') == 'connector':
+                        continue
+
+                    if link.get('type') == 'main':
+                        for lane in link.lanes.getAll():
+                            lane_states = {}
+
+                            # 位置でソート
+                            vehicle_data = lane.get('vehicle_data')
+                            vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                            vehicle_data.reset_index(drop=True, inplace=True)
+
+                            # 各車線で状態に使う自動車台数を取得
+                            num_vehicles = self.drl_info['num_vehicles']
+                            vehicle_data = vehicle_data.head(num_vehicles)
+
+                            # 距離情報を信号との距離に変換
+                            length_info = lane.get('length_info')
+                            vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+
+                            # 車両に関する状態を取得
+                            vehicles_states = {}
+                            feature_names = ['position', 'speed', 'in_queue', 'direction']
+                            for index in range(num_vehicles):
+                                if index < len(vehicle_data):
+                                    vehicle = vehicle_data.iloc[index]
+                                    vehicle_states = []
+                                    for feature_name in feature_names:
+                                        if self.drl_info['features']['vehicle'][feature_name] == True:
+                                            if feature_name == 'direction':
+                                                direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                                direction_vector[int(vehicle['direction_id']) - 1] = 1
+                                                vehicle_states.extend(direction_vector)
+                                            else: 
+                                                vehicle_states.append(int(vehicle[feature_name]))
+                                    vehicle_states.append(1)                          
+                                    vehicles_states[index + 1] = np.array(vehicle_states, dtype=np.float32)
+                                else:
+                                    vehicle_states = []
+                                    for feature_name in feature_names:
+                                        if self.drl_info['features']['vehicle'][feature_name] == True:
+                                            if feature_name == 'direction':
+                                                direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                                vehicle_states.extend(direction_vector)
+                                            else: 
+                                                vehicle_states.append(0)
+                                    vehicle_states.append(0)
+                                    vehicles_states[index + 1] = np.round(vehicle_states).astype(np.float32)
+                            
+                            # 車線の状態量に追加
+                            lane_states['vehicles'] = vehicles_states
+
+                            # 評価指標に関する状態量を取得
+                            
+                            # 車線情報に関する状態量を取得
+                            
+
+
         
 
 class A2CNet(nn.Module):
