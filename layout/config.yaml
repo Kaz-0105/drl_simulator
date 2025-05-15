@@ -7,5 +7,16 @@ simulator :
   max_workers: 10
 
 drl:
-  method: 'ddpg'
+  method: 'a2c'
   learning_flg: true
+  features:
+    vehicle:
+      position: true
+      speed: true
+      in_queue: true
+      direction: true
+    lane:
+      queue: true
+      delay: true
+      num_vehicles: true
+  num_vehicles: 5

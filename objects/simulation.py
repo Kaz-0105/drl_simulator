@@ -40,8 +40,8 @@ class Simulation(Common):
                 # ネットワークの更新
                 self.network.updateData()
 
-                # # コントローラを動かす
-                # self.network.controllers.run()
+                # コントローラを動かす
+                self.network.controllers.run()
 
                 # Vissimを1ステップ進める
                 self.runSingleStep()

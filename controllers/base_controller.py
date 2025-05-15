@@ -7,6 +7,7 @@ class BaseController(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = controllers.config
+        self.executor = controllers.executor
         self.controllers = controllers
 
         # IDを取得

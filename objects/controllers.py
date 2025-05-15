@@ -6,6 +6,7 @@ class Controllers(Container):
         super().__init__()
 
         self.config = network.config
+        self.executor = network.executor
         self.network = network
 
         self.makeElements()
@@ -16,5 +17,12 @@ class Controllers(Container):
 
             for intersection in intersections.getAll():
                 self.add(DRLController(self, intersection))
+    
+    def run(self):
+        for controller in self.getAll():
+            self.executor.submit(controller.run)
+        
+        self.executor.wait()
+
 
         
