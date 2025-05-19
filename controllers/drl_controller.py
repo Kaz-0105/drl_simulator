@@ -118,7 +118,7 @@ class DRLController(BaseController):
                         # 車線情報に関する状態量を取得
                         if link.get('type') == 'main':
                             lane_states['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
-                        elif link.get('type') == 'sub':
+                        elif link.get('type') == 'right' or link.get('type') == 'left':
                             lane_states['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
 
                         road_states['lanes'].append(lane_states)
