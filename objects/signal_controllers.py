@@ -20,6 +20,9 @@ class SignalControllers(Container):
         # intersectionオブジェクトと紐づける
         self.makeIntersectionConnections()
 
+        # phasesを作成する
+        self.makePhases()
+
     def makeElements(self):
         for signal_controller_com in self.com.GetAll():
             self.add(SignalController(signal_controller_com, self))
@@ -42,6 +45,19 @@ class SignalControllers(Container):
             if success_flg == False:
                 raise Exception(f"SignalController {signal_controller.get('id')} has input roads {input_road_ids}, but no matching intersection found.")
 
+    def makePhases(self):
+        num_roads_phases_map = self.config.get('num_roads_phases_map')
+
+        for signal_controller in self.getAll():
+            num_roads = signal_controller.intersection.get('num_roads')
+            phases = num_roads_phases_map[num_roads]
+
+            formatted_phases = {}
+            for _, phase in phases.iterrows():
+                formatted_phases[int(phase['id'])] = [int(phase['signal_group' + str(i)]) for i in range(1, num_roads + 1)]
+        
+            signal_controller.set('phases', formatted_phases)
+
 class SignalController(Object):
     def __init__(self, com, signal_controllers):
         # 継承
@@ -60,6 +76,12 @@ class SignalController(Object):
         # 下位の紐づくオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
 
+        # current_phase_idを初期化
+        self.current_phase_id = 1
+
+    @property
+    def num_phases(self):
+        return len(self.phases)
 
 class SignalGroups(Container):
     def __init__(self, upper_object):
@@ -127,8 +149,7 @@ class SignalGroups(Container):
                 direction_signal_group_map[signal_group.direction_id] = signal_group.get('id')
             
             else:
-                raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")
-                
+                raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")       
 
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):

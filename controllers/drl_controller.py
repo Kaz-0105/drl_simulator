@@ -17,87 +17,130 @@ class DRLController(BaseController):
         # drl_infoを取得
         self.drl_info = self.config.get('drl_info')
 
-        # モデルのロードor初期化
+        # モデルの定義
         if self.config.get('drl_info')['method'] =='a2c':
+            self.model = A2CNet(self)
             model_path = Path('models/a2c.pth')
 
-            # モデルの初期化
             if model_path.exists():
-                self.model = torch.load(model_path)
-            else:
-                self.model = A2CNet(self)
+                self.model.load_state_dict(torch.load(model_path))
+
+        self.num_roads = self.intersection.get('num_roads')
+        self.makeRoadNumLanesMap()
+
+    def makeRoadNumLanesMap(self):
+        road_num_lanes_map = {}
+        for road_order_id in self.intersection.input_roads.getKeys(container_flg=True):
+            road = self.intersection.input_roads[road_order_id]
+            num_lanes = 0
+            for link in road.links.getAll():
+                if link.get('type') == 'connector':
+                    continue
+
+                num_lanes += link.lanes.count()
+            
+            road_num_lanes_map[road_order_id] = num_lanes
+        
+        self.road_num_lanes_map = road_num_lanes_map
 
     def run(self):
         # 状態量の取得
-        state = self.getStates()
+        self.makeStates()
 
-    def getStates(self):
+        # 行動の選択
+        self.action = self.model([self.states])
+
+    def makeStates(self):
         if self.config.get('drl_info')['method'] == 'a2c':
-            states = {}
+            states = {'roads': {}, 'intersection': []}
 
-            for road in self.intersection.input_roads.getAll():
-                road_states ={}
+            for road_order_id in self.intersection.input_roads.getKeys(container_flg=True):
+                road = self.intersection.input_roads[road_order_id]
+                road_states ={'lanes': [], 'metric': []}
+                # 車線ごとの状態量について
                 for link in road.links.getAll():
-                    # connectorはsubと一緒に扱うためここではスキップ
+                    # connectorは除外
                     if link.get('type') == 'connector':
                         continue
+                   
+                    for lane in link.lanes.getAll():
+                        # 車線の状態量をまとめる
+                        lane_states = {}
 
-                    if link.get('type') == 'main':
-                        for lane in link.lanes.getAll():
-                            lane_states = {}
+                        # 位置でソート
+                        vehicle_data = lane.get('vehicle_data')
+                        vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                        vehicle_data.reset_index(drop=True, inplace=True)
 
-                            # 位置でソート
-                            vehicle_data = lane.get('vehicle_data')
-                            vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                            vehicle_data.reset_index(drop=True, inplace=True)
+                        # 各車線で状態に使う自動車台数を取得
+                        num_vehicles = self.drl_info['num_vehicles']
+                        vehicle_data = vehicle_data.head(num_vehicles)
 
-                            # 各車線で状態に使う自動車台数を取得
-                            num_vehicles = self.drl_info['num_vehicles']
-                            vehicle_data = vehicle_data.head(num_vehicles)
+                        # 距離情報を信号との距離に変換
+                        length_info = lane.get('length_info')
+                        vehicle_data['position'] = length_info['length'] - vehicle_data['position']
 
-                            # 距離情報を信号との距離に変換
-                            length_info = lane.get('length_info')
-                            vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+                        # 車両に関する状態を取得
+                        vehicles_states = []
+                        feature_names = ['position', 'speed', 'in_queue', 'direction']
+                        for index in range(num_vehicles):
+                            if index < vehicle_data.shape[0]:
+                                vehicle = vehicle_data.iloc[index]
+                                vehicle_states = []
+                                for feature_name in feature_names:
+                                    if self.drl_info['features']['vehicle'][feature_name] == True:
+                                        if feature_name == 'direction':
+                                            direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                            direction_vector[int(vehicle['direction_id']) - 1] = 1
+                                            vehicle_states.extend(direction_vector)
+                                        else: 
+                                            vehicle_states.append(int(vehicle[feature_name]))
+                                vehicle_states.append(1)                          
+                                vehicles_states.append(torch.tensor(vehicle_states).float())
+                            else:
+                                vehicle_states = []
+                                for feature_name in feature_names:
+                                    if self.drl_info['features']['vehicle'][feature_name] == True:
+                                        if feature_name == 'direction':
+                                            direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                            vehicle_states.extend(direction_vector)
+                                        else: 
+                                            vehicle_states.append(0)
+                                vehicle_states.append(0)
+                                vehicles_states.append(torch.tensor(vehicle_states).float())
+                        
+                        # 車線の状態量に追加
+                        lane_states['vehicles'] = vehicles_states
 
-                            # 車両に関する状態を取得
-                            vehicles_states = {}
-                            feature_names = ['position', 'speed', 'in_queue', 'direction']
-                            for index in range(num_vehicles):
-                                if index < len(vehicle_data):
-                                    vehicle = vehicle_data.iloc[index]
-                                    vehicle_states = []
-                                    for feature_name in feature_names:
-                                        if self.drl_info['features']['vehicle'][feature_name] == True:
-                                            if feature_name == 'direction':
-                                                direction_vector = [0] * (self.intersection.get('num_roads') - 1)
-                                                direction_vector[int(vehicle['direction_id']) - 1] = 1
-                                                vehicle_states.extend(direction_vector)
-                                            else: 
-                                                vehicle_states.append(int(vehicle[feature_name]))
-                                    vehicle_states.append(1)                          
-                                    vehicles_states[index + 1] = np.array(vehicle_states, dtype=np.float32)
-                                else:
-                                    vehicle_states = []
-                                    for feature_name in feature_names:
-                                        if self.drl_info['features']['vehicle'][feature_name] == True:
-                                            if feature_name == 'direction':
-                                                direction_vector = [0] * (self.intersection.get('num_roads') - 1)
-                                                vehicle_states.extend(direction_vector)
-                                            else: 
-                                                vehicle_states.append(0)
-                                    vehicle_states.append(0)
-                                    vehicles_states[index + 1] = np.round(vehicle_states).astype(np.float32)
-                            
-                            # 車線の状態量に追加
-                            lane_states['vehicles'] = vehicles_states
+                        # 評価指標に関する状態量を取得
+                        lane_states['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
+                        
+                        # 車線情報に関する状態量を取得
+                        if link.get('type') == 'main':
+                            lane_states['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
+                        elif link.get('type') == 'sub':
+                            lane_states['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
 
-                            # 評価指標に関する状態量を取得
-                            
-                            # 車線情報に関する状態量を取得
-                            
+                        road_states['lanes'].append(lane_states)
 
+                # 道路ごとの評価指標の状態量について
+                metric_states = []
+                metric_states.append(int(road.get('max_queue_length')))
+                metric_states.append(int(road.get('average_delay')))
 
-        
+                road_states['metric'] = torch.tensor(metric_states, dtype=torch.float32)
+
+                # 全体の状態量に追加
+                states['roads'][road_order_id] = road_states
+
+            # 交差点の状態量について
+            current_phase_id = self.intersection.get('current_phase_id')
+            intersection_states = [0] * (self.intersection.get('num_phases'))
+            intersection_states[current_phase_id - 1] = 1
+            states['intersection'] = torch.tensor(intersection_states, dtype=torch.float32)
+
+            # 状態量をインスタンス変数に保存
+            self.states = states
 
 class A2CNet(nn.Module):
     def __init__(self, controller):
@@ -108,239 +151,314 @@ class A2CNet(nn.Module):
         self.config = controller.config
         self.executor = controller.executor
         self.controller = controller
+
+        self.vehicle_net = A2CVehicleNet(self)
+        self.vehicles_net = A2CVehiclesNet(self)
+        self.lane_shape_net = A2CLaneShapeNet(self)
+        self.lane_metric_net = A2CLaneMetricNet(self)
+        self.lane_net = A2CLaneNet(self)
+        # self.road_net = A2CRoadNet(self)
+
+        
+    def get(self, property_name):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        return getattr(self, property_name)
+        
+    def set(self, property_name, value):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        setattr(self, property_name, value)
+
     
     def forward(self, x):
-        # xの形状は（バッチサイズ，
+        # 自動車の情報について
+        vehicle_states = []
+        for states in x:
+            roads_states = states['roads']
+            for road_order_id, road_states in sorted(roads_states.items()):
+                print(road_order_id)
+                lanes_states = road_states['lanes']
+                for lane_states in lanes_states:
+                    vehicle_states.extend(lane_states['vehicles'])
+
+        # 車両の情報をテンソルに変換
+        vehicle_states = torch.stack(vehicle_states)
+
+        # 車両の情報をネットワークに通す
+        vehicle_outputs = self.vehicle_net(vehicle_states)
+
+        # 次元を変更
+        # (batch_size * num_roads * num_lanes, num_vehicles_features)
+        vehicle_outputs = vehicle_outputs.view(-1, self.vehicles_net.num_features)
+        vehicle_outputs = self.vehicles_net(vehicle_outputs)
+
+        # 車線形状について
+        lane_shape_states = []
+
+        for states in x:
+            roads_states = states['roads']
+            for road_order_id, road_states in sorted(roads_states.items()):
+                lanes_states = road_states['lanes']
+                for lane_states in lanes_states:
+                    lane_shape_states.append(lane_states['shape'])
+        
+        lane_shape_states = torch.stack(lane_shape_states)    
+        lane_shape_outputs = self.lane_shape_net(lane_shape_states)
+
+        # 車線ごとの評価指標について
+        lane_metric_states = []
+
+        for states in x:
+            roads_states = states['roads']
+            for road_order_id, road_states in sorted(roads_states.items()):
+                lanes_states = road_states['lanes']
+                for lane_states in lanes_states:
+                    lane_metric_states.append(lane_states['metric'])
+        
+        lane_metric_states = torch.stack(lane_metric_states)
+        lane_metric_outputs = self.lane_metric_net(lane_metric_states)
+
+class A2CVehicleNet(nn.Module):
+    def __init__(self, a2c_net):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # 状態量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.hidden_size = 32
+        self.output_size = 32
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
+            nn.ReLU(),
+        )
+
+    def makeNumFeatures(self):
+        # 強化学習に関する設定を取得
+        drl_info = self.config.get('drl_info')
+
+        # 使用する状態量を確認しカウント
+        num_features = 0
+        for feature_name, feature_flg in drl_info['features']['vehicle'].items():
+            if feature_flg == False:
+                continue
+            if feature_name == 'direction':
+                intersection = self.a2c_net.controller.intersection
+                num_features += (intersection.get('num_roads') - 1)
+            else:
+                num_features += 1
+
+        # 存在するかどうかのフラグ分を追加
+        num_features += 1
+
+        # インスタンス変数として保存
+        self.num_features = num_features
+    
+    def get(self, property_name):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        return getattr(self, property_name)
+        
+    def set(self, property_name, value):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        setattr(self, property_name, value)
+    
+    def forward(self, x):
+        # xは（batch_size × num_vehicles × num_lanes × num_roads, num_features）のテンソル
+        return self.net(x)
+        
+class A2CVehiclesNet(nn.Module):
+    def __init__(self, a2c_net):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # vehicle_netを取得
+        self.vehicle_net = a2c_net.vehicle_net
+
+        # 状態量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.hidden_size = 64
+        self.output_size = 64
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
+            nn.ReLU(),
+        )
+    
+    def makeNumFeatures(self):
+        # 強化学習に関する設定を取得
+        drl_info = self.config.get('drl_info')
+        
+        # vehicle_netの出力サイズに自動車台数をかけたものが特徴量の数
+        self.num_features = self.vehicle_net.output_size * drl_info['num_vehicles']
+    
+    def get(self, property_name):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        return getattr(self, property_name)
+        
+    def set(self, property_name, value):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        setattr(self, property_name, value)
+    
+    def forward(self, x):
+        # xは（batch_size × num_lanes × num_roads, num_features）のテンソル
+        return self.net(x)
+
+class A2CLaneShapeNet(nn.Module):
+    def __init__(self, a2c_net):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # 状態量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.output_size = 8
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.output_size),
+            nn.ReLU(),
+        )   
+
+    def makeNumFeatures(self):
+        # 強化学習に関する設定を取得
+        drl_info = self.config.get('drl_info')
+
+        # 状態の数を初期化
+        self.num_features = 0
+
+        # 使用する状態量を確認してカウント
+        for feature_name, feature_flg in drl_info['features']['lane']['shape'].items():
+            if feature_flg == False:
+                continue
+
+            if feature_name == 'length':
+                self.num_features += 1
+            elif feature_name == 'type':
+                self.num_features += 2
+    
+    def get(self, property_name):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        return getattr(self, property_name)
+    
+    def set(self, property_name, value):
+        if hasattr(self, property_name) == False:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
+        
+        setattr(self, property_name, value)
+
+    def forward(self, x):
+        # xは（batch_size × num_roads × num_lanes, num_features）のテンソル
+        return self.net(x)
+
+class A2CLaneMetricNet(nn.Module):
+    def __init__(self, a2c_net):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # 状態量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.output_size = 8
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.output_size),
+            nn.ReLU(),
+        )     
+
+    def makeNumFeatures(self):
+        # 強化学習に関する設定を取得
+        drl_info = self.config.get('drl_info')
+
+        # 状態の数を初期化
+        self.num_features = 0
+
+        # 使用する状態量を確認してカウント  
+        for feature_name, feature_flg in drl_info['features']['lane']['metric'].items():
+            if feature_flg == False:
+                continue
+
+            if feature_name == 'num_vehicles':
+                self.num_features += 1    
+
+    def forward(self, x):
+        # xは（batch_size × num_roads × num_lanes, num_features）のテンソル
+        return self.net(x)
+    
+class A2CLaneNet(nn.Module):
+    def __init__(self, a2c_net):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # 状態量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.hidden_size = 128
+        self.output_size = 128
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
+            nn.ReLU(),
+        )
+    
+    def makeNumFeatures(self):
+        num_vehicle_features = self.a2c_net.vehicles_net.output_size
+        num_shape_features = self.a2c_net.lane_shape_net.output_size
+        num_metric_features = self.a2c_net.lane_metric_net.output_size
+
+        self.num_features = num_vehicle_features + num_shape_features + num_metric_features
+    
+    def forward(self, x):
         pass
-
-# class A2CRoadNet(nn.Module):
-#     def __init__(self, intersection_net):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = intersection_net.config
-#         self.executor = intersection_net.executor
-#         self.intersection_net = intersection_net
-
-#         # 下位のネットワークを取得
-#         self.link_net = A2CLinkNet(self)
-
-# class A2CLinkNet(nn.Module):
-#     def __init__(self, road_net, num_lanes):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = road_net.config
-#         self.executor = road_net.executor
-#         self.road_net = road_net
-
-#         # 下位のネットワークを取得
-#         self.lane_net = A2CLaneNet(self)
-
-#         # 車線数を取得
-#         self.num_lanes = num_lanes
-
-#         # 各種パラメータを取得
-#         self.feature_dim = num_lanes * self.lane_net.output_dim
-#         self.input_dim = self.feature_dim
-#         self.hidden_dim = 64
-#         self.output_dim = self.feature_dim
-
-#         self.net = nn.Sequential(
-#             nn.Linear(self.lane_net.input_dim, self.lane_net.hidden_dim),
-#             nn.ReLU(),
-#             nn.Linear(self.lane_net.hidden_dim, self.lane_net.output_dim),
-#             nn.ReLU(),
-#         )
-    
-#     def forward(self, x):
-#         # xの形状は（バッチサイズ，特徴量数の辞書型配列）のリスト
-#         pass
-
-# class A2CLaneNet(nn.Module):
-#     def __init__(self, link_net):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = link_net.config
-#         self.executor = link_net.executor
-#         self.link_net = link_net
-
-#         # 下位のネットワークを取得
-#         self.vehicles_net = A2CVehiclesNet(self)
-#         self.lane_shape_net = A2CLaneShapeNet(self)
-#         self.lane_metric_net = A2CLaneMetricNet(self)
-
-#         # 各種パラメータを取得
-#         self.feature_dim = self.vehicles_net.output_dim + self.lane_shape_net.output_dim + self.lane_metric_net.output_dim
-#         self.input_dim = self.feature_dim
-#         self.hidden_dim = 64
-#         self.output_dim = self.feature_dim
-        
-#         self.net = nn.Sequential(
-#             nn.Linear(self.input_dim, self.hidden_dim),
-#             nn.ReLU(),
-#             nn.Linear(self.hidden_dim, self.output_dim),
-#             nn.ReLU(),
-#         )
-    
-#     def forward(self, x):
-#         # xの形状は{vehicles: (バッチサイズ，自動車台数，特徴量数), lane_shape: (バッチサイズ，特徴量数), lane_metric: (バッチサイズ，特徴量数)}
-#         x['vehicles'] = self.vehicles_net(x['vehicles'])
-#         x['lane_shape'] = self.lane_shape_net(x['lane_shape'])
-#         x['lane_metric'] = self.lane_metric_net(x['lane_metric'])
-
-#         # xを（バッチサイズ，特徴量数）に変換
-#         x = torch.cat(x['vehicles'], x['lane_shape'], x['lane_metric'], dim=1)
-
-#         # ネットワークを通す
-#         return self.net(x)
-
-# class A2CVehiclesNet(nn.Module):
-#     def __init__(self, lane_net):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = lane_net.config
-#         self.executor = lane_net.executor
-#         self.lane_net = lane_net
-
-#         # 自動車台数を取得
-#         drl_info = self.config.get('drl_info')
-#         self.num_vehicles = drl_info['num_vehicles']
-
-#         # 下位のネットワークを取得
-#         self.vehicle_net = A2CVehicleNet(self)
-
-#         # 各種パラメータを取得
-#         self.feature_dim = self.num_vehicles * self.vehicle_net.output_dim
-#         self.input_dim = self.feature_dim
-#         self.hidden_dim = 64
-#         self.output_dim = self.feature_dim
-
-#         self.net = nn.Sequential(
-#             nn.Linear(self.input_dim, self.hidden_dim),
-#             nn.ReLU(),
-#             nn.Linear(self.hidden_dim, self.output_dim),
-#             nn.ReLU(),
-#         )
-    
-#     def forward(self, x):
-#         # xの形状は（バッチサイズ，自動車台数，特徴量数）
-#         # xを（バッチサイズ * 自動車台数, 特徴量数）に変換
-#         x = x.view(-1, self.vehicle_net.input_dim)
-
-#         # 各車両の特徴量を抽出
-#         output = self.vehicle_net(x)
-
-#         # xを（バッチサイズ, 自動車台数 * 特徴量数）に変換
-#         output = output.view(-1, self.input_dim)
-
-#         # ネットワークを通す
-#         return self.net(output)
-        
-
-# class A2CVehicleNet(nn.Module):
-#     def __init__(self, vehicles_net):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = vehicles_net.config
-#         self.executor = vehicles_net.executor
-#         self.vehicles_net = vehicles_net
-
-#         # 各種パラメータを取得
-#         drl_info = self.config.get('drl_info')
-#         self.feature_dim = 0
-#         for value in drl_info['features']['vehicle'].values():
-#             if value == True:
-#                 self.feature_dim += 1
-
-#         self.input_dim = self.feature_dim
-#         self.hidden_dim = 64
-#         self.output_dim = self.feature_dim
-
-#         self.net = nn.Sequential(
-#             nn.Linear(self.input_dim, self.hidden_dim),
-#             nn.ReLU(),
-#             nn.Linear(self.hidden_dim, self.output_dim),
-#             nn.ReLU(),
-#         )
-    
-#     def forward(self, x):
-#         # xの形状は（バッチサイズ * 自動車台数，特徴量数）
-#         return self.net(x)
-    
-# class A2CLaneShapeNet(nn.Module):
-#     def __init__(self, lane_net):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = lane_net.config
-#         self.executor = lane_net.executor
-#         self.lane_net = lane_net
-
-#         # 各種パラメータを取得
-#         intersection = lane_net.link_net.road_net.intersection_net.intersection
-#         self.num_roads = intersection.input_roads.count()
-
-#         self.feature_dim = (self.num_roads - 1) + 1
-#         self.input_dim = self.feature_dim
-#         self.hidden_dim = 64
-#         self.output_dim = self.feature_dim
-
-#         self.net = nn.Sequential(
-#             nn.Linear(self.input_dim, self.hidden_dim),
-#             nn.ReLU(),
-#             nn.Linear(self.hidden_dim, self.output_dim),
-#             nn.ReLU(),
-#         )
-    
-#     def forward(self, x):
-#         # xの形状は（バッチサイズ，特徴量数）
-#         return self.net(x)
-
-# class A2CLaneMetricNet(nn.Module):
-#     def __init__(self, lane_net):
-#         # 継承
-#         super().__init__()
-
-#         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-#         self.config = lane_net.config
-#         self.executor = lane_net.executor
-#         self.lane_net = lane_net
-
-#         # 各種パラメータを取得
-#         drl_info = self.config.get('drl_info')
-#         self.feature_dim = 0
-#         for value in drl_info['features']['lane'].values():
-#             if value == True:
-#                 self.feature_dim += 1
-        
-#         self.input_dim = self.feature_dim
-#         self.hidden_dim = 64
-#         self.output_dim = self.feature_dim
-
-#         self.net = nn.Sequential(
-#             nn.Linear(self.input_dim, self.hidden_dim),
-#             nn.ReLU(),
-#             nn.Linear(self.hidden_dim, self.output_dim),
-#             nn.ReLU(),
-#         )
-
-#     def forward(self, x):
-#         # xの形状は（バッチサイズ，特徴量数）
-#         return self.net(x)
-
-
-
-        
 
         
 

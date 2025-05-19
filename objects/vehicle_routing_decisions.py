@@ -82,7 +82,7 @@ class VehicleRoutingDecisions(Container):
     def setTurnRatio(self):
         # 設定ファイルから旋回率に関する情報を取得
         tags = self.config.get('intersection_turn_ratio_tags')
-        templates_map = self.config.get('num_road_turn_ratio_map')
+        templates_map = self.config.get('num_roads_turn_ratio_map')
 
         for vehicle_routing_decision in self.getAll():
             # 紐づくroadオブジェクトとintersectionオブジェクトを取得

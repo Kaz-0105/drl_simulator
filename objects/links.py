@@ -147,6 +147,12 @@ class Link(Object):
             self.length_info['to_pos'] = self.com.AttValue('ToPos')
             self.length_info['from_pos'] = self.com.AttValue('FromPos')
     
+    @property
+    def queue_length(self):
+        return self.queue_counter.get('current_queue_length')
+    
+    
+    
     def updateData(self):
         # 車両データを取得
         self.getVehicleDataFromVissim()
@@ -252,6 +258,14 @@ class Lane(Object):
     @property
     def length_info(self):
         return self.lanes.link.length_info
+    
+    @property
+    def link(self):
+        return self.lanes.link
+    
+    @property
+    def num_vehicles(self):
+        return self.vehicle_data.shape[0]
 
     def updateData(self):
         # 車両データを取得
@@ -265,6 +279,7 @@ class Lane(Object):
 
         # 車両データを取得
         self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id].copy()
+
 
 
         

@@ -4,11 +4,14 @@ from objects.roads import Roads
 
 class Intersections(Container):
     def __init__(self, network):
+        # 継承
         super().__init__()
+
         self.config = network.config
         self.executor = network.executor
         self.network = network
 
+        # 要素オブジェクトを初期化
         self.makeElements()
 
     def makeElements(self):
@@ -44,4 +47,12 @@ class Intersection(Object):
             road_order_map[road.get('id')] = order_id
 
         return road_order_map
+
+    @property
+    def current_phase_id(self):
+        return self.signal_controller.get('current_phase_id')
+    
+    @property
+    def num_phases(self):
+        return self.signal_controller.get('num_phases')
 

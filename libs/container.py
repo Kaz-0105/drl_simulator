@@ -8,8 +8,11 @@ class Container(Common):
     def getMultiAttValues(self, property_name: str):
         return [element.get(property_name) for element in self.elements.values()]
 
-    def getKeys(self):
-        return self.getMultiAttValues('id')
+    def getKeys(self, container_flg = False):
+        if container_flg:
+            return self.elements.keys()
+        else:
+            return self.getMultiAttValues('id')
     
     def count(self):
         return len(self.elements)

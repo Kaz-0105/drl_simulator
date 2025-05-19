@@ -20,6 +20,9 @@ class Config(Common):
 
         # 旋回率のテンプレートを取得する
         self.getNumRoadTurnRatioMap()
+
+        # フェーズの一覧を取得する
+        self.getNumRoadPhasesMap()
     
     def readConfigFile(self):
         with open('layout/config.yaml', 'r') as file:
@@ -37,9 +40,19 @@ class Config(Common):
             self.drl_info = data['drl']
 
     def getNumRoadTurnRatioMap(self):
-        self.num_road_turn_ratio_map = {}
+        self.num_roads_turn_ratio_map = {}
         for num_roads in [3, 4, 5]:
-            self.num_road_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv')
+            self.num_roads_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv')
+    
+    def getNumRoadPhasesMap(self):
+        self.num_roads_phases_map = {}
+        for num_roads in [3, 4, 5]:
+
+            # 3車線と5車線は後で実装する
+            if num_roads == 3 or num_roads == 5:
+                continue
+
+            self.num_roads_phases_map[num_roads] = pd.read_csv('layout/phases' + str(num_roads) + '.csv')
         
             
 

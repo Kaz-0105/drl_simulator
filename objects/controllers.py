@@ -20,7 +20,8 @@ class Controllers(Container):
     
     def run(self):
         for controller in self.getAll():
-            self.executor.submit(controller.run)
+            controller.run()
+            # self.executor.submit(controller.run)
         
         self.executor.wait()
 

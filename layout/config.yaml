@@ -11,12 +11,18 @@ drl:
   learning_flg: true
   features:
     vehicle:
-      position: true
-      speed: true
+      position: false
+      speed: false
       in_queue: true
       direction: true
     lane:
-      queue: true
-      delay: true
-      num_vehicles: true
+      metric: 
+        num_vehicles: true
+      shape:
+        length: true
+        type: true
+    road:
+      metric:
+        queue_length: true
+        delay: true
   num_vehicles: 5
