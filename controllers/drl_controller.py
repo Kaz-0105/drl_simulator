@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 import numpy as np
+from libs.neural_network import NeuralNetwork
 
 class DRLController(BaseController):
     def __init__(self, controllers, intersection):
@@ -14,6 +15,10 @@ class DRLController(BaseController):
         # intersectionオブジェクトと紐づける
         self.intersection = intersection
         intersection.set('controller', self)
+
+        # roadオブジェクトおよびlaneオブジェクトと紐づける（一方通行）
+        self.roads = self.intersection.input_roads
+        self.makeRoadLanesMap()
 
         # drl_infoを取得
         self.drl_info = self.config.get('drl_info')
@@ -26,8 +31,7 @@ class DRLController(BaseController):
             if model_path.exists():
                 self.model.load_state_dict(torch.load(model_path))
 
-        self.roads = self.intersection.input_roads
-        self.makeRoadLanesMap()
+        
     
     def makeRoadLanesMap(self):
         # road_lanes_mapを初期化
@@ -212,7 +216,7 @@ class DRLController(BaseController):
             # 状態量をインスタンス変数に保存
             self.states = states
 
-class A2CNet(nn.Module):
+class A2CNet(NeuralNetwork):
     def __init__(self, controller):
         # 継承
         super().__init__()
@@ -222,27 +226,26 @@ class A2CNet(nn.Module):
         self.executor = controller.executor
         self.controller = controller
 
+        # 各サブネットワークを定義
         self.vehicle_net = A2CVehicleNet(self)
         self.vehicles_net = A2CVehiclesNet(self)
         self.lane_shape_net = A2CLaneShapeNet(self)
         self.lane_metric_net = A2CLaneMetricNet(self)
         self.lane_net = A2CLaneNet(self)
-        # self.road_net = A2CRoadNet(self)
-
-        
-    def get(self, property_name):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        return getattr(self, property_name)
-        
-    def set(self, property_name, value):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        setattr(self, property_name, value)
-
+        self.road_metric_net = A2CRoadMetricNet(self)
+        self.makeNumLaneRoadNetMap()
     
+    def makeNumLaneRoadNetMap(self):
+        num_lanes_road_net_map = {}
+
+        for road_order_id in self.controller.roads.getKeys(container_flg=True):
+            lanes = self.controller.road_lanes_map[road_order_id]
+
+            if lanes.count() not in num_lanes_road_net_map:
+                num_lanes_road_net_map[lanes.count()] = A2CRoadNet(self, lanes.count())
+        
+        self.num_lanes_road_net_map = num_lanes_road_net_map
+
     def forward(self, x):
         # 自動車の情報について
         vehicle_states = []
@@ -296,9 +299,22 @@ class A2CNet(nn.Module):
         # 車線の情報をネットワークに通す
         lane_outputs = self.lane_net(lane_states)
 
+        # 道路の評価指標について
+        road_metric_states = []
+        for states in x:
+            roads_states = states['roads']
+            for road_order_id, road_states in roads_states.items():
+                road_metric_states.append(road_states['metric'])
+        
+        road_metric_states = torch.stack(road_metric_states)
+        road_metric_outputs = self.road_metric_net(road_metric_states)
+
+        # 道路ごとのネットワークに通す
+        for road_order_id in self.controller.roads.getKeys(container_flg=True, sorted_flg=True):
+            road = self.controller.roads[road_order_id]
         print('test')
 
-class A2CVehicleNet(nn.Module):
+class A2CVehicleNet(NeuralNetwork):
     def __init__(self, a2c_net):
         # 継承
         super().__init__()
@@ -343,23 +359,11 @@ class A2CVehicleNet(nn.Module):
         # インスタンス変数として保存
         self.num_features = num_features
     
-    def get(self, property_name):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        return getattr(self, property_name)
-        
-    def set(self, property_name, value):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        setattr(self, property_name, value)
-    
     def forward(self, x):
         # xは（batch_size × num_vehicles × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
         
-class A2CVehiclesNet(nn.Module):
+class A2CVehiclesNet(NeuralNetwork):
     def __init__(self, a2c_net):
         # 継承
         super().__init__()
@@ -393,23 +397,11 @@ class A2CVehiclesNet(nn.Module):
         # vehicle_netの出力サイズに自動車台数をかけたものが特徴量の数
         self.num_features = self.vehicle_net.output_size * drl_info['num_vehicles']
     
-    def get(self, property_name):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        return getattr(self, property_name)
-        
-    def set(self, property_name, value):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        setattr(self, property_name, value)
-    
     def forward(self, x):
         # xは（batch_size × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
 
-class A2CLaneShapeNet(nn.Module):
+class A2CLaneShapeNet(NeuralNetwork):
     def __init__(self, a2c_net):
         # 継承
         super().__init__()
@@ -446,24 +438,12 @@ class A2CLaneShapeNet(nn.Module):
                 self.num_features += 1
             elif feature_name == 'type':
                 self.num_features += 2
-    
-    def get(self, property_name):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        return getattr(self, property_name)
-    
-    def set(self, property_name, value):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
-        setattr(self, property_name, value)
 
     def forward(self, x):
         # xは（batch_size × num_roads × num_lanes, num_features）のテンソル
         return self.net(x)
 
-class A2CLaneMetricNet(nn.Module):
+class A2CLaneMetricNet(NeuralNetwork):
     def __init__(self, a2c_net):
         # 継承
         super().__init__()
@@ -503,7 +483,7 @@ class A2CLaneMetricNet(nn.Module):
         # xは（batch_size × num_roads × num_lanes, num_features）のテンソル
         return self.net(x)
     
-class A2CLaneNet(nn.Module):
+class A2CLaneNet(NeuralNetwork):
     def __init__(self, a2c_net):
         # 継承
         super().__init__()
@@ -528,11 +508,95 @@ class A2CLaneNet(nn.Module):
         )
     
     def makeNumFeatures(self):
-        num_vehicle_features = self.a2c_net.vehicles_net.output_size
-        num_shape_features = self.a2c_net.lane_shape_net.output_size
-        num_metric_features = self.a2c_net.lane_metric_net.output_size
+        num_vehicle_features = self.a2c_net.vehicles_net.get('output_size')
+        num_shape_features = self.a2c_net.lane_shape_net.get('output_size')
+        num_metric_features = self.a2c_net.lane_metric_net.get('output_size')
 
         self.num_features = num_vehicle_features + num_shape_features + num_metric_features
+    
+    def forward(self, x):
+        return self.net(x)
+    
+class A2CRoadMetricNet(NeuralNetwork):
+    def __init__(self, a2c_net):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # 特徴量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.output_size = 8
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.output_size),
+            nn.ReLU(),
+        )
+
+    def makeNumFeatures(self):
+        # 強化学習に関する設定を取得
+        drl_info = self.config.get('drl_info')
+
+        # 状態の数を初期化
+        num_features = 0
+
+        # 使用する状態量を確認してカウント
+        for feature_name, feature_flg in drl_info['features']['road']['metric'].items():
+            if feature_flg == False:
+                continue
+            
+            if feature_name == 'queue_length':
+                num_features += 1
+            elif feature_name == 'delay':
+                num_features += 1
+            
+        # インスタンス変数として保存
+        self.num_features = num_features
+    
+    def forward(self, x):
+        return self.net(x)
+    
+class A2CRoadNet(NeuralNetwork):
+    def __init__(self, a2c_net, num_lanes):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = a2c_net.config
+        self.executor = a2c_net.executor
+        self.a2c_net = a2c_net
+
+        # 車線の数を取得
+        self.num_lanes = num_lanes
+
+        # 特徴量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.hidden_size = 256
+        self.output_size = 256
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
+            nn.ReLU(),
+        )
+
+    def makeNumFeatures(self):
+        # 車線の状態量の数を取得
+        num_lane_features = self.a2c_net.lane_net.get('output_size')
+
+        # 道路の評価指標の状態量の数を取得
+        num_road_metric_features = self.a2c_net.road_metric_net.get('output_size')
+
+        # 道路の状態量の数を取得
+        self.num_features = num_lane_features * self.num_lanes + num_road_metric_features
     
     def forward(self, x):
         return self.net(x)
