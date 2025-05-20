@@ -19,10 +19,13 @@ pip install {モジュール名}
 
 
 # yamlファイルの作り方
-
 以下の記事を参照するとよい．
 
 https://qiita.com/mnoguchi/items/75fb224918f452a409cd
+
+
+# Pythonのバージョンについて
+3.7以上にしてほしい．
 
 
 

@@ -1,4 +1,5 @@
 from controllers.base_controller import BaseController
+from objects.links import Lanes
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -25,23 +26,45 @@ class DRLController(BaseController):
             if model_path.exists():
                 self.model.load_state_dict(torch.load(model_path))
 
-        self.num_roads = self.intersection.get('num_roads')
-        self.makeRoadNumLanesMap()
+        self.roads = self.intersection.input_roads
+        self.makeRoadLanesMap()
+    
+    def makeRoadLanesMap(self):
+        # road_lanes_mapを初期化
+        road_lanes_map = {}
 
-    def makeRoadNumLanesMap(self):
-        road_num_lanes_map = {}
-        for road_order_id in self.intersection.input_roads.getKeys(container_flg=True):
+        # 道路を走査
+        for road_order_id in self.roads.getKeys(container_flg=True):
             road = self.intersection.input_roads[road_order_id]
-            num_lanes = 0
+            lanes = Lanes(self)
+
             for link in road.links.getAll():
-                if link.get('type') == 'connector':
+                if link.get('type') != 'right':
                     continue
 
-                num_lanes += link.lanes.count()
+                for lane_id in link.lanes.getKeys(sorted_flg=True):
+                    lane = link.lanes[lane_id]
+                    lanes.add(lane, lanes.count() + 1)
             
-            road_num_lanes_map[road_order_id] = num_lanes
-        
-        self.road_num_lanes_map = road_num_lanes_map
+            for link in road.links.getAll():
+                if link.get('type') != 'main':
+                    continue
+
+                for lane_id in link.lanes.getKeys(sorted_flg=True):
+                    lane = link.lanes[lane_id]
+                    lanes.add(lane, lanes.count() + 1)
+            
+            for link in road.links.getAll():
+                if link.get('type') != 'left':
+                    continue
+
+                for lane_id in link.lanes.getKeys(sorted_flg=True):
+                    lane = link.lanes[lane_id]
+                    lanes.add(lane, lanes.count() + 1)
+            
+            road_lanes_map[road_order_id] = lanes
+
+        self.road_lanes_map = road_lanes_map
 
     def run(self):
         # 状態量の取得
@@ -52,91 +75,138 @@ class DRLController(BaseController):
 
     def makeStates(self):
         if self.config.get('drl_info')['method'] == 'a2c':
-            states = {'roads': {}, 'intersection': []}
+            # 状態量を初期化
+            states = {}
 
-            for road_order_id in self.intersection.input_roads.getKeys(container_flg=True):
-                road = self.intersection.input_roads[road_order_id]
-                road_states ={'lanes': [], 'metric': []}
-                # 車線ごとの状態量について
-                for link in road.links.getAll():
-                    # connectorは除外
-                    if link.get('type') == 'connector':
-                        continue
-                   
-                    for lane in link.lanes.getAll():
-                        # 車線の状態量をまとめる
-                        lane_states = {}
+            # 道路群の状態量を初期化
+            roads_states = {}
 
-                        # 位置でソート
-                        vehicle_data = lane.get('vehicle_data')
-                        vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                        vehicle_data.reset_index(drop=True, inplace=True)
+            # 道路を走査
+            for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+                # roadオブジェクトを取得
+                road = self.roads[road_order_id]
 
-                        # 各車線で状態に使う自動車台数を取得
-                        num_vehicles = self.drl_info['num_vehicles']
-                        vehicle_data = vehicle_data.head(num_vehicles)
+                # 道路の状態量を初期化
+                road_states = {}
+                
+                # 車線群の状態量を初期化
+                lanes_states = {}
 
-                        # 距離情報を信号との距離に変換
-                        length_info = lane.get('length_info')
-                        vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+                # lanesオブジェクトを取得
+                lanes = self.road_lanes_map[road_order_id]
 
-                        # 車両に関する状態を取得
-                        vehicles_states = []
-                        feature_names = ['position', 'speed', 'in_queue', 'direction']
-                        for index in range(num_vehicles):
-                            if index < vehicle_data.shape[0]:
-                                vehicle = vehicle_data.iloc[index]
-                                vehicle_states = []
-                                for feature_name in feature_names:
-                                    if self.drl_info['features']['vehicle'][feature_name] == True:
-                                        if feature_name == 'direction':
-                                            direction_vector = [0] * (self.intersection.get('num_roads') - 1)
-                                            direction_vector[int(vehicle['direction_id']) - 1] = 1
-                                            vehicle_states.extend(direction_vector)
-                                        else: 
-                                            vehicle_states.append(int(vehicle[feature_name]))
-                                vehicle_states.append(1)                          
-                                vehicles_states.append(torch.tensor(vehicle_states).float())
-                            else:
-                                vehicle_states = []
-                                for feature_name in feature_names:
-                                    if self.drl_info['features']['vehicle'][feature_name] == True:
-                                        if feature_name == 'direction':
-                                            direction_vector = [0] * (self.intersection.get('num_roads') - 1)
-                                            vehicle_states.extend(direction_vector)
-                                        else: 
-                                            vehicle_states.append(0)
-                                vehicle_states.append(0)
-                                vehicles_states.append(torch.tensor(vehicle_states).float())
-                        
-                        # 車線の状態量に追加
-                        lane_states['vehicles'] = vehicles_states
+                # 車線を走査
+                for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                    # laneオブジェクトを取得
+                    lane = lanes[lane_order_id]
 
-                        # 評価指標に関する状態量を取得
-                        lane_states['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
-                        
-                        # 車線情報に関する状態量を取得
-                        if link.get('type') == 'main':
-                            lane_states['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
-                        elif link.get('type') == 'right' or link.get('type') == 'left':
-                            lane_states['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
+                    # 車線の状態量を初期化
+                    lane_states = {}
 
-                        road_states['lanes'].append(lane_states)
+                    # vehicle_dataを位置情報でソート
+                    vehicle_data = lane.get('vehicle_data')
+                    vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                    vehicle_data.reset_index(drop=True, inplace=True)
 
-                # 道路ごとの評価指標の状態量について
+                    # 各車線で状態に使う自動車台数を取得
+                    num_vehicles = self.drl_info['num_vehicles']
+                    vehicle_data = vehicle_data.head(num_vehicles)
+
+                    # 距離情報を信号との距離に変換
+                    length_info = lane.get('length_info')
+                    vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+
+                    # 車両に関する状態を取得
+                    vehicles_states = {}
+                    feature_names = ['position', 'speed', 'in_queue', 'direction']
+                    for index in range(num_vehicles):
+                        if index < vehicle_data.shape[0]:
+                            # レコードを取得
+                            vehicle = vehicle_data.iloc[index]
+
+                            # 車両の状態量を初期化
+                            vehicle_states = []
+
+                            # 特徴量を走査
+                            for feature_name in feature_names:
+                                # 使わない状態量はスキップ
+                                if self.drl_info['features']['vehicle'][feature_name] == False:
+                                    continue
+
+                                # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
+                                if feature_name == 'direction':
+                                    direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                    direction_vector[int(vehicle['direction_id']) - 1] = 1
+                                    vehicle_states.extend(direction_vector)
+                                else: 
+                                    vehicle_states.append(int(vehicle[feature_name]))
+                            
+                            # 自動車が存在するかどうかのフラグの状態量を追加
+                            vehicle_states.append(1) 
+
+                            # テンソルに変換してからvehicles_statesに追加  
+                            vehicles_states[len(vehicles_states) + 1] = torch.tensor(vehicle_states).float()                    
+                        else:
+                            # 車両の状態量を初期化
+                            vehicle_states = []
+
+                            # 特徴量を走査
+                            for feature_name in feature_names:
+                                # 使わない状態量はスキップ
+                                if self.drl_info['features']['vehicle'][feature_name] == False:
+                                    continue
+                                
+                                # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
+                                if feature_name == 'direction':
+                                    direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                    vehicle_states.extend(direction_vector)
+                                else: 
+                                    vehicle_states.append(0)
+                            
+                            # 自動車が存在するかどうかのフラグの状態量を追加
+                            vehicle_states.append(0)
+
+                            # テンソルに変換してからvehicles_statesに追加
+                            vehicles_states[len(vehicles_states) + 1] = torch.tensor(vehicle_states).float()
+                    
+                    # 車線の状態量に追加
+                    lane_states['vehicles'] = dict(sorted(vehicles_states.items()))
+
+                    # 評価指標に関する状態量を取得
+                    lane_states['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
+                    
+                    # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
+                    if lane.link.get('type') == 'main':
+                        lane_states['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
+                    elif lane.link.get('type') == 'right' or lane.link.get('type') == 'left':
+                        lane_states['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
+
+                    # lanes_statesにlane_statesを追加
+                    lanes_states[lane_order_id] = lane_states
+                
+                # road_statesに車線の状態量を追加
+                road_states['lanes'] = dict(sorted(lanes_states.items()))
+
+                # 評価指標の状態量について
                 metric_states = []
                 metric_states.append(int(road.get('max_queue_length')))
                 metric_states.append(int(road.get('average_delay')))
 
+                # road_statesに評価指標の状態量を追加
                 road_states['metric'] = torch.tensor(metric_states, dtype=torch.float32)
 
-                # 全体の状態量に追加
-                states['roads'][road_order_id] = road_states
+                # roads_statesにroad_statesを追加
+                roads_states[road_order_id] = road_states
+            
+            # statesに道路の状態量を追加
+            states['roads'] = dict(sorted(roads_states.items()))
 
             # 交差点の状態量について
             current_phase_id = self.intersection.get('current_phase_id')
             intersection_states = [0] * (self.intersection.get('num_phases'))
             intersection_states[current_phase_id - 1] = 1
+
+            # statesに交差点の状態量を追加
             states['intersection'] = torch.tensor(intersection_states, dtype=torch.float32)
 
             # 状態量をインスタンス変数に保存
@@ -178,11 +248,10 @@ class A2CNet(nn.Module):
         vehicle_states = []
         for states in x:
             roads_states = states['roads']
-            for road_order_id, road_states in sorted(roads_states.items()):
-                print(road_order_id)
+            for road_order_id, road_states in roads_states.items():
                 lanes_states = road_states['lanes']
-                for lane_states in lanes_states:
-                    vehicle_states.extend(lane_states['vehicles'])
+                for lane_order_id, lane_states in lanes_states.items():
+                    vehicle_states.extend([tmp_states for _, tmp_states in lane_states['vehicles'].items()])
 
         # 車両の情報をテンソルに変換
         vehicle_states = torch.stack(vehicle_states)
@@ -200,9 +269,9 @@ class A2CNet(nn.Module):
 
         for states in x:
             roads_states = states['roads']
-            for road_order_id, road_states in sorted(roads_states.items()):
+            for road_order_id, road_states in roads_states.items():
                 lanes_states = road_states['lanes']
-                for lane_states in lanes_states:
+                for lane_order_id, lane_states in lanes_states.items():
                     lane_shape_states.append(lane_states['shape'])
         
         lane_shape_states = torch.stack(lane_shape_states)    
@@ -213,13 +282,21 @@ class A2CNet(nn.Module):
 
         for states in x:
             roads_states = states['roads']
-            for road_order_id, road_states in sorted(roads_states.items()):
+            for road_order_id, road_states in roads_states.items():
                 lanes_states = road_states['lanes']
-                for lane_states in lanes_states:
+                for lane_order_id, lane_states in lanes_states.items():
                     lane_metric_states.append(lane_states['metric'])
         
         lane_metric_states = torch.stack(lane_metric_states)
         lane_metric_outputs = self.lane_metric_net(lane_metric_states)
+
+        # 3つの特徴量を結合，配列の次元は（batch_size * num_roads * num_lanes, num_features）
+        lane_states = torch.cat((vehicle_outputs, lane_shape_outputs, lane_metric_outputs), dim=1)
+
+        # 車線の情報をネットワークに通す
+        lane_outputs = self.lane_net(lane_states)
+
+        print('test')
 
 class A2CVehicleNet(nn.Module):
     def __init__(self, a2c_net):
@@ -458,7 +535,7 @@ class A2CLaneNet(nn.Module):
         self.num_features = num_vehicle_features + num_shape_features + num_metric_features
     
     def forward(self, x):
-        pass
+        return self.net(x)
 
         
 
