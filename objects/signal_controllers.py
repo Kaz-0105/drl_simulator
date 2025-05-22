@@ -1,6 +1,7 @@
 from libs.container import Container
 from libs.object import Object
 from objects.signal_heads import SignalHeads
+from collections import deque
 
 class SignalControllers(Container):
     def __init__(self, network):
@@ -76,12 +77,37 @@ class SignalController(Object):
         # 下位の紐づくオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
 
-        # current_phase_idを初期化
-        self.current_phase_id = 1
+        # phase_recordとfuture_phase_idsを初期化
+        self.initPhaseRecord()
+        self.future_phase_ids = []
+
+        # red_stepsを初期化
+        simulation_info = self.config.get('simulator_info')
+        self.red_steps = simulation_info['red_steps']
 
     @property
     def num_phases(self):
         return len(self.phases)
+
+    def initPhaseRecord(self):
+        records_info = self.config.get('records_info')
+        if records_info['metric']['phase'] == True:
+            self.phase_record = []
+        else:
+            self.phase_record = deque(maxlen=records_info['max_deque_len'])
+        
+    def setNextPhase(self, phase_ids):
+        # 直前のフェーズと異なる場合，全赤にする
+        if self.phase_record[-1] != phase_ids[0]:
+            phase_ids[0] = 0 
+        
+        # フェーズをセット
+        self.phase_record.extend(phase_ids)
+        self.future_phase_ids.extend(phase_ids)
+        
+
+
+
 
 class SignalGroups(Container):
     def __init__(self, upper_object):

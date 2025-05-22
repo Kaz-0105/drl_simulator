@@ -3,8 +3,10 @@ from controllers.drl_controller import DRLController
 
 class Controllers(Container):
     def __init__(self, network):
+        # 継承
         super().__init__()
 
+        # 設定オブジェクトと非同期処理オブジェクトと上位の紐づくオブジェクトを取得
         self.config = network.config
         self.executor = network.executor
         self.network = network
@@ -12,7 +14,8 @@ class Controllers(Container):
         self.makeElements()
     
     def makeElements(self):
-        if self.config.get('control_method') == 'drl':
+        simulator_info = self.config.get('simulator_info')
+        if simulator_info['control_method'] == 'drl':
             intersections = self.network.intersections
 
             for intersection in intersections.getAll():
@@ -20,8 +23,7 @@ class Controllers(Container):
     
     def run(self):
         for controller in self.getAll():
-            controller.run()
-            # self.executor.submit(controller.run)
+            self.executor.submit(controller.run)
         
         self.executor.wait()
 

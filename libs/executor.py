@@ -1,14 +1,18 @@
 from concurrent.futures import ThreadPoolExecutor
 from libs.common import Common
 
-
 class Executor(Common):
-    def __init__(self, max_workers):
+    def __init__(self, vissim):
         # 継承
         super().__init__()
 
+        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = vissim.config
+        self.vissim = vissim
+
         # スレッドプールを初期化
-        self.object = ThreadPoolExecutor(max_workers = max_workers)
+        simulator_info = self.config.get('simulator_info')
+        self.object = ThreadPoolExecutor(max_workers = simulator_info['max_workers'])
 
         # 稼働中のfutureオブジェクトを格納する配列を初期化
         self.futures = []

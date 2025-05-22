@@ -14,13 +14,14 @@ class Simulation(Common):
 
         # 現在時刻と終了時刻を取得
         self.current_time = self.com.AttValue('SimSec')
-        self.end_time = self.config.get('simulation_time')
+        simulation_info = self.config.get('simulator_info')
+        self.end_time = simulation_info['simulation_time']
 
         # シード値を取得
-        self.random_seed = self.config.get('random_seed')
+        self.random_seed = simulation_info['random_seed']
 
         # タイムステップを取得
-        self.time_step = self.config.get('time_step')
+        self.time_step = simulation_info['time_step']
 
         # vissimに反映
         self.setParametersToVissim()
@@ -30,9 +31,8 @@ class Simulation(Common):
         self.com.SetAttValue('SimPeriod', self.end_time + 1) # Vissimの仕様上、終了時刻に達するとネットワークの情報が消えるので１秒長くして消えないようにする
 
     def run(self):
-        control_method = self.config.get('control_method')
-
-        if control_method == 'drl':
+        simulation_info = self.config.get('simulator_info')
+        if simulation_info['control_method'] == 'drl':
             # デバッグ用
             self.runForDebug()
             
@@ -52,7 +52,7 @@ class Simulation(Common):
         self.com.RunContinuous()
 
         # 現在時刻を更新
-        self.current_time = self.com.AttValue('SimSec')
+        self.current_time += self.time_step
 
     def runForDebug(self):
         # 30秒進める
@@ -60,4 +60,4 @@ class Simulation(Common):
         self.com.RunContinuous()
 
         # 現在時刻を更新
-        self.current_time = self.com.AttValue('SimSec')
+        self.current_time += 30
