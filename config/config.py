@@ -25,7 +25,7 @@ class Config(Common):
         self.getNumRoadPhasesMap()
     
     def readConfigFile(self):
-        with open('layout/config.yaml', 'r') as file:
+        with open('layout/config.yaml', 'r', encoding='utf-8') as file:
             data = yaml.safe_load(file)
 
             # simulatorの基本情報について

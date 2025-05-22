@@ -7,8 +7,7 @@ simulator :
   max_workers: 10
 
 drl:
-  method: 'a2c'
-  learning_flg: true
+  method: 'apex'
   features:
     vehicle:
       position: false
@@ -25,4 +24,15 @@ drl:
       metric:
         queue_length: true
         delay: true
-  num_vehicles: 5
+  num_vehicles: 5 
+  learning:
+    flg: true
+  buffer:
+    size: 1000
+    batch_size: 32
+  parameters:
+    gamma: 0.9           # 割引率
+    learning_rate: 0.01  # 学習率
+    epsilon: 0.1         # 探索率（ε-greedy法）
+
+  

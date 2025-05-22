@@ -11,7 +11,4 @@ class NeuralNetwork(nn.Module):
         return getattr(self, property_name)
         
     def set(self, property_name, value):
-        if hasattr(self, property_name) == False:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{property_name}'")
-        
         setattr(self, property_name, value)

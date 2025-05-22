@@ -2,10 +2,10 @@ from controllers.base_controller import BaseController
 from objects.links import Lanes
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from pathlib import Path
-import numpy as np
 from libs.neural_network import NeuralNetwork
+from collections import deque
+import random
 
 class DRLController(BaseController):
     def __init__(self, controllers, intersection):
@@ -24,15 +24,15 @@ class DRLController(BaseController):
         self.drl_info = self.config.get('drl_info')
 
         # モデルの定義
-        if self.config.get('drl_info')['method'] =='a2c':
-            self.model = A2CNet(self)
-            model_path = Path('models/a2c.pth')
+        if self.config.get('drl_info')['method'] =='apex':
+            self.model = ApeXNet(self)
+            model_path = Path('models/apex.pth')
 
             if model_path.exists():
                 self.model.load_state_dict(torch.load(model_path))
+            
+            self.replay_buffer = ReplayBuffer(self)
 
-        
-    
     def makeRoadLanesMap(self):
         # road_lanes_mapを初期化
         road_lanes_map = {}
@@ -75,10 +75,12 @@ class DRLController(BaseController):
         self.makeStates()
 
         # 行動の選択
-        self.action = self.model([self.states])
+        q_values = self.model([self.states])
+
+        print('test')
 
     def makeStates(self):
-        if self.config.get('drl_info')['method'] == 'a2c':
+        if self.config.get('drl_info')['method'] == 'apex':
             # 状態量を初期化
             states = {}
 
@@ -216,7 +218,39 @@ class DRLController(BaseController):
             # 状態量をインスタンス変数に保存
             self.states = states
 
-class A2CNet(NeuralNetwork):
+    def getAction(self):
+        pass
+
+class ReplayBuffer:
+    def __init__(self, controller):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = controller.config
+        self.executor = controller.executor
+        self.controller = controller
+
+        # ネットワークと紐づける
+        self.model = controller.model
+        self.model.set('replay_buffer', self)
+
+        # バッファのサイズとバッチサイズを取得
+        drl_info = self.config.get('drl_info')
+        self.size = drl_info['buffer']['size']
+        self.batch_size = drl_info['buffer']['batch_size']
+
+        # データのコンテナを初期化
+        self.container = deque(maxlen=self.size)
+    
+    def push(self, data):
+        if self.model.__class__.__name__ == 'ApeXNet':
+            self.container.append((data['state'], data['action'], data['reward'], data['next_state'], data['done']))
+    
+    def sample(self):
+        return random.sample(self.container, self.batch_size)
+
+class ApeXNet(NeuralNetwork):
     def __init__(self, controller):
         # 継承
         super().__init__()
@@ -227,13 +261,28 @@ class A2CNet(NeuralNetwork):
         self.controller = controller
 
         # 各サブネットワークを定義
-        self.vehicle_net = A2CVehicleNet(self)
-        self.vehicles_net = A2CVehiclesNet(self)
-        self.lane_shape_net = A2CLaneShapeNet(self)
-        self.lane_metric_net = A2CLaneMetricNet(self)
-        self.lane_net = A2CLaneNet(self)
-        self.road_metric_net = A2CRoadMetricNet(self)
+        self.vehicle_net = ApeXVehicleNet(self)
+        self.vehicles_net = ApeXVehiclesNet(self)
+        self.lane_shape_net = ApeXLaneShapeNet(self)
+        self.lane_metric_net = ApeXLaneMetricNet(self)
+        self.lane_net = ApeXLaneNet(self)
+        self.road_metric_net = ApeXRoadMetricNet(self)
         self.makeNumLaneRoadNetMap()
+        self.phase_net = ApeXPhaseNet(self)
+        self.intersection_net = ApeXIntersectionNet(self, self.controller.roads.count())
+
+        # ネットワークの定義
+        self.input_size = self.intersection_net.get('output_size')
+        self.hidden_sizes = [256, 128]
+        self.makeOutputSize()
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_sizes[0]),
+            nn.ReLU(),
+            nn.Linear(self.hidden_sizes[0], self.hidden_sizes[1]),
+            nn.ReLU(),
+            nn.Linear(self.hidden_sizes[1], self.output_size),
+            nn.ReLU(),
+        )
     
     def makeNumLaneRoadNetMap(self):
         num_lanes_road_net_map = {}
@@ -242,9 +291,18 @@ class A2CNet(NeuralNetwork):
             lanes = self.controller.road_lanes_map[road_order_id]
 
             if lanes.count() not in num_lanes_road_net_map:
-                num_lanes_road_net_map[lanes.count()] = A2CRoadNet(self, lanes.count())
+                num_lanes_road_net_map[lanes.count()] = ApeXRoadNet(self, lanes.count())
         
         self.num_lanes_road_net_map = num_lanes_road_net_map
+    
+    def makeOutputSize(self):
+        # フェーズの数を取得
+        num_roads_phases_map = self.config.get('num_roads_phases_map')  
+        phases_map = num_roads_phases_map[self.controller.roads.count()]
+        num_phases = phases_map.shape[0]
+
+        # 出力サイズを設定
+        self.output_size = num_phases
 
     def forward(self, x):
         # 自動車の情報について
@@ -299,6 +357,10 @@ class A2CNet(NeuralNetwork):
         # 車線の情報をネットワークに通す
         lane_outputs = self.lane_net(lane_states)
 
+        # 道路ごとに車線の情報を分割する
+        num_batch = len(x)
+        lane_outputs_map = self.makeLaneOutputsMap(lane_outputs, num_batch)
+        
         # 道路の評価指標について
         road_metric_states = []
         for states in x:
@@ -309,28 +371,92 @@ class A2CNet(NeuralNetwork):
         road_metric_states = torch.stack(road_metric_states)
         road_metric_outputs = self.road_metric_net(road_metric_states)
 
-        # 道路ごとのネットワークに通す
-        for road_order_id in self.controller.roads.getKeys(container_flg=True, sorted_flg=True):
-            road = self.controller.roads[road_order_id]
-        print('test')
+        road_metric_outputs_map = self.makeRoadMetricOutputsMap(road_metric_outputs, num_batch)
 
-class A2CVehicleNet(NeuralNetwork):
-    def __init__(self, a2c_net):
+        # 道路ごとのネットワークに通す
+        road_outputs = None
+        for road_order_id in self.controller.roads.getKeys(container_flg=True, sorted_flg=True):
+            # lanesオブジェクトを取得
+            lanes = self.controller.road_lanes_map[road_order_id]
+
+            # 車線の数が一致するroad_netを取得
+            road_net = self.num_lanes_road_net_map[lanes.count()]
+
+            # 道路情報をネットワークに通す
+            tmp_road_outputs = road_net(torch.cat((lane_outputs_map[road_order_id], road_metric_outputs_map[road_order_id]), dim=1))
+            
+            if road_outputs is None:
+                road_outputs = tmp_road_outputs
+            else:
+                road_outputs = torch.cat((road_outputs, tmp_road_outputs), dim=1)
+        
+        # フェーズの情報をネットワークに通す
+        phase_states = []
+        for states in x:
+            phase_states.append(states['intersection'])
+        
+        phase_states = torch.stack(phase_states)
+        phase_outputs = self.phase_net(phase_states)
+
+        # 交差点の情報をネットワークに通す
+        intersection_states = torch.cat((road_outputs, phase_outputs), dim=1)
+        intersection_outputs = self.intersection_net(intersection_states)
+
+        # Q値の確率を計算
+        q_values = self.net(intersection_outputs)
+
+        return q_values
+
+    def makeLaneOutputsMap(self, lane_outputs, num_batch):
+        lane_outputs_map = {}
+
+        lane_outputs = lane_outputs.view(num_batch, -1)
+
+        lane_output_size = self.lane_net.get('output_size')
+
+        end_col = -1
+        for road_order_id in self.controller.roads.getKeys(container_flg=True, sorted_flg=True):
+            lanes = self.controller.road_lanes_map[road_order_id]
+            num_lanes = lanes.count()
+
+            start_col = end_col + 1
+            end_col = start_col + num_lanes * lane_output_size - 1
+
+            lane_outputs_map[road_order_id] = lane_outputs[:, start_col:end_col + 1]
+        
+        return lane_outputs_map
+
+    def makeRoadMetricOutputsMap(self, road_metric_outputs, num_batch):
+        road_metric_outputs_map = {}
+        road_metric_outputs = road_metric_outputs.view(num_batch, -1)
+
+        road_metric_output_size = self.road_metric_net.get('output_size')
+
+        end_col = -1
+        for road_order_id in self.controller.roads.getKeys(container_flg=True, sorted_flg=True):
+            start_col = end_col + 1
+            end_col = start_col + road_metric_output_size - 1
+            road_metric_outputs_map[road_order_id] = road_metric_outputs[:, start_col:end_col + 1]
+        
+        return road_metric_outputs_map
+
+class ApeXVehicleNet(NeuralNetwork):
+    def __init__(self, apex_net):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # 状態量の数を取得する
         self.makeNumFeatures()
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = 32
-        self.output_size = 32
+        self.hidden_size = self.num_features
+        self.output_size = self.num_features
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -348,7 +474,7 @@ class A2CVehicleNet(NeuralNetwork):
             if feature_flg == False:
                 continue
             if feature_name == 'direction':
-                intersection = self.a2c_net.controller.intersection
+                intersection = self.apex_net.controller.intersection
                 num_features += (intersection.get('num_roads') - 1)
             else:
                 num_features += 1
@@ -363,26 +489,26 @@ class A2CVehicleNet(NeuralNetwork):
         # xは（batch_size × num_vehicles × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
         
-class A2CVehiclesNet(NeuralNetwork):
-    def __init__(self, a2c_net):
+class ApeXVehiclesNet(NeuralNetwork):
+    def __init__(self, apex_net):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # vehicle_netを取得
-        self.vehicle_net = a2c_net.vehicle_net
+        self.vehicle_net = apex_net.vehicle_net
 
         # 状態量の数を取得する
         self.makeNumFeatures()
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = 64
-        self.output_size = 64
+        self.hidden_size = self.num_features
+        self.output_size = self.num_features
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -401,15 +527,15 @@ class A2CVehiclesNet(NeuralNetwork):
         # xは（batch_size × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
 
-class A2CLaneShapeNet(NeuralNetwork):
-    def __init__(self, a2c_net):
+class ApeXLaneShapeNet(NeuralNetwork):
+    def __init__(self, apex_net):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # 状態量の数を取得する
         self.makeNumFeatures()
@@ -443,15 +569,15 @@ class A2CLaneShapeNet(NeuralNetwork):
         # xは（batch_size × num_roads × num_lanes, num_features）のテンソル
         return self.net(x)
 
-class A2CLaneMetricNet(NeuralNetwork):
-    def __init__(self, a2c_net):
+class ApeXLaneMetricNet(NeuralNetwork):
+    def __init__(self, apex_net):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # 状態量の数を取得する
         self.makeNumFeatures()
@@ -483,23 +609,23 @@ class A2CLaneMetricNet(NeuralNetwork):
         # xは（batch_size × num_roads × num_lanes, num_features）のテンソル
         return self.net(x)
     
-class A2CLaneNet(NeuralNetwork):
-    def __init__(self, a2c_net):
+class ApeXLaneNet(NeuralNetwork):
+    def __init__(self, apex_net):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # 状態量の数を取得する
         self.makeNumFeatures()
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = 128
-        self.output_size = 128
+        self.hidden_size = self.num_features
+        self.output_size = self.num_features
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -508,24 +634,24 @@ class A2CLaneNet(NeuralNetwork):
         )
     
     def makeNumFeatures(self):
-        num_vehicle_features = self.a2c_net.vehicles_net.get('output_size')
-        num_shape_features = self.a2c_net.lane_shape_net.get('output_size')
-        num_metric_features = self.a2c_net.lane_metric_net.get('output_size')
+        num_vehicle_features = self.apex_net.vehicles_net.get('output_size')
+        num_shape_features = self.apex_net.lane_shape_net.get('output_size')
+        num_metric_features = self.apex_net.lane_metric_net.get('output_size')
 
         self.num_features = num_vehicle_features + num_shape_features + num_metric_features
     
     def forward(self, x):
         return self.net(x)
     
-class A2CRoadMetricNet(NeuralNetwork):
-    def __init__(self, a2c_net):
+class ApeXRoadMetricNet(NeuralNetwork):
+    def __init__(self, apex_net):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # 特徴量の数を取得する
         self.makeNumFeatures()
@@ -561,15 +687,15 @@ class A2CRoadMetricNet(NeuralNetwork):
     def forward(self, x):
         return self.net(x)
     
-class A2CRoadNet(NeuralNetwork):
-    def __init__(self, a2c_net, num_lanes):
+class ApeXRoadNet(NeuralNetwork):
+    def __init__(self, apex_net, num_lanes):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = a2c_net.config
-        self.executor = a2c_net.executor
-        self.a2c_net = a2c_net
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
 
         # 車線の数を取得
         self.num_lanes = num_lanes
@@ -579,8 +705,8 @@ class A2CRoadNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = 256
-        self.output_size = 256
+        self.hidden_size = self.num_features
+        self.output_size = self.num_features
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -590,17 +716,100 @@ class A2CRoadNet(NeuralNetwork):
 
     def makeNumFeatures(self):
         # 車線の状態量の数を取得
-        num_lane_features = self.a2c_net.lane_net.get('output_size')
+        num_lane_features = self.apex_net.lane_net.get('output_size')
 
         # 道路の評価指標の状態量の数を取得
-        num_road_metric_features = self.a2c_net.road_metric_net.get('output_size')
+        num_road_metric_features = self.apex_net.road_metric_net.get('output_size')
 
         # 道路の状態量の数を取得
         self.num_features = num_lane_features * self.num_lanes + num_road_metric_features
     
     def forward(self, x):
         return self.net(x)
+class ApeXPhaseNet(NeuralNetwork):
+    def __init__(self, apex_net):
+        # 継承
+        super().__init__()
 
+        # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
+
+        # 特徴量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.hidden_size = self.num_features
+        self.output_size = self.num_features
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
+            nn.ReLU(),
+        )
+
+    def makeNumFeatures(self):
+        # フェーズの情報を取得
+        num_roads = self.apex_net.controller.roads.count()
+
+        # フェーズ情報の設定を取得
+        phases_map = self.config.get('num_roads_phases_map')[num_roads]
+
+        # フェーズの数を取得
+        num_phases = phases_map.shape[0]
+
+        # 状態量の数を設定
+        self.num_features = num_phases
+    
+    def forward(self, x):
+        return self.net(x)
+
+class ApeXIntersectionNet(NeuralNetwork):
+    def __init__(self, apex_net, num_roads):
+        # 継承
+        super().__init__()
+
+        # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
+        self.config = apex_net.config
+        self.executor = apex_net.executor
+        self.apex_net = apex_net
+
+        # 道路の数を取得
+        self.num_roads = num_roads
+
+        # 特徴量の数を取得する
+        self.makeNumFeatures()
+
+        # ネットワークの定義
+        self.input_size = self.num_features
+        self.hidden_size = self.num_features
+        self.output_size = self.num_features
+
+        self.net = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
+            nn.ReLU(),
+        )
+
+    def makeNumFeatures(self):
+        # 状態量の数を初期化
+        num_features = 0
+
+        # 道路の状態量を取得
+        for road_order_id in self.apex_net.controller.roads.getKeys(container_flg=True):
+            lanes = self.apex_net.controller.road_lanes_map[road_order_id]
+            road_net = self.apex_net.num_lanes_road_net_map[lanes.count()]
+            num_features += road_net.get('output_size')
         
+        # フェーズの状態量を取得
+        num_features += self.apex_net.phase_net.get('output_size')
+
+        self.num_features = num_features
+    
+    def forward(self, x):
+        return self.net(x)
 
 
