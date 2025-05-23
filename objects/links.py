@@ -147,6 +147,12 @@ class Link(Object):
             self.length_info['to_pos'] = self.com.AttValue('ToPos')
             self.length_info['from_pos'] = self.com.AttValue('FromPos')
     
+    @property
+    def queue_length(self):
+        return self.queue_counter.get('current_queue_length')
+    
+    
+    
     def updateData(self):
         # 車両データを取得
         self.getVehicleDataFromVissim()
@@ -208,20 +214,27 @@ class Link(Object):
         return
 
 class Lanes(Container):
-    def __init__(self, link):
+    def __init__(self, upper_object):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = link.config
-        self.executor = link.executor
-        self.link = link
+        # 設定オブジェクトと非同期処理用のオブジェクトを取得
+        self.config = upper_object.config
+        self.executor = upper_object.executor
 
-        # comオブジェクトを取得
-        self.com = self.link.com.Lanes
+        if upper_object.__class__.__name__ == 'Link':
+            # 上位の紐づくオブジェクトを取得
+            self.link = upper_object
 
-        # 下位の紐づくオブジェクトを初期化
-        self.makeElements()
+            # comオブジェクトを取得
+            self.com = self.link.com.Lanes
+
+            # 下位の紐づくオブジェクトを初期化
+            self.makeElements()
+        
+        elif upper_object.__class__.__name__ == 'DRLController':
+            # 上位の紐づくオブジェクトを取得
+            self.drl_controller = upper_object
     
     def makeElements(self):
         for lane_com in self.com.GetAll():
@@ -249,6 +262,18 @@ class Lane(Object):
         # IDを取得
         self.id = int(self.com.AttValue('Index'))
 
+    @property
+    def length_info(self):
+        return self.lanes.link.length_info
+    
+    @property
+    def link(self):
+        return self.lanes.link
+    
+    @property
+    def num_vehicles(self):
+        return self.vehicle_data.shape[0]
+
     def updateData(self):
         # 車両データを取得
         vehicle_data = self.lanes.link.get('vehicle_data')
@@ -260,7 +285,25 @@ class Lane(Object):
             return
 
         # 車両データを取得
-        self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id]
+        self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id].copy()
+
+    
+    def __eq__(self, other):
+        if self.__class__.__name__ != other.__class__.__name__:
+            return False
+        
+        if self.get('id') != other.get('id'):
+            return False
+        
+        if other.has('link') == False:
+            return False
+        
+        if self.link != other.link:
+            return False
+        
+        return True
+        
+
 
 
         

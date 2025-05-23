@@ -3,8 +3,7 @@ class Common:
         try:
             return getattr(self, property_name)
         except AttributeError:
-            print('指定されたプロパティは存在しません。')
-            return None
+            raise AttributeError(f"Property '{property_name}' not found in {self.__class__.__name__}.")
     
     def set(self, property_name, value):
         setattr(self, property_name, value)

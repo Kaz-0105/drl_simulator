@@ -1,6 +1,7 @@
 from libs.container import Container
 from libs.object import Object
 from objects.signal_heads import SignalHeads
+from collections import deque
 
 class SignalControllers(Container):
     def __init__(self, network):
@@ -19,6 +20,9 @@ class SignalControllers(Container):
 
         # intersectionオブジェクトと紐づける
         self.makeIntersectionConnections()
+
+        # phasesを作成する
+        self.makePhases()
 
     def makeElements(self):
         for signal_controller_com in self.com.GetAll():
@@ -42,6 +46,19 @@ class SignalControllers(Container):
             if success_flg == False:
                 raise Exception(f"SignalController {signal_controller.get('id')} has input roads {input_road_ids}, but no matching intersection found.")
 
+    def makePhases(self):
+        num_roads_phases_map = self.config.get('num_roads_phases_map')
+
+        for signal_controller in self.getAll():
+            num_roads = signal_controller.intersection.get('num_roads')
+            phases = num_roads_phases_map[num_roads]
+
+            formatted_phases = {}
+            for _, phase in phases.iterrows():
+                formatted_phases[int(phase['id'])] = [int(phase['signal_group' + str(i)]) for i in range(1, num_roads + 1)]
+        
+            signal_controller.set('phases', formatted_phases)
+
 class SignalController(Object):
     def __init__(self, com, signal_controllers):
         # 継承
@@ -59,6 +76,37 @@ class SignalController(Object):
 
         # 下位の紐づくオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
+
+        # phase_recordとfuture_phase_idsを初期化
+        self.initPhaseRecord()
+        self.future_phase_ids = []
+
+        # red_stepsを初期化
+        simulation_info = self.config.get('simulator_info')
+        self.red_steps = simulation_info['red_steps']
+
+    @property
+    def num_phases(self):
+        return len(self.phases)
+
+    def initPhaseRecord(self):
+        records_info = self.config.get('records_info')
+        if records_info['metric']['phase'] == True:
+            self.phase_record = []
+        else:
+            self.phase_record = deque(maxlen=records_info['max_deque_len'])
+        
+    def setNextPhase(self, phase_ids):
+        # 直前のフェーズと異なる場合，全赤にする
+        if self.phase_record[-1] != phase_ids[0]:
+            phase_ids[0] = 0 
+        
+        # フェーズをセット
+        self.phase_record.extend(phase_ids)
+        self.future_phase_ids.extend(phase_ids)
+        
+
+
 
 
 class SignalGroups(Container):
@@ -127,8 +175,7 @@ class SignalGroups(Container):
                 direction_signal_group_map[signal_group.direction_id] = signal_group.get('id')
             
             else:
-                raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")
-                
+                raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")       
 
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):

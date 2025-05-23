@@ -113,6 +113,25 @@ class Road(Object):
     def queue_counters(self):
         return QueueCounters(self)
     
+    @property
+    def max_queue_length(self):
+        max_queue_length = 0
+        for queue_counter in self.queue_counters.getAll():
+            if queue_counter.get('current_queue_length') > max_queue_length:
+                max_queue_length = queue_counter.get('current_queue_length')
+        
+        return max_queue_length
+
+    @property
+    def average_delay(self):
+        delays = []
+        for link in self.links.getAll():
+            if link.has('delay_measurements'):
+                for delay_measurement in link.delay_measurements.getAll(): 
+                    delays.append(delay_measurement.get('current_delay'))
+        
+        return sum(delays) / len(delays) if len(delays) > 0 else 0
+    
     def updateData(self):
         # 紐づくlinkオブジェクトのデータを更新
         self.links.updateData()

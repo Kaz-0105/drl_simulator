@@ -7,19 +7,25 @@ from libs.executor import Executor
 
 class Vissim(Common):
     def __init__(self, config):
+        # 継承
         super().__init__()
-        self.config = config
-        self.executor = Executor(self.config.get('max_workers'))
 
+        # 設定オブジェクトを取得
+        self.config = config
+        
+        # 非同期処理オブジェクトを初期化
+        self.executor = Executor(self)
+
+        # VissimのCOMオブジェクトを取得
         self.getVissimCom()
 
+        # 下位のオブジェクトを初期化
         self.simulation = Simulation(self)
         self.network = Network(self)
-
-        print('test')
     
     def getVissimCom(self):
-        network_name = self.config.network_name
+        simulator_info = self.config.get('simulator_info')
+        network_name = simulator_info['network_name']
         self.com = win32com.client.Dispatch('Vissim.Vissim')
         
         self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')

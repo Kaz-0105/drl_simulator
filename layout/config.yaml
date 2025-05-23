@@ -3,9 +3,46 @@ simulator :
   control_method: 'drl'
   simulation_time: 500
   random_seed: 1
-  time_step: 2
+  time_step: 2 # シミュレーションの更新の時間幅（秒）
+  red_steps: 1  # 全赤の時間（time_stepの長さに合わせ調整すること）
+  min_successive_steps: 5 # 最小の青時間連続時間（ステップ数）
   max_workers: 10
+  
 
 drl:
-  method: 'ddpg'
-  learning_flg: true
+  method: 'apex'
+  features:
+    vehicle:
+      position: false
+      speed: false
+      in_queue: true
+      direction: true
+    lane:
+      metric: 
+        num_vehicles: true
+      shape:
+        length: true
+        type: true
+    road:
+      metric:
+        queue_length: true
+        delay: true
+  num_vehicles: 5
+  duration_steps: 3 # 1回の予測で決める時間幅（ステップ数） 
+  learning:
+    flg: true
+  buffer:
+    size: 1000
+    batch_size: 32
+  parameters:
+    gamma: 0.9           # 割引率
+    learning_rate: 0.01  # 学習率
+    epsilon: 0.1         # 探索率（ε-greedy法）
+
+records:
+  metric:
+    queue_length: true
+    delay: true
+    phase: true
+  max_len: 20  # 記録しない場合の一次的に記録するデータの数
+
