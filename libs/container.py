@@ -28,8 +28,15 @@ class Container(Common):
         except KeyError:
             print('Key ' + str(key) + ' is not found in the container.')
     
-    def getAll(self):
-        return list(self.elements.values())
+    def getAll(self, sorted_flg = False):
+        if sorted_flg == False:
+            return list(self.elements.values())
+    
+        elements = []
+        for key in self.getKeys(container_flg=True, sorted_flg=True):
+            elements.append(self[key])
+        
+        return elements
     
     def add(self, element, element_id = None):
         if element_id is None:
