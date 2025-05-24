@@ -10,16 +10,19 @@ from objects.queue_counters import QueueCounters
 from objects.travel_time_measurements import TravelTimeMeasurements
 from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints, DataCollectionMeasurements
-from objects.controllers import Controllers
+from objects.master_agents import MasterAgents
+from objects.local_agents import LocalAgents
 
 class Network(Object):
     def __init__(self, vissim):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = vissim.config
         self.executor = vissim.executor
+
+        # 上位の紐づくオブジェクトを取得
         self.vissim = vissim
 
         # 対応するComオブジェクトを取得
@@ -39,8 +42,11 @@ class Network(Object):
         self.data_collection_points = DataCollectionPoints(self)
         self.data_collection_measurements = DataCollectionMeasurements(self)
 
-        # controllerオブジェクトの初期化
-        self.controllers = Controllers(self)
+        # agentオブジェクトの初期化
+        simulator_info = self.config.get('simulator_info')
+        if simulator_info['control_method'] == 'drl':
+            self.master_agents = MasterAgents(self)
+            self.local_agents = LocalAgents(self)
 
         # simulationオブジェクトと紐づける
         self.simulation = self.vissim.simulation

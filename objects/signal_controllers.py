@@ -89,6 +89,13 @@ class SignalController(Object):
     def num_phases(self):
         return len(self.phases)
 
+    @property
+    def current_phase_id(self):
+        if self.phase_record:
+            return self.phase_record[-1]
+        else:
+            return 1 # レコードがない場合はフェーズ1を返す
+
     def initPhaseRecord(self):
         records_info = self.config.get('records_info')
         if records_info['metric']['phase'] == True:
@@ -97,17 +104,16 @@ class SignalController(Object):
             self.phase_record = deque(maxlen=records_info['max_deque_len'])
         
     def setNextPhase(self, phase_ids):
-        # 直前のフェーズと異なる場合，全赤にする
-        if self.phase_record[-1] != phase_ids[0]:
-            phase_ids[0] = 0 
+        # 直前のフェーズと異なる場合，全赤にする（空でない場合のみ調査）
+        if self.future_phase_ids:
+            if self.future_phase_ids[-1] != phase_ids[0]:
+                phase_ids[0] = 0
+        elif self.phase_record:
+            if self.phase_record[-1] != phase_ids[0]:
+                phase_ids[0] = 0 
         
         # フェーズをセット
-        self.phase_record.extend(phase_ids)
         self.future_phase_ids.extend(phase_ids)
-        
-
-
-
 
 class SignalGroups(Container):
     def __init__(self, upper_object):

@@ -41,10 +41,13 @@ class Simulation(Common):
                 self.network.updateData()
 
                 # コントローラを動かす
-                self.network.controllers.run()
+                self.network.local_agents.infer()
 
                 # Vissimを1ステップ進める
                 self.runSingleStep()
+
+                # 報酬を計算
+                # self.network.local_agents.computeReward()
 
     def runSingleStep(self):
         # タイムステップ分進める
