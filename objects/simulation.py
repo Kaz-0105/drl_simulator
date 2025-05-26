@@ -35,19 +35,22 @@ class Simulation(Common):
         if simulation_info['control_method'] == 'drl':
             # デバッグ用
             self.runForDebug()
+
+            # 最初のネットワークの更新
+            self.network.updateData()
             
             while self.current_time < self.end_time:
-                # ネットワークの更新
-                self.network.updateData()
-
                 # コントローラを動かす
                 self.network.local_agents.infer()
 
                 # Vissimを1ステップ進める
                 self.runSingleStep()
 
+                # ネットワークの更新
+                self.network.updateData()
+
                 # 報酬を計算
-                # self.network.local_agents.computeReward()
+                self.network.local_agents.evaluate()
 
     def runSingleStep(self):
         # タイムステップ分進める

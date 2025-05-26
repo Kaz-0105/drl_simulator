@@ -11,6 +11,7 @@ simulator :
 
 drl:
   method: 'apex'
+  learning_flg: true
   features:
     vehicle:
       position: false
@@ -28,16 +29,16 @@ drl:
         queue_length: true
         delay: true
   num_vehicles: 5
-  duration_steps: 3 # 1回の予測で決める時間幅（ステップ数） 
-  learning:
-    flg: true
+
+apex:
+  duration_steps: 3   # 1回の予測で決める時間幅（ステップ数） 
+  td_steps: 3         # TD法の参照するステップ数
   buffer:
-    size: 1000
-    batch_size: 32
-  parameters:
-    gamma: 0.9           # 割引率
-    learning_rate: 0.01  # 学習率
-    epsilon: 0.1         # 探索率（ε-greedy法）
+    size: 10000       # リプレイバッファのサイズ
+    batch_size: 32    # バッチサイズ
+  gamma: 0.9          # 割引率
+  learning_rate: 0.01 # 学習率
+  epsilon: 0.1        # 探索率（ε-greedy法）
 
 records:
   metric:

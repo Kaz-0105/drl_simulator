@@ -5,6 +5,7 @@ from neural_networks.apex_net import QNet
 
 import torch
 import random
+from collections import deque
 
 class LocalAgents(Container):
     def __init__(self, upper_object):
@@ -33,11 +34,18 @@ class LocalAgents(Container):
     
     def infer(self):
         for agent in self.getAll():
-            # self.executor.submit(agent.run)
-            agent.infer()
+            self.executor.submit(agent.run)
         
         self.executor.wait()
         
+    def calculateReward(self):
+        # 非同期で報酬を計算
+        for agent in self.getAll():
+            self.executor.submit(agent.calculateReward())
+
+        # 全ての報酬計算が終わるまで待機
+        self.executor.wait()
+
 class LocalAgent(Object):
     def __init__(self, local_agents, intersection):
         # 継承
@@ -80,6 +88,12 @@ class LocalAgent(Object):
 
         # ネットワークを作成
         self.makeNetwork()
+
+        # 状態，行動，報酬を一時的にストックするための変数を初期化
+        self.state_record = deque(maxlen=2)
+        self.action_record = deque(maxlen=2)
+        self.reward_record = deque(maxlen=2)
+
     
     def makeMasterAgentConnections(self):
         # master_agentを取得
@@ -150,8 +164,10 @@ class LocalAgent(Object):
         # 状態量の取得
         self.getState()
 
+        # データが溜まっていたら
+
         # 行動の選択
-        self.action = self.getAction(self.state)
+        self.getAction()
 
         # 信号機の将来のフェーズに追加
         self.intersection.signal_controller.setNextPhase([self.action] * self.duration_steps)
@@ -165,8 +181,10 @@ class LocalAgent(Object):
 
         # 2ステップ以上残っていた場合は推論しなくてよい
         if len(future_phase_ids) > 1:
+            self.infer_flg = False
             return False
         
+        self.infer_flg = True
         return True
     
     def getState(self):
@@ -306,12 +324,35 @@ class LocalAgent(Object):
 
             # 状態量をインスタンス変数に保存
             self.state = state
+            self.state_record.append(self.state)
 
-    def getAction(self, state):
+    def getAction(self):
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            return random.randint(1, self.model.get('output_size'))
+            action = random.randint(1, self.model.get('output_size'))
+        else:
+            with torch.no_grad():
+                action_values = self.model([self.state])
+                action = torch.argmax(action_values).item() + 1
         
-        with torch.no_grad():
-            action_values = self.model([state])
-            return torch.argmax(action_values).item() + 1
+        # 行動をインスタンス変数に保存
+        self.action = action
+        self.action_record.append(action)
+    
+    def calculateReward(self):
+        empty_length_list = []
+        road_length_list = []
+        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+            road = self.roads[road_order_id]
+            road_length = road.get('length')
+            empty_length_list.append(road_length - road.get('max_queue_length'))
+            road_length_list.append(road_length)
+
+        reward = min(empty_length_list) / max(road_length_list)
+
+        # 報酬をインスタンス変数に保存
+        self.reward = reward
+        self.reward_record.append(reward)
+        
+    def sendDataToMaster(self):
+        self.master_agent.set()
