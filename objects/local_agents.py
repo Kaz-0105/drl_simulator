@@ -34,14 +34,14 @@ class LocalAgents(Container):
     
     def infer(self):
         for agent in self.getAll():
-            self.executor.submit(agent.run)
+            self.executor.submit(agent.infer)
         
         self.executor.wait()
         
     def calculateReward(self):
         # 非同期で報酬を計算
         for agent in self.getAll():
-            self.executor.submit(agent.calculateReward())
+            self.executor.submit(agent.calculateReward)
 
         # 全ての報酬計算が終わるまで待機
         self.executor.wait()
@@ -73,13 +73,14 @@ class LocalAgent(Object):
         self.makeRoadLanesMap()
 
         # 1回の推論で決定する時間幅を取得
-        drl_info = self.config.get('drl_info')
-        self.duration_steps = drl_info['duration_steps']
+        apex_info = self.config.get('apex_info')
+        self.duration_steps = apex_info['duration_steps']
 
         # 強化学習関連のハイパーパラメータを取得
-        self.epsilon = drl_info['parameters']['epsilon']
+        self.epsilon = apex_info['epsilon']
 
         # ネットワーク関連のハイパーパラメータを取得
+        drl_info = self.config.get('drl_info')
         self.num_vehicles = drl_info['num_vehicles']
         self.num_lanes_map = self.master_agent.num_lanes_map
 

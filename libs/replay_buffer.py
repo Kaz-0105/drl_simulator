@@ -17,9 +17,9 @@ class ReplayBuffer:
         self.model.set('replay_buffer', self)
 
         # バッファのサイズとバッチサイズを取得
-        drl_info = self.config.get('drl_info')
-        self.size = drl_info['buffer']['size']
-        self.batch_size = drl_info['buffer']['batch_size']
+        apex_info = self.config.get('apex_info')
+        self.size = apex_info['buffer']['size']
+        self.batch_size = apex_info['buffer']['batch_size']
 
         # データのコンテナを初期化
         self.sum_tree = SumTree(self.size)

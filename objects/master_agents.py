@@ -69,9 +69,9 @@ class MasterAgent(Object):
         self.makeModel()
 
         # 強化学習関連のハイパーパラメータを取得
-        drl_info = self.config.get('drl_info')
-        self.gamma = drl_info['parameters']['gamma']
-        self.learning_rate = drl_info['parameters']['learning_rate']
+        apex_info = self.config.get('apex_info')
+        self.gamma = apex_info['gamma']
+        self.learning_rate = apex_info['learning_rate']
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)

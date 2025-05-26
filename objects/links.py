@@ -1,14 +1,14 @@
 from libs.container import Container
 from libs.object import Object
+
 from pandas import DataFrame
-import copy
 
 class Links(Container):
     def __init__(self, upper_object, options = None):
         # 継承
         super().__init__()
         
-        # 設定オブジェクトを取得
+        # 設定オブジェクトと非同期オブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
         
@@ -212,6 +212,10 @@ class Link(Object):
             
         self.vehicle_data = DataFrame(self.vehicle_data)
         return
+
+    @property
+    def length(self):
+        return self.length_info['length']
 
 class Lanes(Container):
     def __init__(self, upper_object):
