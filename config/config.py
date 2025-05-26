@@ -34,6 +34,9 @@ class Config(Common):
             # DRLに関する情報について
             self.drl_info = data['drl']
 
+            # Ape-Xに関する情報について
+            self.apex_info = data['apex']
+
             # 記録する情報について
             self.records_info = data['records']
 

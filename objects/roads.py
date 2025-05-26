@@ -131,6 +131,11 @@ class Road(Object):
                     delays.append(delay_measurement.get('current_delay'))
         
         return sum(delays) / len(delays) if len(delays) > 0 else 0
+
+    @property
+    def length(self):
+        main_link = self.getMainLink()
+        return main_link.get('length')
     
     def updateData(self):
         # 紐づくlinkオブジェクトのデータを更新

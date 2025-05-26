@@ -1,3 +1,4 @@
+from libs.sum_tree import SumTree
 from collections import deque
 import random
 
@@ -16,16 +17,15 @@ class ReplayBuffer:
         self.model.set('replay_buffer', self)
 
         # バッファのサイズとバッチサイズを取得
-        drl_info = self.config.get('drl_info')
-        self.size = drl_info['buffer']['size']
-        self.batch_size = drl_info['buffer']['batch_size']
+        apex_info = self.config.get('apex_info')
+        self.size = apex_info['buffer']['size']
+        self.batch_size = apex_info['buffer']['batch_size']
 
         # データのコンテナを初期化
-        self.container = deque(maxlen=self.size)
+        self.sum_tree = SumTree(self.size)
     
     def push(self, data):
-        if self.model.__class__.__name__ == 'ApeXNet':
-            self.container.append((data['state'], data['action'], data['reward'], data['next_state'], data['done']))
-    
+        self.sum_tree.add(data)
+            
     def sample(self):
-        return random.sample(self.container, self.batch_size)
+        return self.sum_tree.sample(self.batch_size)
