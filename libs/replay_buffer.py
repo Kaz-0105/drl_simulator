@@ -24,8 +24,9 @@ class ReplayBuffer:
         # データのコンテナを初期化
         self.sum_tree = SumTree(self.size)
     
-    def push(self, data):
-        self.sum_tree.add(data)
+    def push(self, learning_data):
+        for tmp_data in learning_data:
+            self.sum_tree.add(tmp_data)
             
     def sample(self):
         return self.sum_tree.sample(self.batch_size)
