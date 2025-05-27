@@ -38,10 +38,13 @@ class Simulation(Common):
 
             # 最初のネットワークの更新
             self.network.updateData()
+
+            # 状態量を計算
+            self.network.local_agents.getState()
             
             while self.current_time < self.end_time:
-                # コントローラを動かす
-                self.network.local_agents.infer()
+                # 行動を計算
+                self.network.local_agents.getAction()
 
                 # Vissimを1ステップ進める
                 self.runSingleStep()
@@ -50,9 +53,22 @@ class Simulation(Common):
                 self.network.updateData()
 
                 # 報酬を計算
-                self.network.local_agents.calculateReward()
+                self.network.local_agents.getReward()
+
+                # 次の状態量を計算
+                self.network.local_agents.getState()
+
+                # バッファーに送るデータを作成
+                self.network.local_agents.makeLearningData()
+
+                # データをバッファーに保存
+                self.network.master_agents.saveLearningData()
+
 
     def runSingleStep(self):
+        # 信号現示を更新する
+        self.network.signal_controllers.setNextPhaseToVissim()
+
         # タイムステップ分進める
         self.com.SetAttValue('SimBreakAt', self.current_time + self.time_step)
         self.com.RunContinuous()

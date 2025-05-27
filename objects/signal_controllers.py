@@ -58,6 +58,10 @@ class SignalControllers(Container):
                 formatted_phases[int(phase['id'])] = [int(phase['signal_group' + str(i)]) for i in range(1, num_roads + 1)]
         
             signal_controller.set('phases', formatted_phases)
+    
+    def setNextPhaseToVissim(self):
+        for signal_controller in self.getAll():
+            signal_controller.setNextPhaseToVissim()
 
 class SignalController(Object):
     def __init__(self, com, signal_controllers):
@@ -79,7 +83,7 @@ class SignalController(Object):
 
         # phase_recordとfuture_phase_idsを初期化
         self.initPhaseRecord()
-        self.future_phase_ids = []
+        self.initFuturePhaseIds()
 
         # red_stepsを初期化
         simulation_info = self.config.get('simulator_info')
@@ -94,14 +98,22 @@ class SignalController(Object):
         if self.phase_record:
             return self.phase_record[-1]
         else:
-            return 1 # レコードがない場合はフェーズ1を返す
+            return None # レコードがない場合はNoneを返す
 
     def initPhaseRecord(self):
         records_info = self.config.get('records_info')
         if records_info['metric']['phase'] == True:
             self.phase_record = []
         else:
-            self.phase_record = deque(maxlen=records_info['max_deque_len'])
+            self.phase_record = deque(maxlen=records_info['max_len'])
+    
+    def initFuturePhaseIds(self):
+        simulator_info = self.config.get('simulator_info')
+        if simulator_info['control_method'] == 'drl':
+            drl_info = self.config.get('drl_info')
+            if drl_info['method'] == 'apex':
+                apex_info = self.config.get('apex_info')
+                self.future_phase_ids = deque(maxlen=apex_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
         
     def setNextPhase(self, phase_ids):
         # 直前のフェーズと異なる場合，全赤にする（空でない場合のみ調査）
@@ -114,6 +126,24 @@ class SignalController(Object):
         
         # フェーズをセット
         self.future_phase_ids.extend(phase_ids)
+    
+    def setNextPhaseToVissim(self):
+        if (self.current_phase_id is not None) and (self.current_phase_id == self.future_phase_ids[0]):
+            self.phase_record.append(self.future_phase_ids.popleft())
+            return
+
+        # 青にするSignalGroupを取得
+        sg_value_list = [1] * self.signal_groups.count()
+
+        if self.future_phase_ids[0] != 0:
+            for sg_id in self.phases[self.future_phase_ids[0]]:
+                sg_value_list[sg_id - 1] = 3
+
+        # Vissimにフェーズをセット
+        self.signal_groups.setNextPhaseToVissim(sg_value_list)
+
+        # phase_recordに追加して、future_phase_idsから削除
+        self.phase_record.append(self.future_phase_ids.popleft())
 
 class SignalGroups(Container):
     def __init__(self, upper_object):
@@ -183,6 +213,11 @@ class SignalGroups(Container):
             else:
                 raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")       
 
+    def setNextPhaseToVissim(self, sg_value_list):
+        for signal_group in self.getAll():
+            sg_value = sg_value_list[signal_group.get('id') - 1]
+            signal_group.com.SetAttValue('SigState', sg_value)
+        
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):
         # 継承

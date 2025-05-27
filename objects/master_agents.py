@@ -42,6 +42,12 @@ class MasterAgents(Container):
             # master_agentオブジェクトを初期化
             self.add(MasterAgent(self, num_lanes_turple))
 
+    def saveLearningData(self):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.saveLearningData)
+        
+        self.executor.wait()
+
 class MasterAgent(Object):
     def __init__(self, master_agents, num_lanes_turple):
         # 継承
@@ -58,15 +64,15 @@ class MasterAgent(Object):
         self.id = self.master_agents.count() + 1
 
         # intersectionsオブジェクトと紐づける
-        self.makeIntersectionConnections(num_lanes_turple)
+        self._makeIntersectionConnections(num_lanes_turple)
 
         # 車線数の情報と自動車台数の情報を取得
-        self.makeNumLanesMap(num_lanes_turple)
+        self._makeNumLanesMap(num_lanes_turple)
         drl_info = self.config.get('drl_info')
         self.num_vehicles = drl_info['num_vehicles']
 
         # 使用する強化学習の手法で分岐
-        self.makeModel()
+        self._makeModel()
 
         # 強化学習関連のハイパーパラメータを取得
         apex_info = self.config.get('apex_info')
@@ -76,7 +82,7 @@ class MasterAgent(Object):
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
 
-    def makeIntersectionConnections(self, num_lanes_turple):
+    def _makeIntersectionConnections(self, num_lanes_turple):
         # intersection_listを取得
         intersection_list = self.master_agents.intersections_map[num_lanes_turple]
 
@@ -88,7 +94,7 @@ class MasterAgent(Object):
             self.intersections.add(intersection)
             intersection.set('master_agent', self)
 
-    def makeNumLanesMap(self, num_lanes_turple):
+    def _makeNumLanesMap(self, num_lanes_turple):
         # 車線数のリストを少し整形
         num_lanes_map = {}
         for num_lanes in num_lanes_turple:
@@ -96,7 +102,7 @@ class MasterAgent(Object):
 
         self.num_lanes_map = num_lanes_map
 
-    def makeModel(self):
+    def _makeModel(self):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化
             self.model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
@@ -105,12 +111,12 @@ class MasterAgent(Object):
             self.model.train()
 
             # 過去に学習済みの場合はそれを読み込む
-            self.loadModel()
+            self._loadModel()
             
             # 経験再生用のバッファを初期化
             self.replay_buffer = ReplayBuffer(self)
 
-    def loadModel(self):
+    def _loadModel(self):
         # model_pathを定義
         num_lanes_str = ''
         for num_lanes in self.num_lanes_map.values():
@@ -122,6 +128,23 @@ class MasterAgent(Object):
         if self.model_path.exists():
             self.model.load_state_dict(torch.load(self.model_path))
 
+    def saveLearningData(self):
+        # ローカルエージェントを走査
+        for local_agent in self.local_agents.getAll():
+            # 学習データを取得
+            learning_data = local_agent.get('learning_data')
+            
+            # 学習データがない場合はスキップ
+            if not learning_data:
+                continue
+
+            # バッファーにデータを保存
+            self.replay_buffer.push(learning_data)
+
+            # データをクリア
+            local_agent.set('learning_data', [])
+
+            
     
 
 

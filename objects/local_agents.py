@@ -21,31 +21,50 @@ class LocalAgents(Container):
             # 上位の紐づくオブジェクトを取得
             self.network = upper_object
 
-            self.makeElements()
+            self._makeElements()
 
         elif upper_object.__class__.__name__ == 'MasterAgent':
             # 上位の紐づくオブジェクトを取得
             self.master_agent = upper_object
     
-    def makeElements(self):
+    def _makeElements(self):
         intersections = self.network.intersections
         for intersection in intersections.getAll(sorted_flg=True):
             self.add(LocalAgent(self, intersection))
     
-    def infer(self):
+    def getState(self):
+        # 非同期で状態量を取得
         for agent in self.getAll():
-            self.executor.submit(agent.infer)
+            self.executor.submit(agent.getState)
         
+        # 全ての状態量取得が終わるまで待機
         self.executor.wait()
-        
-    def calculateReward(self):
-        # 非同期で報酬を計算
+    
+    def getAction(self):
+        # 非同期で行動を取得
         for agent in self.getAll():
-            self.executor.submit(agent.calculateReward)
+            self.executor.submit(agent.getAction)
 
-        # 全ての報酬計算が終わるまで待機
+        # 全ての行動取得が終わるまで待機
+        self.executor.wait()
+    
+    def getReward(self):
+        # 非同期で報酬を取得
+        for agent in self.getAll():
+            self.executor.submit(agent.getReward)
+
+        # 全ての報酬取得が終わるまで待機
         self.executor.wait()
 
+    def makeLearningData(self):
+        # データを送信
+        for agent in self.getAll():
+            self.executor.submit(agent.makeLearningData)
+        
+        # 全てのデータ保存が終わるまで待機
+        self.executor.wait()
+
+    
 class LocalAgent(Object):
     def __init__(self, local_agents, intersection):
         # 継承
@@ -66,18 +85,20 @@ class LocalAgent(Object):
         self.intersection.set('local_agent', self)
 
         # master_agentと紐づける
-        self.makeMasterAgentConnections()
+        self._makeMasterAgentConnections()
 
         # roadオブジェクトおよびlaneオブジェクトと紐づける（一方通行）
         self.roads = self.intersection.input_roads
-        self.makeRoadLanesMap()
+        self._makeRoadLanesMap()
 
         # 1回の推論で決定する時間幅を取得
         apex_info = self.config.get('apex_info')
         self.duration_steps = apex_info['duration_steps']
 
         # 強化学習関連のハイパーパラメータを取得
+        self.td_steps = apex_info['td_steps']
         self.epsilon = apex_info['epsilon']
+        self.gamma = apex_info['gamma']
 
         # ネットワーク関連のハイパーパラメータを取得
         drl_info = self.config.get('drl_info')
@@ -88,21 +109,29 @@ class LocalAgent(Object):
         self.features_info = drl_info['features']
 
         # ネットワークを作成
-        self.makeNetwork()
+        self._makeNetwork()
+
+        # 状態量，行動，報酬，終了フラグを初期化
+        self.current_state = None
+        self.current_action = None
+        self.current_reward = None
+        self.done_flg = False
+
+        # バッファーに送る学習データを格納するためのリストを初期化
+        self.learning_data = []
 
         # 状態，行動，報酬を一時的にストックするための変数を初期化
-        self.state_record = deque(maxlen=2)
-        self.action_record = deque(maxlen=2)
-        self.reward_record = deque(maxlen=2)
-
+        self.state_record = deque(maxlen=self.td_steps + 1)
+        self.action_record = deque(maxlen=self.td_steps)
+        self.reward_record = deque(maxlen=self.td_steps)
     
-    def makeMasterAgentConnections(self):
+    def _makeMasterAgentConnections(self):
         # master_agentを取得
         master_agent = self.intersection.master_agent
         self.master_agent = master_agent
         self.master_agent.local_agents.add(self)
     
-    def makeRoadLanesMap(self):
+    def _makeRoadLanesMap(self):
         # road_lanes_mapを初期化
         road_lanes_map = {}
 
@@ -139,7 +168,7 @@ class LocalAgent(Object):
 
         self.road_lanes_map = road_lanes_map
 
-    def makeNetwork(self):
+    def _makeNetwork(self):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化
             self.model = QNet(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
@@ -148,34 +177,16 @@ class LocalAgent(Object):
             self.model.eval()
 
             # master_agentのモデルと同期させる
-            self.syncModel()
+            self._syncModel()
         
-    def syncModel(self):
+    def _syncModel(self):
         # master_agentのパラメータを取得
         model_state_dict = self.master_agent.model.state_dict()
 
         # 自分のモデルにパラメータをセット
         self.model.load_state_dict(model_state_dict)
 
-    def infer(self):
-        # 新しい入力を推論するタイミングかどうかを確認
-        if self.shouldInfer() == False:
-            return
-        
-        # 状態量の取得
-        self.getState()
-
-        # データが溜まっていたら
-
-        # 行動の選択
-        self.getAction()
-
-        # 信号機の将来のフェーズに追加
-        self.intersection.signal_controller.setNextPhase([self.action] * self.duration_steps)
-
-        return
-
-    def shouldInfer(self):
+    def _shouldInfer(self):
         # 現在残っている将来のフェーズを取得
         signal_controller = self.intersection.signal_controller
         future_phase_ids = signal_controller.get('future_phase_ids')
@@ -189,6 +200,12 @@ class LocalAgent(Object):
         return True
     
     def getState(self):
+        # 状態量を取得するタイミングかどうかを確認
+        self._shouldInfer()
+        if self.infer_flg == False:
+            return
+        
+        # Ape-Xの場合
         if self.config.get('drl_info')['method'] == 'apex':
             # 状態量を初期化
             state = {}
@@ -318,29 +335,44 @@ class LocalAgent(Object):
             # フェーズに関する状態量を取得
             current_phase_id = self.intersection.get('current_phase_id')
             phase_state = [0] * (self.intersection.get('num_phases'))
-            phase_state[current_phase_id - 1] = 1
+            if current_phase_id is not None:
+                phase_state[current_phase_id - 1] = 1
+            else:
+                phase_state[0] = 1
 
             # statesに交差点の状態量を追加
             state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
 
             # 状態量をインスタンス変数に保存
-            self.state = state
-            self.state_record.append(self.state)
+            self.current_state = state
+            self.state_record.append(state)
 
     def getAction(self):
+        # 推論の必要がないときはスキップ
+        if self.infer_flg == False:
+            return
+        
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
             action = random.randint(1, self.model.get('output_size'))
         else:
             with torch.no_grad():
-                action_values = self.model([self.state])
+                action_values = self.model([self.current_state])
                 action = torch.argmax(action_values).item() + 1
         
         # 行動をインスタンス変数に保存
-        self.action = action
+        self.current_action = action
         self.action_record.append(action)
+
+        # 信号機の将来のフェーズに追加
+        self.intersection.signal_controller.setNextPhase([self.current_action] * self.duration_steps)
     
-    def calculateReward(self):
+    def getReward(self):
+        # 報酬を計算するタイミングかどうかを確認
+        if self.infer_flg == False:
+            return
+        
+        # 残っている空きスペースを計算
         empty_length_list = []
         road_length_list = []
         for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
@@ -349,11 +381,36 @@ class LocalAgent(Object):
             empty_length_list.append(road_length - road.get('max_queue_length'))
             road_length_list.append(road_length)
 
+        # 空きスペースの長さの最小値を正規化
         reward = min(empty_length_list) / max(road_length_list)
 
         # 報酬をインスタンス変数に保存
-        self.reward = reward
+        self.current_reward = reward
         self.reward_record.append(reward)
+
+        # 空きスペースがない場合はそこで終了
+        if reward <= 0.01:
+            self.done_flg = True
         
-    def sendDataToMaster(self):
-        self.master_agent.set()
+    def makeLearningData(self):
+        # データが溜まっていない場合はスキップ
+        if len(self.state_record) != self.td_steps + 1:
+            return
+        
+        # 状態について
+        state = self.state_record[0]
+        next_state = self.state_record[-1]
+
+        # 行動について
+        action = self.action_record[0]
+
+        # 累積報酬について
+        cumulative_reward = 0
+        for reward in list(reversed(self.reward_record)):
+            cumulative_reward = reward + self.gamma * cumulative_reward
+
+        # 終了フラグについて
+        done = int(self.done_flg)
+
+        # マスターに送るデータを作成
+        self.learning_data.append((state, action, cumulative_reward, next_state, done))
