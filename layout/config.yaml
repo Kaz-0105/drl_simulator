@@ -44,6 +44,6 @@ records:
   metric:
     queue_length: true
     delay: true
-    phase: true
+    phase: false
   max_len: 20  # 記録しない場合の一次的に記録するデータの数
 

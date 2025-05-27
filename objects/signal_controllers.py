@@ -105,7 +105,7 @@ class SignalController(Object):
         if records_info['metric']['phase'] == True:
             self.phase_record = []
         else:
-            self.phase_record = deque(maxlen=records_info['max_deque_len'])
+            self.phase_record = deque(maxlen=records_info['max_len'])
     
     def initFuturePhaseIds(self):
         simulator_info = self.config.get('simulator_info')

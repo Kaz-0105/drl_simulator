@@ -129,7 +129,7 @@ class MasterAgent(Object):
             self.model.load_state_dict(torch.load(self.model_path))
 
     def saveLearningData(self):
-        # それぞれの
+        # ローカルエージェントを走査
         for local_agent in self.local_agents.getAll():
             # 学習データを取得
             learning_data = local_agent.get('learning_data')
