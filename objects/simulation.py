@@ -66,6 +66,9 @@ class Simulation(Common):
 
 
     def runSingleStep(self):
+        # 信号現示を更新する
+        self.network.signal_controllers.setNextPhaseToVissim()
+
         # タイムステップ分進める
         self.com.SetAttValue('SimBreakAt', self.current_time + self.time_step)
         self.com.RunContinuous()

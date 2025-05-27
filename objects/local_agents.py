@@ -335,7 +335,10 @@ class LocalAgent(Object):
             # フェーズに関する状態量を取得
             current_phase_id = self.intersection.get('current_phase_id')
             phase_state = [0] * (self.intersection.get('num_phases'))
-            phase_state[current_phase_id - 1] = 1
+            if current_phase_id is not None:
+                phase_state[current_phase_id - 1] = 1
+            else:
+                phase_state[0] = 1
 
             # statesに交差点の状態量を追加
             state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
