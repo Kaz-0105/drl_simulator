@@ -83,14 +83,14 @@ class SumTree:
         data_indices = [tree_idx - self.actual_capacity + 1 for tree_idx in tree_indices]
 
         # ツリーのインデックスからデータを取得
-        data = []
+        valid_data = []
         valid_data_indices = []
         for data_idx in data_indices:
             if data_idx < self.current_size:
-                data.append(self.data[data_idx])
+                valid_data.append(self.data[data_idx])
                 valid_data_indices.append(data_idx)
 
-        return data, valid_data_indices
+        return valid_data, valid_data_indices
     
     def update_priority(self, data_indices, new_priorities):
         for data_idx, new_priority in zip(data_indices, new_priorities):

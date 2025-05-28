@@ -33,9 +33,6 @@ class Simulation(Common):
     def run(self):
         simulation_info = self.config.get('simulator_info')
         if simulation_info['control_method'] == 'drl':
-            # デバッグ用
-            self.runForDebug()
-
             # 最初のネットワークの更新
             self.network.updateData()
 
@@ -64,6 +61,18 @@ class Simulation(Common):
                 # データをバッファーに保存
                 self.network.master_agents.saveLearningData()
 
+                # 学習を行う
+                self.network.master_agents.train()
+
+                # ローカルエージェントと同期する
+                self.network.master_agents.updateLocalAgents()
+
+                # 終了フラグが立っていた場合終了
+                if self.network.local_agents.done_flg:
+                    break
+            
+            # マスターエージェントのネットワークとバッファーを保存
+            self.network.master_agents.saveNetworkAndBuffer()
 
     def runSingleStep(self):
         # 信号現示を更新する

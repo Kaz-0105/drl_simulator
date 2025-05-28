@@ -31,11 +31,12 @@ drl:
   num_vehicles: 5
 
 apex:
-  duration_steps: 3   # 1回の予測で決める時間幅（ステップ数） 
+  duration_steps: 3   # 1回の予測で決める時間ステップ幅
   td_steps: 3         # TD法の参照するステップ数
+  target_update_interval: 5 # ターゲットネットワークの同期間隔
   buffer:
-    size: 10000       # リプレイバッファのサイズ
-    batch_size: 32    # バッチサイズ
+    size: 100000       # リプレイバッファのサイズ
+    batch_size: 8     # バッチサイズ
   gamma: 0.9          # 割引率
   learning_rate: 0.01 # 学習率
   epsilon: 0.1        # 探索率（ε-greedy法）

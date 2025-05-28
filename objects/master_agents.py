@@ -1,4 +1,3 @@
-from libs.common import Common
 from libs.container import Container
 from libs.object import Object
 from libs.replay_buffer import ReplayBuffer
@@ -8,6 +7,8 @@ from neural_networks.apex_net import QNet
 
 from pathlib import Path
 import torch
+import torch.optim as optim
+import torch.nn as nn
 
 class MasterAgents(Container):
     def __init__(self, network):
@@ -47,6 +48,16 @@ class MasterAgents(Container):
             self.executor.submit(master_agent.saveLearningData)
         
         self.executor.wait()
+    
+    def train(self):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.train)
+        
+        self.executor.wait()
+    
+    def updateLocalAgents(self):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.updateLocalAgents)
 
 class MasterAgent(Object):
     def __init__(self, master_agents, num_lanes_turple):
@@ -71,16 +82,21 @@ class MasterAgent(Object):
         drl_info = self.config.get('drl_info')
         self.num_vehicles = drl_info['num_vehicles']
 
-        # 使用する強化学習の手法で分岐
-        self._makeModel()
-
         # 強化学習関連のハイパーパラメータを取得
         apex_info = self.config.get('apex_info')
+        self.update_interval = apex_info['update_interval']
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
+        self.td_steps = apex_info['td_steps']
+
+        # 使用する強化学習の手法で分岐
+        self._makeModel()
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
+
+        # 更新回数を初期化
+        self.update_count = 0
 
     def _makeIntersectionConnections(self, num_lanes_turple):
         # intersection_listを取得
@@ -104,14 +120,21 @@ class MasterAgent(Object):
 
     def _makeModel(self):
         if self.config.get('drl_info')['method'] =='apex':
-            # モデルを初期化
+            # モデルを初期化（学習用にセット）
             self.model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
-
-            # 学習用にセット
             self.model.train()
 
             # 過去に学習済みの場合はそれを読み込む
             self._loadModel()
+
+            # ターゲットモデルを初期化（学習用と同期，推論用にセット）
+            self.target_model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
+            self.target_model.load_state_dict(self.model.state_dict())
+            self.target_model.eval()
+
+            # 最適化手法と評価関数を定義
+            self.criterion = nn.MSELoss()
+            self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
             
             # 経験再生用のバッファを初期化
             self.replay_buffer = ReplayBuffer(self)
@@ -143,6 +166,63 @@ class MasterAgent(Object):
 
             # データをクリア
             local_agent.set('learning_data', [])
+    
+    def train(self):
+        drl_info = self.config.get('drl_info')
+        if drl_info['method'] == 'apex':
+            # バッファーのサイズが十分でない場合は学習しない
+            if self.replay_buffer.get('current_size') < self.replay_buffer.get('batch_size'):
+                return
+            
+            # バッファーからデータを取得
+            batch_data, batch_data_indices = self.replay_buffer.sample()
+
+            # 勾配を初期化
+            self.optimizer.zero_grad()
+
+            # Q値を計算
+            actions = torch.tensor([tmp_data[1] for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
+            q_values_all = self.model([tmp_data[0] for tmp_data in batch_data])
+            q_values = q_values_all.gather(1, actions) 
+            
+            # TDターゲットを計算（Double DQNの実装）
+            self.model.eval()
+            with torch.no_grad():
+                max_actions = torch.argmax(self.model([tmp_data[3] for tmp_data in batch_data]), dim=1)
+                target_q_values_all = self.target_model([tmp_data[3] for tmp_data in batch_data])
+                target_q_values = target_q_values_all.gather(1, max_actions.unsqueeze(1))
+                dones = torch.tensor([tmp_data[4] for tmp_data in batch_data], dtype=torch.float32).unsqueeze(1)
+                td_targets = (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
+                td_targets += torch.tensor([tmp_data[2] for tmp_data in batch_data], dtype=torch.float32).unsqueeze(1)           
+            self.model.train()
+
+            # 損失を計算
+            loss = self.criterion(q_values, td_targets)
+
+            # 勾配を計算
+            loss.backward()
+
+            # パラメータを更新
+            self.optimizer.step()
+
+            # 更新回数をインクリメント
+            self.update_count = (self.update_count + 1) % self.update_interval
+
+            # ターゲットモデルを更新
+            if self.update_count == 0:
+                self.target_model.load_state_dict(self.model.state_dict())
+
+    def updateLocalAgents(self):
+        drl_info = self.config.get('drl_info')
+        if drl_info['method'] == 'apex':
+            # 同期のタイミングではないときはスキップ
+            if self.update_count != 0:
+                return
+            
+            # ローカルエージェントを走査
+            for local_agent in self.local_agents.getAll():
+                local_agent.model.load_state_dict(self.model.state_dict())
+
 
             
     

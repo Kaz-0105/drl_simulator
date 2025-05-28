@@ -216,8 +216,15 @@ class SignalGroups(Container):
     def setNextPhaseToVissim(self, sg_value_list):
         for signal_group in self.getAll():
             sg_value = sg_value_list[signal_group.get('id') - 1]
-            signal_group.com.SetAttValue('SigState', sg_value)
-        
+            
+            # シミュレーションが始まっていないときはエラーが出るので、try-exceptで囲む
+            try:
+                signal_group.com.SetAttValue('SigState', sg_value)
+            except:
+                print('Vissim is not running yet, so setting signal state is skipped.')
+            
+
+      
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):
         # 継承

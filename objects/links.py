@@ -201,7 +201,7 @@ class Link(Object):
         direction_ids = []
         for vehicle_route_str in self.vehicle_data['vehicle_route']:
             if vehicle_route_str is None:
-                direction_ids.append(None)
+                direction_ids.append(0)
             else:
                 vehicle_routing_decision_id, vehicle_route_id = tuple([int(id) for id in vehicle_route_str.split('-')])
                 vehicle_route = vehicle_routing_decisions[vehicle_routing_decision_id].vehicle_routes[vehicle_route_id]

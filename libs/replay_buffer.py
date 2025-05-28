@@ -1,8 +1,7 @@
+from libs.common import Common
 from libs.sum_tree import SumTree
-from collections import deque
-import random
 
-class ReplayBuffer:
+class ReplayBuffer (Common):
     def __init__(self, controller):
         # 継承
         super().__init__()
@@ -18,11 +17,15 @@ class ReplayBuffer:
 
         # バッファのサイズとバッチサイズを取得
         apex_info = self.config.get('apex_info')
-        self.size = apex_info['buffer']['size']
+        self.max_size = apex_info['buffer']['size']
         self.batch_size = apex_info['buffer']['batch_size']
 
         # データのコンテナを初期化
-        self.sum_tree = SumTree(self.size)
+        self.sum_tree = SumTree(self.max_size)
+    
+    @property
+    def current_size(self):
+        return self.sum_tree.current_size
     
     def push(self, learning_data):
         for tmp_data in learning_data:
