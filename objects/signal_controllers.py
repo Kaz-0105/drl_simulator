@@ -223,8 +223,6 @@ class SignalGroups(Container):
             except:
                 print('Vissim is not running yet, so setting signal state is skipped.')
             
-
-      
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):
         # 継承

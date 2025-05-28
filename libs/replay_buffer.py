@@ -33,3 +33,6 @@ class ReplayBuffer (Common):
             
     def sample(self):
         return self.sum_tree.sample(self.batch_size)
+
+    def update(self, indices, priorities):
+        self.sum_tree.update_priority(indices, priorities)

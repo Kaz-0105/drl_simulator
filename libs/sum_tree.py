@@ -93,7 +93,7 @@ class SumTree:
         return valid_data, valid_data_indices
     
     def update_priority(self, data_indices, new_priorities):
-        for data_idx, new_priority in zip(data_indices, new_priorities):
+        for data_idx, new_priority in zip(data_indices, list(new_priorities)):
             # validation
             if data_idx < 0 or data_idx >= self.current_size:
                 continue

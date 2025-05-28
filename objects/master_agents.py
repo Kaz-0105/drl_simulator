@@ -181,7 +181,7 @@ class MasterAgent(Object):
             self.optimizer.zero_grad()
 
             # Q値を計算
-            actions = torch.tensor([tmp_data[1] for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
+            actions = torch.tensor([tmp_data[1] - 1 for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
             q_values_all = self.model([tmp_data[0] for tmp_data in batch_data])
             q_values = q_values_all.gather(1, actions) 
             
@@ -212,6 +212,10 @@ class MasterAgent(Object):
             if self.update_count == 0:
                 self.target_model.load_state_dict(self.model.state_dict())
 
+            # 優先度を計算（経験再生用のバッファーに保存するため）
+            priorities = torch.abs(q_values - td_targets).detach().numpy()
+            self.replay_buffer.update(batch_data_indices, priorities)
+            
     def updateLocalAgents(self):
         drl_info = self.config.get('drl_info')
         if drl_info['method'] == 'apex':
