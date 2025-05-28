@@ -92,6 +92,10 @@ class QueueCounter(Object):
         return self.network.simulation.get('current_time')
 
     def updateData(self, queue_length):
+        # 最初はNoneが返ってくるので、0に置き換える
+        if queue_length is None:
+            queue_length = 0
+            
         # current_queue_lengthを更新
         self.current_queue_length = round(queue_length, 1)
 

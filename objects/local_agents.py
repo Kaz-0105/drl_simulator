@@ -63,6 +63,14 @@ class LocalAgents(Container):
         
         # 全てのデータ保存が終わるまで待機
         self.executor.wait()
+    
+    @property
+    def done_flg(self):
+        for agent in self.getAll():
+            if agent.done_flg:
+                return True
+    
+        return False
 
     
 class LocalAgent(Object):
@@ -236,12 +244,12 @@ class LocalAgent(Object):
                     lane_state = {}
 
                     # vehicle_dataを位置情報でソート
-                    vehicle_data = lane.get('vehicle_data')
+                    vehicle_data = lane.get('vehicle_data').copy()
                     vehicle_data.sort_values(by='position', ascending=False, inplace=True)
                     vehicle_data.reset_index(drop=True, inplace=True)
 
                     # 先頭からnum_vehicles台の車両を取得
-                    vehicle_data = vehicle_data.head(self.num_vehicles)
+                    vehicle_data = vehicle_data.head(self.num_vehicles).copy()
 
                     # 距離情報を信号との距離に変換
                     length_info = lane.get('length_info')
@@ -266,8 +274,8 @@ class LocalAgent(Object):
 
                                 # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
                                 if feature_name == 'direction':
-                                    direction_vector = [0] * (self.intersection.get('num_roads') - 1)
-                                    direction_vector[int(vehicle['direction_id']) - 1] = 1
+                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    direction_vector[int(vehicle['direction_id'])] = 1
                                     vehicle_state.extend(direction_vector)
                                 else: 
                                     vehicle_state.append(int(vehicle[feature_name]))
@@ -289,7 +297,7 @@ class LocalAgent(Object):
                                 
                                 # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
                                 if feature_name == 'direction':
-                                    direction_vector = [0] * (self.intersection.get('num_roads') - 1)
+                                    direction_vector = [0] * (self.intersection.get('num_roads'))
                                     vehicle_state.extend(direction_vector)
                                 else: 
                                     vehicle_state.append(0)

@@ -3,8 +3,9 @@ from objects.vissim import Vissim
 
 config = Config()
 
-vissim = Vissim(config)
+for _ in range(5):
+    vissim = Vissim(config)
 
-vissim.run()
+    vissim.run()
 
-vissim.exit()
+    vissim.exit()

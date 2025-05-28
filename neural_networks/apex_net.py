@@ -324,7 +324,7 @@ class VehicleNet(NeuralNetwork):
             if feature_flg == False:
                 continue
             if feature_name == 'direction':
-                num_features += (self.num_routes)
+                num_features += (self.num_routes + 1) # 方向が分からない場合もあるので、+1
             else:
                 num_features += 1
 

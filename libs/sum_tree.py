@@ -23,6 +23,18 @@ class SumTree:
         # 初期優先度で参照する過去のデータの数
         self.initial_priority_data_count = 20
 
+    def load(self, file_path):
+        # ファイルからツリーとデータを読み込む
+        loaded_data = np.load(file_path, allow_pickle=True)
+        self.tree = loaded_data['tree']
+        self.data = loaded_data['data']
+        self.next_data_idx = loaded_data['next_data_idx'].item()
+        self.current_size = loaded_data['current_size'].item()
+    
+    def save(self, file_path):
+        # ツリーとデータをファイルに保存
+        np.savez(file_path, tree=self.tree, data=self.data, next_data_idx=self.next_data_idx, current_size=self.current_size)
+
     def _propagate(self, tree_idx, change):
         parent = (tree_idx - 1) // 2
         self.tree[parent] += change
@@ -83,17 +95,17 @@ class SumTree:
         data_indices = [tree_idx - self.actual_capacity + 1 for tree_idx in tree_indices]
 
         # ツリーのインデックスからデータを取得
-        data = []
+        valid_data = []
         valid_data_indices = []
         for data_idx in data_indices:
             if data_idx < self.current_size:
-                data.append(self.data[data_idx])
+                valid_data.append(self.data[data_idx])
                 valid_data_indices.append(data_idx)
 
-        return data, valid_data_indices
+        return valid_data, valid_data_indices
     
     def update_priority(self, data_indices, new_priorities):
-        for data_idx, new_priority in zip(data_indices, new_priorities):
+        for data_idx, new_priority in zip(data_indices, list(new_priorities)):
             # validation
             if data_idx < 0 or data_idx >= self.current_size:
                 continue
