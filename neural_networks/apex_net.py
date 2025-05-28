@@ -30,7 +30,6 @@ class QNet(NeuralNetwork):
             nn.Linear(self.hidden_sizes[0], self.hidden_sizes[1]),
             nn.ReLU(),
             nn.Linear(self.hidden_sizes[1], 1),
-            nn.ReLU(),
         )
         self.advantage_stream = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_sizes[0]),
@@ -38,7 +37,6 @@ class QNet(NeuralNetwork):
             nn.Linear(self.hidden_sizes[0], self.hidden_sizes[1]),
             nn.ReLU(),
             nn.Linear(self.hidden_sizes[1], self.output_size),
-            nn.ReLU(),
         )
 
     
