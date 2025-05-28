@@ -58,6 +58,14 @@ class MasterAgents(Container):
     def updateLocalAgents(self):
         for master_agent in self.getAll():
             self.executor.submit(master_agent.updateLocalAgents)
+        
+        self.executor.wait()
+    
+    def saveNetworkAndBuffer(self):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.saveNetworkAndBuffer)
+        
+        self.executor.wait()
 
 class MasterAgent(Object):
     def __init__(self, master_agents, num_lanes_turple):
@@ -145,7 +153,7 @@ class MasterAgent(Object):
         for num_lanes in self.num_lanes_map.values():
             num_lanes_str += str(num_lanes)
         num_vehs_str = str(self.num_vehicles)
-        self.model_path = Path('models/apex_'+ num_lanes_str + '_' + num_vehs_str + '.pth')
+        self.model_path = Path('models/apex_qnet_'+ num_lanes_str + '_' + num_vehs_str + '.pth')
 
         # 存在する場合は読み込む
         if self.model_path.exists():
@@ -226,6 +234,15 @@ class MasterAgent(Object):
             # ローカルエージェントを走査
             for local_agent in self.local_agents.getAll():
                 local_agent.model.load_state_dict(self.model.state_dict())
+    
+    def saveNetworkAndBuffer(self):
+        # モデルを保存
+        torch.save(self.model.state_dict(), self.model_path)
+
+        # バッファーを保存
+        self.replay_buffer.save()
+
+
 
 
             

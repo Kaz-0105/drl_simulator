@@ -23,6 +23,18 @@ class SumTree:
         # 初期優先度で参照する過去のデータの数
         self.initial_priority_data_count = 20
 
+    def load(self, file_path):
+        # ファイルからツリーとデータを読み込む
+        loaded_data = np.load(file_path, allow_pickle=True)
+        self.tree = loaded_data['tree']
+        self.data = loaded_data['data']
+        self.next_data_idx = loaded_data['next_data_idx'].item()
+        self.current_size = loaded_data['current_size'].item()
+    
+    def save(self, file_path):
+        # ツリーとデータをファイルに保存
+        np.savez(file_path, tree=self.tree, data=self.data, next_data_idx=self.next_data_idx, current_size=self.current_size)
+
     def _propagate(self, tree_idx, change):
         parent = (tree_idx - 1) // 2
         self.tree[parent] += change
