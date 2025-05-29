@@ -14,8 +14,8 @@ drl:
   learning_flg: true
   features:
     vehicle:
-      position: false
-      speed: false
+      position: true
+      speed: true
       in_queue: true
       direction: true
     lane:
@@ -28,18 +28,18 @@ drl:
       metric:
         queue_length: true
         delay: true
-  num_vehicles: 5
+  num_vehicles: 10
 
 apex:
-  duration_steps: 4   # 1回の予測で決める時間ステップ幅
-  td_steps: 4         # TD法の参照するステップ数
-  update_interval: 5  # ターゲットネットワークの同期間隔
+  duration_steps: 5   # 1回の予測で決める時間ステップ幅
+  td_steps: 3         # TD法の参照するステップ数
+  update_interval: 3  # ターゲットネットワークの同期間隔
   buffer:
     size: 100000       # リプレイバッファのサイズ
-    batch_size: 128     # バッチサイズ
+    batch_size: 64     # バッチサイズ
   gamma: 0.9           # 割引率
   learning_rate: 0.001 # 学習率
-  epsilon: 0.3         # 探索率（ε-greedy法）
+  epsilon: 0.5         # 探索率（ε-greedy法）
 
 records:
   metric:
