@@ -116,31 +116,15 @@ class SignalController(Object):
                 self.future_phase_ids = deque(maxlen=apex_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
         
     def setNextPhase(self, phase_ids):
-        # 直前のフェーズと異なる場合，全赤にする（空でない場合のみ調査）
-        if self.future_phase_ids:
-            if self.future_phase_ids[-1] != phase_ids[0]:
-                phase_ids[0] = 0
-        elif self.phase_record:
-            if self.phase_record[-1] != phase_ids[0]:
-                phase_ids[0] = 0 
-        
         # フェーズをセット
         self.future_phase_ids.extend(phase_ids)
+
+        # signal_groupにフェーズをセット
+        self.signal_groups.setNextPhase(phase_ids)
     
     def setNextPhaseToVissim(self):
-        if (self.current_phase_id is not None) and (self.current_phase_id == self.future_phase_ids[0]):
-            self.phase_record.append(self.future_phase_ids.popleft())
-            return
-
-        # 青にするSignalGroupを取得
-        sg_value_list = [1] * self.signal_groups.count()
-
-        if self.future_phase_ids[0] != 0:
-            for sg_id in self.phases[self.future_phase_ids[0]]:
-                sg_value_list[sg_id - 1] = 3
-
         # Vissimにフェーズをセット
-        self.signal_groups.setNextPhaseToVissim(sg_value_list)
+        self.signal_groups.setNextPhaseToVissim()
 
         # phase_recordに追加して、future_phase_idsから削除
         self.phase_record.append(self.future_phase_ids.popleft())
@@ -213,15 +197,28 @@ class SignalGroups(Container):
             else:
                 raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")       
 
-    def setNextPhaseToVissim(self, sg_value_list):
+    def setNextPhase(self, phase_ids):
+        # フェーズのリストを取得
+        phases = self.signal_controller.get('phases')
+        
+        # 各フェーズに対応するSignalGroupの値を計算
+        sig_value_list = []
+        for phase_id in phase_ids:
+            signal_group_ids = phases[phase_id]
+            tmp_sig_value_list = [1] * self.count()  # 1は赤信号を示す
+            for signal_group_id in signal_group_ids:
+                tmp_sig_value_list[signal_group_id - 1] = 3
+            sig_value_list.append(tmp_sig_value_list)
+
+        # 将来の信号現示を保存する（赤➡青の変化時は全赤の時間があるため，赤を１ステップ追加する）
         for signal_group in self.getAll():
-            sg_value = sg_value_list[signal_group.get('id') - 1]
+            tmp_sig_value_list = [tmp_row[signal_group.get('id') - 1] for tmp_row in sig_value_list]
+            signal_group.setNextPhase(tmp_sig_value_list)
+
+    def setNextPhaseToVissim(self):
+        for signal_group in self.getAll():
+            signal_group.setNextPhaseToVissim()
             
-            # シミュレーションが始まっていないときはエラーが出るので、try-exceptで囲む
-            try:
-                signal_group.com.SetAttValue('SigState', sg_value)
-            except:
-                print('Vissim is not running yet, so setting signal state is skipped.')
             
 class SignalGroup(Object):
     def __init__(self, com, signal_groups):
@@ -241,6 +238,28 @@ class SignalGroup(Object):
         # signal_headを格納するコンテナを初期化
         self.signal_heads = SignalHeads(self)
 
+        # future_valuesとvalue_recordを初期化
+        self.initFutureValues()
+        self.initValueRecord()
+
+        # 現在の値を初期化
+        self.current_value = None
+    
+    def initValueRecord(self):
+        records_info = self.config.get('records_info')
+        if records_info['metric']['phase'] == True:
+            self.value_record = []
+        else:
+            self.value_record = deque(maxlen=records_info['max_len'])
+    
+    def initFutureValues(self):
+        simulator_info = self.config.get('simulator_info')
+        if simulator_info['control_method'] == 'drl':
+            drl_info = self.config.get('drl_info')
+            if drl_info['method'] == 'apex':
+                apex_info = self.config.get('apex_info')
+                self.future_values = deque(maxlen=apex_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
+
     @property
     def direction_id(self):
         possible_direction_ids = []
@@ -252,4 +271,27 @@ class SignalGroup(Object):
         else:
             raise Exception(f"SignalGroup {self.get('id')} has multiple possible direction IDs: {possible_direction_ids}. Please check the signal head connections.")
             
-            
+    def setNextPhase(self, sig_value_list):
+        if self.future_values:
+            if self.future_values[-1] == 1 and sig_value_list[0] == 3:
+                sig_value_list[0] = 1
+        elif self.value_record:
+            if self.value_record[-1] == 1 and sig_value_list[0] == 3:
+                sig_value_list[0] = 1
+        
+        self.future_values.extend(sig_value_list)
+
+    def setNextPhaseToVissim(self):
+        # 現在の値と同じ場合は何もしない
+        if (self.current_value is not None) and (self.current_value == self.future_values[0]):
+            self.value_record.append(self.future_values.popleft())
+            return
+        
+        # Vissimに信号現示をセット（最初はうまく行かないのでtryで囲む）
+        try:
+            self.com.SetAttValue('SigState', self.future_values[0])
+        except:
+            print('Vissim is not running yet, so setting signal state is skipped.')
+        
+        # future_valuesから1つ削除
+        self.value_record.append(self.future_values.popleft())

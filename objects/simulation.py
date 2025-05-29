@@ -1,5 +1,6 @@
 from libs.common import Common
 
+import random
 class Simulation(Common):
     def __init__(self, vissim):
         # 継承
@@ -27,12 +28,16 @@ class Simulation(Common):
         self.setParametersToVissim()
 
     def setParametersToVissim(self):
-        self.com.SetAttValue('RandSeed', self.random_seed)
+        # self.com.SetAttValue('RandSeed', self.random_seed)
+        self.com.SetAttValue('RandSeed', random.randint(1, 100))
         self.com.SetAttValue('SimPeriod', self.end_time + 1) # Vissimの仕様上、終了時刻に達するとネットワークの情報が消えるので１秒長くして消えないようにする
 
     def run(self):
         simulation_info = self.config.get('simulator_info')
         if simulation_info['control_method'] == 'drl':
+            # デバック用
+            # self.runForDebug()
+
             # 最初のネットワークの更新
             self.network.updateData()
 

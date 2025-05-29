@@ -173,7 +173,7 @@ class Link(Object):
     def makeFormattedVehicleData(self):
         # 車両が存在しない場合は空のDataFrameを返す
         if len(self.vehicle_data['id']) == 0:
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id']
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg']
             self.vehicle_data = DataFrame(columns = column_names)
             return
         
@@ -209,6 +209,12 @@ class Link(Object):
         
         self.vehicle_data['direction_id'] = direction_ids
         self.vehicle_data.pop('vehicle_route')
+
+        # go_flgを追加（信号が青かどうかを示すフラグ）
+        direction_signal_group_map = self.road.get('direction_signal_group_map')
+        signal_groups = self.road.signal_groups
+        
+
             
         self.vehicle_data = DataFrame(self.vehicle_data)
         return
@@ -277,6 +283,11 @@ class Lane(Object):
     @property
     def num_vehicles(self):
         return self.vehicle_data.shape[0]
+
+    @property
+    def num_vehs_in_queue(self):
+        in_queue_vehicle_data = self.vehicle_data[self.vehicle_data['in_queue']]
+        return in_queue_vehicle_data.shape[0]
 
     def updateData(self):
         # 車両データを取得
