@@ -42,7 +42,7 @@ class Roads(Container):
                 self.add(Road(road, self))
         elif self.has('intersection'):
             tags = self.config.get('intersection_road_tags')
-            target_tags = tags[tags['intersection_id'] == self.intersection.get('id') & (tags['type'] == self.type)]
+            target_tags = tags[(tags['intersection_id'] == self.intersection.get('id')) & (tags['type'] == self.type)]
 
             network = self.intersection.getNetwork()
             roads = network.roads

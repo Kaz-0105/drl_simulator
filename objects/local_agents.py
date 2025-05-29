@@ -362,7 +362,7 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.randint(1, self.model.get('output_size'))
+            action = random.randint(1, 8)
         else:
             with torch.no_grad():
                 action_values = self.model([self.current_state])
@@ -392,13 +392,18 @@ class LocalAgent(Object):
         # 空きスペースの長さの最小値を正規化
         reward = min(empty_length_list) / max(road_length_list)
 
-        # 報酬をインスタンス変数に保存
-        self.current_reward = reward
-        self.reward_record.append(reward)
-
         # 空きスペースがない場合はそこで終了
-        if reward <= 0.01:
+        if reward <= 0.3:
+            # 空きスペースがない場合はそこで終了
             self.done_flg = True
+
+            # 報酬をインスタンス変数に保存
+            self.current_reward = -50
+            self.reward_record.append(self.current_reward)
+        else:
+            # 報酬をインスタンス変数に保存
+            self.current_reward = reward
+            self.reward_record.append(reward)
         
     def makeLearningData(self):
         # データが溜まっていない場合はスキップ
