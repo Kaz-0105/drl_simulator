@@ -362,7 +362,7 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.randint(1, 4)
+            action = random.randint(1, 8)
         else:
             with torch.no_grad():
                 action_values = self.model([self.current_state])
