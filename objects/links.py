@@ -151,8 +151,6 @@ class Link(Object):
     def queue_length(self):
         return self.queue_counter.get('current_queue_length')
     
-    
-    
     def updateData(self):
         # 車両データを取得
         self.getVehicleDataFromVissim()

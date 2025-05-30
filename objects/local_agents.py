@@ -139,6 +139,10 @@ class LocalAgent(Object):
         # トータルのリワードを初期化
         self.total_reward = 0
 
+        # queue_counterの個数を取得
+        self._makeNumQueueCounters()
+        self.stop_count = 0
+
         # バッファーに送る学習データを格納するためのリストを初期化
         self.learning_data = []
 
@@ -220,6 +224,16 @@ class LocalAgent(Object):
         
         self.infer_flg = True
         return True
+
+    def _makeNumQueueCounters(self):
+        num_queue_counters = 0
+        for road in self.roads.getAll():
+            links = road.links
+            for link in links.getAll():
+                if link.has('queue_counter'):
+                    num_queue_counters += 1
+        
+        self.num_queue_counters = num_queue_counters
     
     def getState(self):
         # 状態量を取得するタイミングかどうかを確認
@@ -455,30 +469,48 @@ class LocalAgent(Object):
         if self.infer_flg == False:
             return
         
-        # 進行可能の自動車台数を取得
-        total_num_going_vehs = 0
-        total_num_vehs = 0
+        # queue_lengthが改善した場合は報酬を与える
+        improved_count = 0
         for road in self.roads.getAll():
-            total_num_going_vehs += road.get('num_going_vehicles')
-            total_num_vehs += road.get('num_vehicles')
-        
-        # -1から1の範囲に正規化
-        if total_num_vehs == 0:
-            score = 1
-        else:
-            score = total_num_going_vehs / total_num_vehs
+            links = road.links
+            for link in links.getAll():
+                if link.has('queue_counter'):
+                    delta_queue_length = link.queue_counter.get('delta_queue_length')
+                    if delta_queue_length < 0:
+                        improved_count += 1
+                    
+        score = improved_count / self.num_queue_counters
 
         # 報酬を計算
-        if score < 0.1:
-            self.done_flg = True
-            self.current_reward = 0.0
-        elif score >= 0.1 and score < 0.4:
-            self.current_reward = score
-        elif score >= 0.4:
-            self.current_reward = 1.0
-
+        if score == 0:
+            self.stop_count += 1
+            if self.stop_count == 10:
+                self.done_flg = True
+        
+        self.current_reward = score
         self.reward_record.append(self.current_reward)
-        self.total_reward += self.current_reward
+        
+        # # 進行可能の自動車台数を取得
+        # total_num_going_vehs = 0
+        # total_num_vehs = 0
+        # for road in self.roads.getAll():
+        #     total_num_going_vehs += road.get('num_going_vehicles')
+        #     total_num_vehs += road.get('num_vehicles')
+        
+        # # -1から1の範囲に正規化
+        # if total_num_vehs == 0:
+        #     score = 1
+        # else:
+        #     score = total_num_going_vehs / total_num_vehs
+
+        # # 報酬を計算
+        # if score < 0.1:
+        #     self.done_flg = True
+        
+        # self.current_reward = score
+
+        # self.reward_record.append(self.current_reward)
+        # self.total_reward += self.current_reward
             
         # # キューにいる自動車台数を取得
         # road_score_list = []
