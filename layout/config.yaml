@@ -1,7 +1,7 @@
 simulator :
   network_name: 'twenty_intersections'
   control_method: 'drl'
-  simulation_time: 300
+  simulation_time: 200
   random_seed: 1
   time_step: 2 # シミュレーションの更新の時間幅（秒）
   red_steps: 1  # 全赤の時間（time_stepの長さに合わせ調整すること）

@@ -2,7 +2,6 @@ from libs.neural_network import NeuralNetwork
 
 import torch
 import torch.nn as nn
-import random
 
 class QNet(NeuralNetwork):
     def __init__(self, config, num_vehicles, num_lanes_map):
@@ -22,7 +21,7 @@ class QNet(NeuralNetwork):
         
         # ネットワークの定義（Dueling Network）        
         self.input_size = self.sub_network_map['intersection'].get('output_size')
-        self.hidden_sizes = [256, 128]
+        self.hidden_sizes = [self.input_size // 2, self.input_size // 2]
         self.makeOutputSize()
         self.value_stream = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_sizes[0]),
@@ -303,8 +302,8 @@ class VehicleNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -350,8 +349,8 @@ class VehiclesNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -378,7 +377,7 @@ class LaneShapeNet(NeuralNetwork):
         # ネットワークの定義
         self.input_size = self.num_features
         self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.output_size = self.num_features 
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -497,9 +496,9 @@ class LanesNet(NeuralNetwork):
         self.num_features = self.num_lane_features * self.num_lanes
 
         # ネットワークの定義
-        self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.input_size = self.num_features 
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -574,8 +573,8 @@ class RoadNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -603,8 +602,8 @@ class RoadsNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -633,8 +632,8 @@ class PhaseNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
@@ -670,8 +669,8 @@ class IntersectionNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
-        self.hidden_size = self.num_features
-        self.output_size = self.num_features
+        self.hidden_size = self.num_features // 2
+        self.output_size = self.num_features // 2
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),

@@ -4,6 +4,7 @@ from libs.replay_buffer import ReplayBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
 from neural_networks.apex_net import QNet
+from neural_networks.apex_net2 import QNet2
 
 from pathlib import Path
 import torch
@@ -129,14 +130,15 @@ class MasterAgent(Object):
     def _makeModel(self):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化（学習用にセット）
-            self.model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
+            # self.model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
+            self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
             self.model.train()
 
             # 過去に学習済みの場合はそれを読み込む
             self._loadModel()
 
             # ターゲットモデルを初期化（学習用と同期，推論用にセット）
-            self.target_model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
+            self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
             self.target_model.load_state_dict(self.model.state_dict())
             self.target_model.eval()
 
@@ -153,7 +155,8 @@ class MasterAgent(Object):
         for num_lanes in self.num_lanes_map.values():
             num_lanes_str += str(num_lanes)
         num_vehs_str = str(self.num_vehicles)
-        self.model_path = Path('models/apex_qnet_'+ num_lanes_str + '_' + num_vehs_str + '.pth')
+        # self.model_path = Path('models/apex_qnet_'+ num_lanes_str + '_' + num_vehs_str + '.pth')
+        self.model_path = Path('models/apex_qnet2_' + num_lanes_str + '_' + num_vehs_str + '.pth')
 
         # 存在する場合は読み込む
         if self.model_path.exists():

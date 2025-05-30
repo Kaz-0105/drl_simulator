@@ -2,6 +2,7 @@ from libs.container import Container
 from libs.object import Object
 from objects.links import Lanes
 from neural_networks.apex_net import QNet
+from neural_networks.apex_net2 import QNet2
 
 import torch
 import random
@@ -35,7 +36,8 @@ class LocalAgents(Container):
     def getState(self):
         # 非同期で状態量を取得
         for agent in self.getAll():
-            self.executor.submit(agent.getState)
+            # self.executor.submit(agent.getState)
+            self.executor.submit(agent.getState2)
         
         # 全ての状態量取得が終わるまで待機
         self.executor.wait()
@@ -137,9 +139,6 @@ class LocalAgent(Object):
         # トータルのリワードを初期化
         self.total_reward = 0
 
-        # 終了カウント
-        self.finish_count = 0
-
         # バッファーに送る学習データを格納するためのリストを初期化
         self.learning_data = []
 
@@ -194,7 +193,7 @@ class LocalAgent(Object):
     def _makeNetwork(self):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化
-            self.model = QNet(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+            self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
 
             # 推論用にする
             self.model.eval()
@@ -373,6 +372,64 @@ class LocalAgent(Object):
             self.current_state = state
             self.state_record.append(state)
 
+    def getState2(self):
+        self._shouldInfer()
+        if self.infer_flg == False:
+            return
+        
+        state = []
+        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+            lanes = self.road_lanes_map[road_order_id]
+            for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                lane = lanes[lane_order_id]
+                
+                # 自動車情報を整形
+                vehicle_data = lane.get('vehicle_data').copy()
+                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                vehicle_data.reset_index(drop=True, inplace=True)
+                vehicle_data = vehicle_data.head(self.num_vehicles).copy()
+                length_info = lane.get('length_info')
+                vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+                
+                for idx in range(self.num_vehicles):
+                    vehicle_state = []
+                    if idx < vehicle_data.shape[0]:
+                        vehicle = vehicle_data.iloc[idx]
+                        for feature_name, feature_flg in self.features_info['vehicle'].items():
+                            if feature_flg == False:
+                                continue
+                            
+                            if feature_name == 'direction':
+                                direction_vector = [0] * (self.intersection.get('num_roads'))
+                                direction_vector[int(vehicle['direction_id'])] = 1
+                                vehicle_state.extend(direction_vector)
+                            elif feature_name == 'in_queue' or feature_name == 'go_flg':
+                                vehicle_state.append(float(vehicle[feature_name]))
+                            else:
+                                vehicle_state.append(vehicle[feature_name])
+
+                        vehicle_state.append(1.0)  # 自動車が存在するかどうかのフラグ
+                    
+                    else:
+                        for feature_name, feature_flg in self.features_info['vehicle'].items():
+                            if feature_flg == False:
+                                continue
+                            
+                            if feature_name == 'direction':
+                                direction_vector = [0] * (self.intersection.get('num_roads'))
+                                vehicle_state.extend(direction_vector)
+                            else:
+                                vehicle_state.append(0.0)
+                        
+                        vehicle_state.append(0.0)  # 自動車が存在するかどうかのフラグ
+                    
+                    state.extend(vehicle_state)
+
+        state = torch.tensor(state, dtype=torch.float32)
+
+        self.current_state = state
+        self.state_record.append(state)
+
     def getAction(self):
         # 推論の必要がないときはスキップ
         if self.infer_flg == False:
@@ -413,15 +470,12 @@ class LocalAgent(Object):
 
         # 報酬を計算
         if score < 0.1:
-            self.finish_count += 1
-            if self.finish_count == 10:
-                self.done_flg = True
-                self.current_reward = -5
-            else:
-                self.current_reward = score
-        else:
-            self.finish_count = 0
+            self.done_flg = True
+            self.current_reward = 0.0
+        elif score >= 0.1 and score < 0.4:
             self.current_reward = score
+        elif score >= 0.4:
+            self.current_reward = 1.0
 
         self.reward_record.append(self.current_reward)
         self.total_reward += self.current_reward
