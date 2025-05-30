@@ -71,7 +71,16 @@ class LocalAgents(Container):
                 return True
     
         return False
+    
+    def printTotalReward(self):
+        sum_total_reward = 0
+        for local_agent_id in self.getKeys(container_flg=True, sorted_flg=True):
+            local_agent = self[local_agent_id]
+            total_reward = round(local_agent.get('total_reward'), 2)
+            sum_total_reward += total_reward
+            print(f'Local Agent {local_agent_id} Total Reward: {total_reward}')
 
+        print(f'Average Total Reward: {round(sum_total_reward / self.count(), 2)}')
     
 class LocalAgent(Object):
     def __init__(self, local_agents, intersection):
@@ -124,6 +133,12 @@ class LocalAgent(Object):
         self.current_action = None
         self.current_reward = None
         self.done_flg = False
+
+        # トータルのリワードを初期化
+        self.total_reward = 0
+
+        # 終了カウント
+        self.finish_count = 0
 
         # バッファーに送る学習データを格納するためのリストを初期化
         self.learning_data = []
@@ -257,7 +272,6 @@ class LocalAgent(Object):
 
                     # 車両に関する状態を取得
                     vehicles_state = {}
-                    feature_names = ['position', 'speed', 'in_queue', 'direction']
                     for index in range(self.num_vehicles):
                         if index < vehicle_data.shape[0]:
                             # レコードを取得
@@ -277,6 +291,10 @@ class LocalAgent(Object):
                                     direction_vector = [0] * (self.intersection.get('num_roads'))
                                     direction_vector[int(vehicle['direction_id'])] = 1
                                     vehicle_state.extend(direction_vector)
+                                elif feature_name == 'position':
+                                    vehicle_state.append(vehicle['position'] / length_info['length'])
+                                elif feature_name == 'speed':
+                                    vehicle_state.append(vehicle['speed'] / 60)
                                 else: 
                                     vehicle_state.append(int(vehicle[feature_name]))
                             
@@ -312,13 +330,13 @@ class LocalAgent(Object):
                     lane_state['vehicles'] = dict(sorted(vehicles_state.items()))
 
                     # 評価指標に関する状態量を取得
-                    lane_state['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
+                    lane_state['metric'] = torch.tensor([lane.get('num_vehicles')/10], dtype=torch.float32)
                     
                     # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
                     if lane.link.get('type') == 'main':
-                        lane_state['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
+                        lane_state['shape'] = torch.tensor([int(length_info['length'])/100, 1, 0], dtype=torch.float32)
                     elif lane.link.get('type') == 'right' or lane.link.get('type') == 'left':
-                        lane_state['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
+                        lane_state['shape'] = torch.tensor([int(length_info['length'])/100, 0, 1], dtype=torch.float32)
 
                     # lanes_stateにlane_stateを追加
                     lanes_state[lane_order_id] = lane_state
@@ -328,8 +346,8 @@ class LocalAgent(Object):
 
                 # 評価指標の状態量について
                 metric_state = []
-                metric_state.append(int(road.get('max_queue_length')))
-                metric_state.append(int(road.get('average_delay')))
+                metric_state.append(int(road.get('max_queue_length'))/ 100)
+                metric_state.append(int(road.get('average_delay'))/ 100 * self.roads.count())
 
                 # road_stateに評価指標の状態量を追加
                 road_state['metric'] = torch.tensor(metric_state, dtype=torch.float32)
@@ -362,7 +380,7 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.randint(1, 8)
+            action = random.randint(1, 4)
         else:
             with torch.no_grad():
                 action_values = self.model([self.current_state])
@@ -380,7 +398,34 @@ class LocalAgent(Object):
         if self.infer_flg == False:
             return
         
+        # 進行可能の自動車台数を取得
+        total_num_going_vehs = 0
+        total_num_vehs = 0
+        for road in self.roads.getAll():
+            total_num_going_vehs += road.get('num_going_vehicles')
+            total_num_vehs += road.get('num_vehicles')
         
+        # -1から1の範囲に正規化
+        if total_num_vehs == 0:
+            score = 1
+        else:
+            score = total_num_going_vehs / total_num_vehs
+
+        # 報酬を計算
+        if score < 0.1:
+            self.finish_count += 1
+            if self.finish_count == 10:
+                self.done_flg = True
+                self.current_reward = -5
+            else:
+                self.current_reward = score
+        else:
+            self.finish_count = 0
+            self.current_reward = score
+
+        self.reward_record.append(self.current_reward)
+        self.total_reward += self.current_reward
+            
         # # キューにいる自動車台数を取得
         # road_score_list = []
         # for lanes in self.road_lanes_map.values():

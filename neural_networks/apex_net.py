@@ -308,8 +308,9 @@ class VehicleNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
 
     def makeNumFeatures(self):
@@ -354,8 +355,9 @@ class VehiclesNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
     
     def forward(self, x):
@@ -375,10 +377,14 @@ class LaneShapeNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
+        self.hidden_size = self.num_features
         self.output_size = self.num_features
         self.net = nn.Sequential(
-            nn.Linear(self.input_size, self.output_size),
+            nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )   
 
     def makeNumFeatures(self):
@@ -415,10 +421,14 @@ class LaneMetricNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
+        self.hidden_size = self.num_features
         self.output_size = self.num_features
         self.net = nn.Sequential(
-            nn.Linear(self.input_size, self.output_size),
+            nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )     
 
     def makeNumFeatures(self):
@@ -463,8 +473,9 @@ class LaneNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
     
     def forward(self, x):
@@ -492,8 +503,9 @@ class LanesNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
 
     def forward(self, x):
@@ -512,10 +524,14 @@ class RoadMetricNet(NeuralNetwork):
 
         # ネットワークの定義
         self.input_size = self.num_features
+        self.hidden_size = self.num_features
         self.output_size = self.num_features
         self.net = nn.Sequential(
-            nn.Linear(self.input_size, self.output_size),
+            nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
 
     def makeNumFeatures(self):
@@ -563,8 +579,9 @@ class RoadNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
     
     def forward(self, x):
@@ -591,8 +608,9 @@ class RoadsNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
 
     def forward(self, x):
@@ -620,8 +638,9 @@ class PhaseNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
     
     def makeNumPhases(self):
@@ -656,8 +675,9 @@ class IntersectionNet(NeuralNetwork):
         self.net = nn.Sequential(
             nn.Linear(self.input_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.output_size),
+            nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, self.output_size),
         )
     
     def forward(self, x):

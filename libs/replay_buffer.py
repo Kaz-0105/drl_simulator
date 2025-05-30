@@ -21,6 +21,8 @@ class ReplayBuffer (Common):
         apex_info = self.config.get('apex_info')
         self.max_size = apex_info['buffer']['size']
         self.batch_size = apex_info['buffer']['batch_size']
+        self.alpha = apex_info['buffer']['alpha']
+        self.epsilon = apex_info['buffer']['epsilon']
 
         # データのコンテナを初期化
         self.sum_tree = SumTree(self.max_size)
@@ -52,6 +54,7 @@ class ReplayBuffer (Common):
         return self.sum_tree.sample(self.batch_size)
 
     def update(self, indices, priorities):
+        priorities = (priorities + self.epsilon) ** self.alpha
         self.sum_tree.update_priority(indices, priorities)
 
     def save(self):

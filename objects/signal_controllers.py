@@ -284,14 +284,13 @@ class SignalGroup(Object):
     def setNextPhaseToVissim(self):
         # 現在の値と同じ場合は何もしない
         if (self.current_value is not None) and (self.current_value == self.future_values[0]):
-            self.value_record.append(self.future_values.popleft())
+            self.current_value = self.future_values.popleft()
+            self.value_record.append(self.current_value)
             return
         
         # Vissimに信号現示をセット（最初はうまく行かないのでtryで囲む）
-        try:
-            self.com.SetAttValue('SigState', self.future_values[0])
-        except:
-            print('Vissim is not running yet, so setting signal state is skipped.')
+        self.com.SetAttValue('SigState', self.future_values[0])
         
         # future_valuesから1つ削除
-        self.value_record.append(self.future_values.popleft())
+        self.current_value = self.future_values.popleft()
+        self.value_record.append(self.current_value)

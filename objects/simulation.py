@@ -38,6 +38,9 @@ class Simulation(Common):
             # デバック用
             # self.runForDebug()
 
+            # 信号機の操作権限をこちら側に移す
+            self.getSignalControlAuth()
+
             # 最初のネットワークの更新
             self.network.updateData()
 
@@ -79,6 +82,9 @@ class Simulation(Common):
             # マスターエージェントのネットワークとバッファーを保存
             self.network.master_agents.saveNetworkAndBuffer()
 
+            # トータルの報酬を出力
+            self.network.local_agents.printTotalReward()
+
     def runSingleStep(self):
         # 信号現示を更新する
         self.network.signal_controllers.setNextPhaseToVissim()
@@ -97,3 +103,16 @@ class Simulation(Common):
 
         # 現在時刻を更新
         self.current_time += 30
+    
+    def getSignalControlAuth(self):
+        # 1秒進める
+        self.com.SetAttValue('SimBreakAt', self.current_time + 1)
+        self.com.RunContinuous()
+
+        # 現在時刻を更新
+        self.current_time += 1
+
+        # 信号機の操作権限を取得
+        for signal_controller in self.network.signal_controllers.getAll():
+            for signal_group in signal_controller.signal_groups.getAll():
+                signal_group.com.SetAttValue('SigState', 1)
