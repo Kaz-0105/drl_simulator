@@ -1,7 +1,7 @@
 simulator :
   network_name: 'twenty_intersections'
   control_method: 'drl'
-  simulation_time: 500
+  simulation_time: 300
   random_seed: 1
   time_step: 2 # シミュレーションの更新の時間幅（秒）
   red_steps: 1  # 全赤の時間（time_stepの長さに合わせ調整すること）
@@ -16,9 +16,10 @@ drl:
     vehicle:
       position: false
       speed: false
-      in_queue: true
-      direction: true
-      go_flg: true
+      in_queue: false
+      direction: false
+      wait_flg: true
+      near_flg: false
     lane:
       metric: 
         num_vehicles: true
@@ -33,16 +34,15 @@ drl:
 
 apex:
   duration_steps: 5   # 1回の予測で決める時間ステップ幅
-  td_steps: 3         # TD法の参照するステップ数
+  td_steps: 1         # TD法の参照するステップ数
   update_interval: 3  # ターゲットネットワークの同期間隔
   buffer:
     size: 1000000       # リプレイバッファのサイズ
     batch_size: 256    # バッチサイズ
-    alpha: 3           # Prioritized Experience Replayのα
-    epsilon: 0.01      # Prioritized Experience Replayのε
+    alpha: 0.3         # 優先度をexponentialで計算する際のパラメータ
   gamma: 0.9           # 割引率
-  learning_rate: 0.001 # 学習率
-  epsilon: 0.3         # 探索率（ε-greedy法）
+  learning_rate: 0.005 # 学習率
+  epsilon: 0.5         # 探索率（ε-greedy法）
 
 records:
   metric:

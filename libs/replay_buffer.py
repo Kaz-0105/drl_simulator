@@ -2,6 +2,7 @@ from libs.common import Common
 from libs.sum_tree import SumTree
 
 from pathlib import Path
+import numpy as np
 
 class ReplayBuffer (Common):
     def __init__(self, master_agent):
@@ -22,7 +23,6 @@ class ReplayBuffer (Common):
         self.max_size = apex_info['buffer']['size']
         self.batch_size = apex_info['buffer']['batch_size']
         self.alpha = apex_info['buffer']['alpha']
-        self.epsilon = apex_info['buffer']['epsilon']
 
         # データのコンテナを初期化
         self.sum_tree = SumTree(self.max_size)
@@ -54,7 +54,7 @@ class ReplayBuffer (Common):
         return self.sum_tree.sample(self.batch_size)
 
     def update(self, indices, priorities):
-        priorities = (priorities + self.epsilon) ** self.alpha
+        priorities = np.exp(self.alpha * priorities)
         self.sum_tree.update_priority(indices, priorities)
 
     def save(self):

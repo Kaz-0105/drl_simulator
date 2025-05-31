@@ -210,52 +210,8 @@ class Link(Object):
         self.vehicle_data.pop('vehicle_route')
             
         self.vehicle_data = DataFrame(self.vehicle_data)
-
-        # 位置の降順でソート
-        self.vehicle_data = self.vehicle_data.sort_values(by='position', ascending=False).reset_index(drop=True)
-        
-        # go_flgを追加（車両が進行中かどうか）
-        direction_signal_group_map = self.road.get('direction_signal_group_map')
-        direction_value_map = {}
-        for direction_id, signal_group_id in direction_signal_group_map.items():
-            signal_group = self.road.signal_groups[signal_group_id]
-            direction_value_map[direction_id] = signal_group.get('current_value')
-
-        go_flgs = []
-        blocked_lane_ids = []
-        for index, row in self.vehicle_data.iterrows():
-            # 速度が法定速度の半分以上の場合は進行可能な車とみなす
-            if row['speed'] >= self.road.get('max_speed') / 2:
-                go_flgs.append(True)
-                continue
-            
-            # 速度が法定速度の半分未満の場合
-            # 自分の信号が青かつ自分と同じ車線の先行車に進行不可の自動車がいない場合は進行可能な車とみなす
-            direction_id = row['direction_id']
-            if direction_id == 0:
-                # 進行方向が決まっていない場合は青信号であるとする
-                value = 3
-            else:
-                value = direction_value_map[direction_id]
-            
-            if value == 1:
-                # 赤信号の場合は進行不可
-                go_flgs.append(False)
-
-                # まだその車線で進行不可の自動車が記録されていない場合記録する
-                if row['lane_id'] not in blocked_lane_ids:
-                    blocked_lane_ids.append(row['lane_id'])
-
-            elif value == 3 or value is None:
-                # 青信号の場合は進行可能（最初はNoneがでてくる）
-                go_flgs.append(True)
-
-                # 先行車で進行不可の自動車が存在する場合は進行不可にする
-                if row['lane_id'] in blocked_lane_ids:
-                    go_flgs[-1] = False
-
-        # 車両データにgo_flgsを追加
-        self.vehicle_data['go_flg'] = go_flgs
+        self.vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+        self.vehicle_data.reset_index(drop=True, inplace=True)
         
         return
 

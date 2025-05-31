@@ -5,6 +5,7 @@ from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
 from neural_networks.apex_net import QNet
 from neural_networks.apex_net2 import QNet2
+from neural_networks.apex_net3 import QNet3
 
 from pathlib import Path
 import torch
@@ -131,14 +132,17 @@ class MasterAgent(Object):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化（学習用にセット）
             # self.model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
-            self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
+            # self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
+            self.model = QNet3(self.config, self.num_lanes_map)
             self.model.train()
 
             # 過去に学習済みの場合はそれを読み込む
             self._loadModel()
 
             # ターゲットモデルを初期化（学習用と同期，推論用にセット）
-            self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
+            # self.target_model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
+            # self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
+            self.target_model = QNet3(self.config, self.num_lanes_map)
             self.target_model.load_state_dict(self.model.state_dict())
             self.target_model.eval()
 

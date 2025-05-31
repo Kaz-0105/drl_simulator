@@ -11,9 +11,10 @@ class QNet2(nn.Module):
         self.num_roads = len(num_lanes_map)
         self.num_lanes_map = num_lanes_map
 
+        self._makeActionSize()
         self._makeNumFeatures()
         self.input_size = self.num_features
-        self._makeOutputSize()
+        self.output_size = self.action_size
 
         self.common_net = nn.Sequential(
             nn.Linear(self.num_features, 512),
@@ -73,14 +74,16 @@ class QNet2(nn.Module):
         for _, num_lanes in self.num_lanes_map.items():
             num_features += num_lanes * self.num_vehicles * num_vehicle_features
         
+        num_features += self.action_size
+        
         self.num_features = num_features
     
-    def _makeOutputSize(self):
+    def _makeActionSize(self):
         num_roads_phases_map = self.config.get('num_roads_phases_map')
         phases_map = num_roads_phases_map[self.num_roads]
         num_phases = phases_map.shape[0]
 
-        self.output_size = num_phases
+        self.action_size = num_phases
     
 
         
