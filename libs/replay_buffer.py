@@ -2,7 +2,6 @@ from libs.common import Common
 from libs.sum_tree import SumTree
 
 from pathlib import Path
-import numpy as np
 
 class ReplayBuffer (Common):
     def __init__(self, master_agent):
@@ -36,7 +35,7 @@ class ReplayBuffer (Common):
         for num_lanes in num_lanes_map.values():
             num_lanes_str += str(num_lanes)
         num_vehs_str = str(self.master_agent.get('num_vehicles'))
-        self.buffer_path = Path('buffers/apex_buffer_' + num_lanes_str + '_' + num_vehs_str + '.pkl')
+        self.buffer_path = Path('buffers/apex_buffer_' + num_lanes_str + '_' + num_vehs_str + '.npz')
 
         # バッファーのファイルが存在する場合は読み込む
         if self.buffer_path.exists():
@@ -54,7 +53,6 @@ class ReplayBuffer (Common):
         return self.sum_tree.sample(self.batch_size)
 
     def update(self, indices, priorities):
-        priorities = np.exp(self.alpha * priorities)
         self.sum_tree.update_priority(indices, priorities)
 
     def save(self):

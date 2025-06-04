@@ -1,9 +1,9 @@
 from libs.container import Container
 from libs.object import Object
 from objects.links import Lanes
-from neural_networks.apex_net import QNet
-from neural_networks.apex_net2 import QNet2
-from neural_networks.apex_net3 import QNet3
+from neural_networks.q_net import QNet
+from neural_networks.q_net2 import QNet2
+from neural_networks.q_net3 import QNet3
 
 import torch
 import random
@@ -37,9 +37,13 @@ class LocalAgents(Container):
     def getState(self):
         # 非同期で状態量を取得
         for agent in self.getAll():
-            # self.executor.submit(agent.getState)
-            # self.executor.submit(agent.getState2)
-            self.executor.submit(agent.getState3)
+            network_id = agent.get('network_id')
+            if network_id == 1:
+                self.executor.submit(agent.getState)
+            elif network_id == 2:
+                self.executor.submit(agent.getState2)
+            elif network_id == 3:
+                self.executor.submit(agent.getState3)
         
         # 全ての状態量取得が終わるまで待機
         self.executor.wait()
@@ -117,6 +121,7 @@ class LocalAgent(Object):
         self.duration_steps = apex_info['duration_steps']
 
         # 強化学習関連のハイパーパラメータを取得
+        self.network_id = apex_info['network_id']
         self.td_steps = apex_info['td_steps']
         self.epsilon = apex_info['epsilon']
         self.gamma = apex_info['gamma']
@@ -130,7 +135,7 @@ class LocalAgent(Object):
         self.features_info = drl_info['features']
 
         # ネットワークを作成
-        self._makeNetwork()
+        self._makeModel()
 
         # 状態量，行動，報酬，終了フラグを初期化
         self.current_state = None
@@ -196,12 +201,15 @@ class LocalAgent(Object):
 
         self.road_lanes_map = road_lanes_map
 
-    def _makeNetwork(self):
+    def _makeModel(self):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化
-            # self.model = QNet(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-            # self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-            self.model = QNet3(self.config, self.num_lanes_map)
+            if (self.network_id == 1):
+                self.model = QNet(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+            elif (self.network_id == 2):
+                self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+            elif (self.network_id == 3):
+                self.model = QNet3(self.config, self.master_agent.num_lanes_map)
 
             # 推論用にする
             self.model.eval()
@@ -267,6 +275,10 @@ class LocalAgent(Object):
                 # lanesオブジェクトを取得
                 lanes = self.road_lanes_map[road_order_id]
 
+                # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
+                if self.features_info['vehicle']['wait_flg']:
+                    direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+
                 # 車線を走査
                 for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
                     # laneオブジェクトを取得
@@ -286,6 +298,45 @@ class LocalAgent(Object):
                     # 距離情報を信号との距離に変換
                     length_info = lane.get('length_info')
                     vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+
+                    # near_flgを追加（交差点に近いかどうか）
+                    if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
+                        near_flgs = []
+                        for index, row in vehicle_data.iterrows():
+                            if row['position'] <= 100:
+                                near_flgs.append(True)
+                            else:
+                                near_flgs.append(False)
+                        
+                        vehicle_data['near_flg'] = near_flgs
+
+                    # wait_flgを追加（信号待ちの状況かどうか）
+                    if self.features_info['vehicle']['wait_flg']:
+                        # wait_flgを初期化
+                        wait_flgs = []
+                        for index, row in vehicle_data.iterrows():
+                            # 交差点に近くない自動車はスコープから外す
+                            if row['position'] > 100:
+                                wait_flgs.append(False)
+                                continue
+
+                            # 信号が赤の場合は信号待ち
+                            signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
+                            if signal_value == 1:
+                                wait_flgs.append(True)
+                                continue
+                            
+                            # 先行車が信号待ちしている場合は信号待ち
+                            if len(wait_flgs) > 0 and wait_flgs[-1] == True:
+                                wait_flgs.append(True)
+                                continue
+
+                            # それ以外は信号待ちではない
+                            wait_flgs.append(False)
+                            
+                        # wait_flgsをvehicle_dataに追加
+                        vehicle_data['wait_flg'] = wait_flgs
+                    
 
                     # 車両に関する状態を取得
                     vehicles_state = {}
@@ -308,12 +359,8 @@ class LocalAgent(Object):
                                     direction_vector = [0] * (self.intersection.get('num_roads'))
                                     direction_vector[int(vehicle['direction_id'])] = 1
                                     vehicle_state.extend(direction_vector)
-                                elif feature_name == 'position':
-                                    vehicle_state.append(vehicle['position'] / length_info['length'])
-                                elif feature_name == 'speed':
-                                    vehicle_state.append(vehicle['speed'] / 60)
                                 else: 
-                                    vehicle_state.append(int(vehicle[feature_name]))
+                                    vehicle_state.append(float(vehicle[feature_name]))
                             
                             # 自動車が存在するかどうかのフラグの状態量を追加
                             vehicle_state.append(1) 
@@ -335,25 +382,25 @@ class LocalAgent(Object):
                                     direction_vector = [0] * (self.intersection.get('num_roads'))
                                     vehicle_state.extend(direction_vector)
                                 else: 
-                                    vehicle_state.append(0)
+                                    vehicle_state.append(0.0)
                             
                             # 自動車が存在するかどうかのフラグの状態量を追加
                             vehicle_state.append(0)
 
                             # テンソルに変換してからvehicles_stateに追加
-                            vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state).float()
+                            vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state, dtype=torch.float32)
                     
                     # 車線の状態量に追加
                     lane_state['vehicles'] = dict(sorted(vehicles_state.items()))
 
                     # 評価指標に関する状態量を取得
-                    lane_state['metric'] = torch.tensor([lane.get('num_vehicles')/10], dtype=torch.float32)
+                    lane_state['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
                     
                     # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
                     if lane.link.get('type') == 'main':
-                        lane_state['shape'] = torch.tensor([int(length_info['length'])/100, 1, 0], dtype=torch.float32)
+                        lane_state['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
                     elif lane.link.get('type') == 'right' or lane.link.get('type') == 'left':
-                        lane_state['shape'] = torch.tensor([int(length_info['length'])/100, 0, 1], dtype=torch.float32)
+                        lane_state['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
 
                     # lanes_stateにlane_stateを追加
                     lanes_state[lane_order_id] = lane_state
@@ -363,8 +410,8 @@ class LocalAgent(Object):
 
                 # 評価指標の状態量について
                 metric_state = []
-                metric_state.append(int(road.get('max_queue_length'))/ 100)
-                metric_state.append(int(road.get('average_delay'))/ 100 * self.roads.count())
+                metric_state.append(int(road.get('max_queue_length')))
+                metric_state.append(int(road.get('average_delay')))
 
                 # road_stateに評価指標の状態量を追加
                 road_state['metric'] = torch.tensor(metric_state, dtype=torch.float32)
@@ -535,7 +582,6 @@ class LocalAgent(Object):
                 vehicle_data['position'] = length_info['length'] - vehicle_data['position']
 
                 # near_flgを追加（交差点に近いかどうか）
-                
                 near_flgs = []
                 for index, row in vehicle_data.iterrows():
                     if row['position'] <= 100:
@@ -546,7 +592,6 @@ class LocalAgent(Object):
                 vehicle_data['near_flg'] = near_flgs
 
                 # wait_flgを追加（信号待ちの状況かどうか）
-                
                 wait_flgs = []
                 for index, row in vehicle_data.iterrows():
                     # 交差点に近くない自動車はスコープから外す
@@ -594,6 +639,7 @@ class LocalAgent(Object):
 
         # テンソルに変換
         state = torch.tensor(state, dtype=torch.float32)
+        state = torch.reshape(state, (1, -1))
 
         # 状態量をインスタンス変数に保存
         self.current_state = state
@@ -609,6 +655,7 @@ class LocalAgent(Object):
             action = random.randint(1, 8)
         else:
             with torch.no_grad():
+                self.model.set('requires_grad_flg', False)
                 action_values = self.model([self.current_state])
                 action = torch.argmax(action_values).item() + 1
         
@@ -625,17 +672,26 @@ class LocalAgent(Object):
             return
         
         # queue_lengthが改善した場合は報酬を与える
-        sum_delta_queue_length = 0
+        # 終了条件用に最大キュー長を取得
+        average_queue_length = 0
+        num_queue_counters = 0
         for road in self.roads.getAll():
             links = road.links
             for link in links.getAll():
                 if link.has('queue_counter'):
-                    sum_delta_queue_length += link.queue_counter.get('delta_queue_length')
+                    average_queue_length += link.queue_counter.get('current_queue_length')
+                    num_queue_counters += 1
         
-        if sum_delta_queue_length >= 40:
-            self.done_flg = True
+        average_queue_length /= num_queue_counters
 
-        self.current_reward = 1 if sum_delta_queue_length < 0 else 0
+        # 報酬について（車列の改善度合いを報酬にする）
+        if average_queue_length < 30:
+            self.current_reward = 1
+        elif average_queue_length < 50:
+            self.current_reward = 0
+        else:
+            self.current_reward = -1
+        
         self.reward_record.append(self.current_reward)
         self.total_reward += self.current_reward
         
@@ -714,6 +770,10 @@ class LocalAgent(Object):
         #     self.reward_record.append(reward)
         
     def makeLearningData(self):
+        # 推論の必要がないときはスキップ
+        if self.infer_flg == False:
+            return
+        
         # データが溜まっていない場合はスキップ
         if len(self.state_record) != self.td_steps + 1:
             return
