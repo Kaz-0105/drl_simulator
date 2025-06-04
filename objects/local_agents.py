@@ -80,16 +80,6 @@ class LocalAgents(Container):
     
         return False
     
-    def printTotalReward(self):
-        sum_total_reward = 0
-        for local_agent_id in self.getKeys(container_flg=True, sorted_flg=True):
-            local_agent = self[local_agent_id]
-            total_reward = round(local_agent.get('total_reward'), 2)
-            sum_total_reward += total_reward
-            print(f'Local Agent {local_agent_id} Total Reward: {total_reward}')
-
-        print(f'Average Total Reward: {round(sum_total_reward / self.count(), 2)}')
-    
 class LocalAgent(Object):
     def __init__(self, local_agents, intersection):
         # 継承
@@ -144,11 +134,7 @@ class LocalAgent(Object):
         self.done_flg = False
 
         # トータルのリワードを初期化
-        self.total_reward = 0
-
-        # queue_counterの個数を取得
-        self._makeNumQueueCounters()
-        self.stop_count = 0
+        self.total_rewards = 0
 
         # バッファーに送る学習データを格納するためのリストを初期化
         self.learning_data = []
@@ -237,16 +223,6 @@ class LocalAgent(Object):
         self.infer_flg = True
         return True
 
-    def _makeNumQueueCounters(self):
-        num_queue_counters = 0
-        for road in self.roads.getAll():
-            links = road.links
-            for link in links.getAll():
-                if link.has('queue_counter'):
-                    num_queue_counters += 1
-        
-        self.num_queue_counters = num_queue_counters
-    
     def getState(self):
         # 状態量を取得するタイミングかどうかを確認
         self._shouldInfer()
@@ -563,7 +539,6 @@ class LocalAgent(Object):
 
         # 自動車に関する状態量を取得
         for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            road = self.roads[road_order_id]
             lanes = self.road_lanes_map[road_order_id]
 
             # wait_flgが必要な場合，進路ごとの信号現示を取得
@@ -671,103 +646,25 @@ class LocalAgent(Object):
         if self.infer_flg == False:
             return
         
-        # queue_lengthが改善した場合は報酬を与える
-        # 終了条件用に最大キュー長を取得
-        average_queue_length = 0
-        num_queue_counters = 0
+        # 車列の長さで報酬を計算
+        scores = []
         for road in self.roads.getAll():
-            links = road.links
-            for link in links.getAll():
+            road_length = road.get('length')
+            max_queue_length = 0
+            for link in road.links.getAll():
                 if link.has('queue_counter'):
-                    average_queue_length += link.queue_counter.get('current_queue_length')
-                    num_queue_counters += 1
-        
-        average_queue_length /= num_queue_counters
-
-        # 報酬について（車列の改善度合いを報酬にする）
-        if average_queue_length < 30:
-            self.current_reward = 1
-        elif average_queue_length < 50:
-            self.current_reward = 0
-        else:
-            self.current_reward = -1
-        
-        self.reward_record.append(self.current_reward)
-        self.total_reward += self.current_reward
-        
-        # # 進行可能の自動車台数を取得
-        # total_num_going_vehs = 0
-        # total_num_vehs = 0
-        # for road in self.roads.getAll():
-        #     total_num_going_vehs += road.get('num_going_vehicles')
-        #     total_num_vehs += road.get('num_vehicles')
-        
-        # # -1から1の範囲に正規化
-        # if total_num_vehs == 0:
-        #     score = 1
-        # else:
-        #     score = total_num_going_vehs / total_num_vehs
-
-        # # 報酬を計算
-        # if score < 0.1:
-        #     self.done_flg = True
-        
-        # self.current_reward = score
-
-        # self.reward_record.append(self.current_reward)
-        # self.total_reward += self.current_reward
+                    max_queue_length = max(link.queue_counter.get('current_queue_length'), max_queue_length)
             
-        # # キューにいる自動車台数を取得
-        # road_score_list = []
-        # for lanes in self.road_lanes_map.values():
-        #     lane_score_list = []
-        #     for lane in lanes.getAll():
-        #         num_vehs_in_queue = lane.get('num_vehs_in_queue')
-        #         lane_score = max(-1, - 2 * num_vehs_in_queue / self.num_vehicles + 1)
-        #         lane_score_list.append(lane_score)
+            # 1から-1の範囲に正規化
+            scores.append(round(-2 * (max_queue_length / road_length) + 1, 1))
 
-        #     # 車線のスコアの平均を取得
-        #     road_score = sum(lane_score_list) / len(lane_score_list)
-        #     road_score_list.append(road_score)
+        # 報酬は各道路のスコアの合計（一番悪いスコアは２倍で効くようにする）
+        # -1から1の範囲に正規化
+        self.current_reward = (sum(scores) + min(scores)) / (len(scores) + 1)
         
-        # # 道路のスコアの平均を取得
-        # average_road_score = sum(road_score_list) / len(road_score_list)
-        # worst_road_score = min(road_score_list)
-
-        # # 報酬を計算
-        # if average_road_score < - 0.8:
-        #     self.done_flg = True
-        #     self.current_reward = -10
-        # else:
-        #     self.current_reward = (average_road_score + worst_road_score) / 2
-        
-        # self.reward_record.append(self.current_reward)
-
-
-        # # 残っている空きスペースを計算
-        # empty_length_list = []
-        # road_length_list = []
-        # for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-        #     road = self.roads[road_order_id]
-        #     road_length = road.get('length')
-        #     empty_length_list.append(road_length - road.get('max_queue_length'))
-        #     road_length_list.append(road_length)
-
-        # # 空きスペースの長さの最小値を正規化
-        # reward = min(empty_length_list) / max(road_length_list)
-
-        # # 空きスペースがない場合はそこで終了
-        # if reward <= 0.3:
-        #     # 空きスペースがない場合はそこで終了
-        #     self.done_flg = True
-
-        #     # 報酬をインスタンス変数に保存
-        #     self.current_reward = -50
-        #     self.reward_record.append(self.current_reward)
-        # else:
-        #     # 報酬をインスタンス変数に保存
-        #     self.current_reward = reward
-        #     self.reward_record.append(reward)
+        # 記録する
+        self.reward_record.append(self.current_reward)
+        self.total_rewards += self.current_reward
         
     def makeLearningData(self):
         # 推論の必要がないときはスキップ

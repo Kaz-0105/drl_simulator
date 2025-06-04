@@ -26,9 +26,9 @@ class MasterAgents(Container):
         self.network = network
 
         # 要素オブジェクトを初期化
-        self.makeElements()
+        self._makeElements()
     
-    def makeElements(self):
+    def _makeElements(self):
         # intersectionsオブジェクトを取得
         intersections = self.network.intersections
         self.intersections_map = {}
@@ -64,9 +64,13 @@ class MasterAgents(Container):
         
         self.executor.wait()
     
-    def saveNetworkAndBuffer(self):
+    def updateRewardsRecord(self):
         for master_agent in self.getAll():
-            self.executor.submit(master_agent.saveNetworkAndBuffer)
+            master_agent.updateRewardsRecord()
+    
+    def saveSession(self):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.saveSession)
         
         self.executor.wait()
 
@@ -105,11 +109,18 @@ class MasterAgent(Object):
         # 保存先のパスを定義
         self._makeSavePaths()
         
-        # 前回のシミュレーション終了辞典の更新回数を読み込む
-        self._loadUpdateCount()
+        # 前回のシミュレーション終了時点の更新回数を読み込む
+        self._restoreSession()
 
         # 使用する強化学習の手法で分岐
         self._makeModel()
+
+        # 最適化手法と評価関数を定義
+        self.criterion = nn.MSELoss()
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        
+        # 経験再生用のバッファを初期化
+        self.replay_buffer = ReplayBuffer(self)
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
@@ -147,7 +158,8 @@ class MasterAgent(Object):
         self.model_path = Path('models/q_net' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
         self.target_model_path = Path('models/target_q_net' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
         self.update_count_path = Path('results/update_count' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
-
+        self.rewards_record_path = Path('results/rewards_record' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
+        
     def _makeModel(self):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化（学習用にセット）
@@ -172,13 +184,6 @@ class MasterAgent(Object):
     
             self.target_model.eval()
 
-            # 最適化手法と評価関数を定義
-            self.criterion = nn.MSELoss()
-            self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
-            
-            # 経験再生用のバッファを初期化
-            self.replay_buffer = ReplayBuffer(self)
-
     def _loadModel(self):
         # メインのモデルを読み込む
         if self.model_path.exists():
@@ -190,13 +195,20 @@ class MasterAgent(Object):
         else:
             self.target_model.load_state_dict(torch.load(self.target_model_path))
     
-    def _loadUpdateCount(self):
+    def _restoreSession(self):
         # update_countを初期化
         self.update_count = 0
 
         # 存在する場合は読み込む
         if self.update_count_path.exists():
             self.update_count = np.load(self.update_count_path, allow_pickle=True).item()
+        
+        # エピソードごとの累積報酬のデータを初期化
+        self.rewards_record = []
+
+        # 存在する場合は読み込む
+        if self.rewards_record_path.exists():
+            self.rewards_record = np.load(self.rewards_record_path, allow_pickle=True).tolist()
 
     def saveLearningData(self):
         # ローカルエージェントを走査
@@ -322,25 +334,25 @@ class MasterAgent(Object):
         self.replay_buffer.update(batch_data_indices, priorities)
 
         # 更新情報を表示
-        self.showUpdateInfo(q_values, td_targets, loss)
+        self._showUpdateInfo(q_values, td_targets, loss)
     
-    def showUpdateInfo(self, q_values, td_targets, loss):
-        # 10回ごとに更新情報を表示（それ以外はスキップ）
-        if self.update_count % 10 != 0:
-            return 
-        
+    def _showUpdateInfo(self, q_values, td_targets, loss):
         # 現在の更新回数を表示
         print(f'Update count: {self.update_count}')
-
-        # 勾配消失・爆発の確認
-        for name, param in self.model.named_parameters():
-            if param.grad is not None:
-                print(f"{name}: grad_norm = {param.grad.norm().item():.3f}")
 
         # Q値が発散していないか確認
         print(f"Q-values: min = {q_values.min().item():.3f}, max = {q_values.max().item():.3f}")
         print(f"TD-targets: min = {td_targets.min().item():.3f}, max = {td_targets.max().item():.3f}")
         print(f"Loss: {loss.item():.3f}")
+
+        # 10回ごとに更新情報を表示（それ以外はスキップ）
+        if self.update_count % 10 != 0:
+            return 
+
+        # 勾配消失・爆発の確認
+        for name, param in self.model.named_parameters():
+            if param.grad is not None:
+                print(f"{name}: {param.grad.norm().item():.5f}")
             
     def updateLocalAgents(self):
         drl_info = self.config.get('drl_info')
@@ -353,7 +365,7 @@ class MasterAgent(Object):
             for local_agent in self.local_agents.getAll():
                 local_agent.model.load_state_dict(self.model.state_dict())
     
-    def saveNetworkAndBuffer(self):
+    def saveSession(self):
         # モデルを保存
         torch.save(self.model.state_dict(), self.model_path)
         torch.save(self.target_model.state_dict(), self.target_model_path)
@@ -363,6 +375,20 @@ class MasterAgent(Object):
 
         # update_countを保存
         np.save(self.update_count_path, np.array(self.update_count, dtype=np.int64))
+
+        # エピソードごとの累積報酬を保存
+        np.save(self.rewards_record_path, np.array(self.rewards_record, dtype=object))
+
+    def updateRewardsRecord(self):
+        rewards_list = []
+        for local_agent in self.local_agents.getAll():
+            total_rewards = local_agent.get('total_rewards')
+            rewards_list.append(local_agent.get('total_rewards'))
+            print(f"Local agent {self.id}-{local_agent.get('id')} total rewards: {total_rewards}")
+        
+        average_rewards = round(sum(rewards_list) / len(rewards_list), 2)
+        self.rewards_record.append(average_rewards)
+        print(f"Master agent {self.id} average rewards: {average_rewards}")
 
 
 

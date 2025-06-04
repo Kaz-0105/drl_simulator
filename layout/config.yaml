@@ -1,12 +1,15 @@
 simulator :
-  network_name: 'twenty_intersections'
-  control_method: 'drl'
-  simulation_time: 200
-  random_seed: 1
-  time_step: 2 # シミュレーションの更新の時間幅（秒）
-  red_steps: 1  # 全赤の時間（time_stepの長さに合わせ調整すること）
+  network_name: 'twenty_intersections' # シミュレーションに使うネットワーク名（ディレクトリ名）
+  control_method: 'drl'   # 制御手法の指定
+  simulation_time: 200    # シミュレーションを行う時間（秒）
+  seed:
+    is_random: true       # シード値をランダムにするかどうか
+    value: 1              # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
+  time_step: 2            # シミュレーションの更新の時間幅（秒）
+  red_steps: 1            # 全赤の時間（time_stepの長さに合わせ調整すること）
   min_successive_steps: 5 # 最小の青時間連続時間（ステップ数）
-  max_workers: 20
+  max_workers: 20         # 並列実行するワーカー数
+  debug_flg: false        # デバッグモードのフラグ
   
 
 drl:

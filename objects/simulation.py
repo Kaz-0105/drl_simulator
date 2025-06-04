@@ -13,33 +13,43 @@ class Simulation(Common):
         # comオブジェクトを取得
         self.com = self.vissim.com.Simulation
 
-        # 現在時刻と終了時刻を取得
+        # 現在時刻を取得
         self.current_time = self.com.AttValue('SimSec')
+
+        # 各種設定情報を取得
         simulation_info = self.config.get('simulator_info')
         self.end_time = simulation_info['simulation_time']
-
-        # シード値を取得
-        self.random_seed = simulation_info['random_seed']
-
-        # タイムステップを取得
         self.time_step = simulation_info['time_step']
+        self.control_method = simulation_info['control_method']
+        self.debug_flg = simulation_info['debug_flg']
+
+        # シード値を設定
+        self._makeRandomSeed(simulation_info)
 
         # vissimに反映
-        self.setParametersToVissim()
+        self._setParametersToVissim()
 
-    def setParametersToVissim(self):
-        # self.com.SetAttValue('RandSeed', self.random_seed)
-        self.com.SetAttValue('RandSeed', random.randint(1, 100))
-        self.com.SetAttValue('SimPeriod', self.end_time + 1) # Vissimの仕様上、終了時刻に達するとネットワークの情報が消えるので１秒長くして消えないようにする
+    def _makeRandomSeed(self, simulation_info):
+        seed_info = simulation_info['seed']
+
+        if seed_info['is_random']:
+            self.random_seed = random.randint(1, 100)
+        else:
+            self.random_seed = seed_info['value']
+        
+    def _setParametersToVissim(self):
+        # Vissimにパラメータを設定
+        self.com.SetAttValue('RandSeed', self.random_seed)
+        self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
     def run(self):
-        simulation_info = self.config.get('simulator_info')
-        if simulation_info['control_method'] == 'drl':
-            # デバック用
-            # self.runForDebug()
+        if self.control_method == 'drl':
+            # デバックフラグが立っているとき30秒進める
+            if self.debug_flg:
+                self._runForDebug()
 
             # 信号機の操作権限をこちら側に移す
-            self.getSignalControlAuth()
+            self._getSignalControlAuth()
 
             # 最初のネットワークの更新
             self.network.updateData()
@@ -52,7 +62,7 @@ class Simulation(Common):
                 self.network.local_agents.getAction()
 
                 # Vissimを1ステップ進める
-                self.runSingleStep()
+                self._runSingleStep()
 
                 # ネットワークの更新
                 self.network.updateData()
@@ -78,14 +88,14 @@ class Simulation(Common):
                 # 終了フラグが立っていた場合終了
                 if self.network.local_agents.done_flg:
                     break
-            
-            # マスターエージェントのネットワークとバッファーを保存
-            self.network.master_agents.saveNetworkAndBuffer()
 
-            # トータルの報酬を出力
-            self.network.local_agents.printTotalReward()
+            # トータルの報酬を更新
+            self.network.master_agents.updateRewardsRecord()
 
-    def runSingleStep(self):
+            # 次回のエピソードに引き継ぐ情報を保存
+            self.network.master_agents.saveSession()
+
+    def _runSingleStep(self):
         # 信号現示を更新する
         self.network.signal_controllers.setNextPhaseToVissim()
 
@@ -96,7 +106,7 @@ class Simulation(Common):
         # 現在時刻を更新
         self.current_time += self.time_step
 
-    def runForDebug(self):
+    def _runForDebug(self):
         # 30秒進める
         self.com.SetAttValue('SimBreakAt', self.current_time + 30)
         self.com.RunContinuous()
@@ -104,7 +114,7 @@ class Simulation(Common):
         # 現在時刻を更新
         self.current_time += 30
     
-    def getSignalControlAuth(self):
+    def _getSignalControlAuth(self):
         # 1秒進める
         self.com.SetAttValue('SimBreakAt', self.current_time + 1)
         self.com.RunContinuous()
