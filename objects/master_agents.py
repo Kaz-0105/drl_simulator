@@ -388,7 +388,7 @@ class MasterAgent(Object):
         
         average_rewards = round(sum(rewards_list) / len(rewards_list), 2)
         self.rewards_record.append(average_rewards)
-        print(f"Master agent {self.id} average rewards: {average_rewards}")
+        print(f"Master agent {self.id} average rewards: {average_rewards:.2f}")
 
 
 
