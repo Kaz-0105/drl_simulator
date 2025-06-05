@@ -106,6 +106,13 @@ class QueueCounter(Object):
             self.queue_lengths = new_queue_length
         else:
             self.queue_lengths = pd.concat([self.queue_lengths, new_queue_length], ignore_index = True)
+    
+    @property
+    def delta_queue_length(self):
+        if len(self.queue_lengths) < 2:
+            return self.current_queue_length
+        
+        return self.queue_lengths.iloc[-1]['queue_length'] - self.queue_lengths.iloc[-2]['queue_length']
 
         
         

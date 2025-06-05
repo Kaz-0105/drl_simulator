@@ -3,3 +3,5 @@ venv/
 *.err
 **/__pycache__/
 **/network.results/
+buffers/*.npz
+

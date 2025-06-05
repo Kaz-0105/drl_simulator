@@ -21,21 +21,29 @@ class ReplayBuffer (Common):
         apex_info = self.config.get('apex_info')
         self.max_size = apex_info['buffer']['size']
         self.batch_size = apex_info['buffer']['batch_size']
+        self.alpha = apex_info['buffer']['alpha']
 
         # データのコンテナを初期化
         self.sum_tree = SumTree(self.max_size)
 
-        self.loadBuffer()
+        self._makeBufferPath()
+        self._loadBuffer()
     
-    def loadBuffer(self):
-        # バッファーのファイルパスを取得
+    def _makeBufferPath(self):
+        # 車線数の文字列を作成
         num_lanes_str = ''
         num_lanes_map = self.master_agent.get('num_lanes_map')
         for num_lanes in num_lanes_map.values():
             num_lanes_str += str(num_lanes)
-        num_vehs_str = str(self.master_agent.get('num_vehicles'))
-        self.buffer_path = Path('buffers/apex_buffer_' + num_lanes_str + '_' + num_vehs_str + '.pkl')
 
+        # 車両数の文字列を作成
+        num_vehs_str = str(self.master_agent.get('num_vehicles'))
+
+        # ネットワークの文字列を作成
+        network_str = str(self.master_agent.get('network_id'))
+        self.buffer_path = Path('buffers/buffer' + network_str + '_' + num_lanes_str + '_' + num_vehs_str + '.npz')
+
+    def _loadBuffer(self):
         # バッファーのファイルが存在する場合は読み込む
         if self.buffer_path.exists():
             self.sum_tree.load(self.buffer_path)

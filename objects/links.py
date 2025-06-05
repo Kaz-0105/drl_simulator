@@ -151,8 +151,6 @@ class Link(Object):
     def queue_length(self):
         return self.queue_counter.get('current_queue_length')
     
-    
-    
     def updateData(self):
         # 車両データを取得
         self.getVehicleDataFromVissim()
@@ -173,7 +171,7 @@ class Link(Object):
     def makeFormattedVehicleData(self):
         # 車両が存在しない場合は空のDataFrameを返す
         if len(self.vehicle_data['id']) == 0:
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id']
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg']
             self.vehicle_data = DataFrame(columns = column_names)
             return
         
@@ -194,7 +192,8 @@ class Link(Object):
         self.vehicle_data['in_queue'] = [bool(in_queue) for in_queue in self.vehicle_data['in_queue']]
 
         # laneをint型に変換
-        self.vehicle_data['lane_id'] = [int(lane.replace(str(self.id) + '-', '')) for lane in self.vehicle_data['lane_id']]
+        lane_ids = [int(lane.replace(str(self.id) + '-', '')) for lane in self.vehicle_data['lane_id']]
+        self.vehicle_data['lane_id'] = lane_ids
         
         # vehicle_routeを方向に変換
         vehicle_routing_decisions = self.links.network.vehicle_routing_decisions
@@ -211,6 +210,9 @@ class Link(Object):
         self.vehicle_data.pop('vehicle_route')
             
         self.vehicle_data = DataFrame(self.vehicle_data)
+        self.vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+        self.vehicle_data.reset_index(drop=True, inplace=True)
+        
         return
 
     @property
@@ -278,13 +280,18 @@ class Lane(Object):
     def num_vehicles(self):
         return self.vehicle_data.shape[0]
 
+    @property
+    def num_vehs_in_queue(self):
+        in_queue_vehicle_data = self.vehicle_data[self.vehicle_data['in_queue']]
+        return in_queue_vehicle_data.shape[0]
+
     def updateData(self):
         # 車両データを取得
         vehicle_data = self.lanes.link.get('vehicle_data')
 
         if vehicle_data.shape[0] == 0:
             # 車両データが存在しない場合は空のDataFrameを返す
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id']
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg']
             self.vehicle_data = DataFrame(columns = column_names)
             return
 

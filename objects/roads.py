@@ -162,6 +162,27 @@ class Road(Object):
             else:
                 self.vehicle_data = pd.concat([self.vehicle_data, vehicle_data], ignore_index=True)
 
+        # 1台も車両がいないときNoneになるので、DataFrameを初期化
+        if self.vehicle_data is None:
+            self.vehicle_data = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg'])
+    
+    @property
+    def num_vehicles(self):
+        return self.vehicle_data.shape[0]
+
+    @property
+    def num_going_vehicles(self):
+        return self.vehicle_data[self.vehicle_data['go_flg']].shape[0]
+
+    @property
+    def direction_signal_value_map(self):
+        direction_signal_value_map = {}
+        for direction_id, signal_group_id in self.direction_signal_group_map.items():
+            signal_group = self.signal_groups[signal_group_id]
+            direction_signal_value_map[direction_id] = signal_group.get('current_value')
+        
+        return direction_signal_value_map
+
         
     
     
