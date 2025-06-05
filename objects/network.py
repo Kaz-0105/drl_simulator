@@ -1,4 +1,4 @@
-from libs.object import Object
+from libs.common import Common
 from objects.roads import Roads
 from objects.intersections import Intersections
 from objects.links import Links
@@ -12,8 +12,9 @@ from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints, DataCollectionMeasurements
 from objects.master_agents import MasterAgents
 from objects.local_agents import LocalAgents
+from objects.mpc_controllers import MpcControllers
 
-class Network(Object):
+class Network(Common):
     def __init__(self, vissim):
         # 継承
         super().__init__()
@@ -27,6 +28,10 @@ class Network(Object):
 
         # 対応するComオブジェクトを取得
         self.com = self.vissim.com.Net
+
+        # 制御手法を取得
+        simulator_info = self.config.get('simulator_info')
+        self.control_method = simulator_info['control_method']
 
         # 下位の紐づくオブジェクトを初期化
         self.roads = Roads(self)
@@ -43,10 +48,11 @@ class Network(Object):
         self.data_collection_measurements = DataCollectionMeasurements(self)
 
         # agentオブジェクトの初期化
-        simulator_info = self.config.get('simulator_info')
-        if simulator_info['control_method'] == 'drl':
+        if self.control_method == 'drl':
             self.master_agents = MasterAgents(self)
             self.local_agents = LocalAgents(self)
+        elif self.control_method == 'mpc':
+            self.mpc_controllers = MpcControllers(self)
 
         # simulationオブジェクトと紐づける
         self.simulation = self.vissim.simulation
