@@ -114,6 +114,9 @@ class SignalController(Object):
             if drl_info['method'] == 'apex':
                 apex_info = self.config.get('apex_info')
                 self.future_phase_ids = deque(maxlen=apex_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
+        elif simulator_info['control_method'] == 'mpc':
+            mpc_info = self.config.get('mpc_info')
+            self.future_phase_ids = deque(maxlen=mpc_info['used_steps'] * 2) 
         
     def setNextPhase(self, phase_ids):
         # フェーズをセット

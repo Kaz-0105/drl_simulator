@@ -37,6 +37,9 @@ class Config(Common):
             # Ape-Xに関する情報について
             self.apex_info = data['apex']
 
+            # MPCに関する情報について
+            self.mpc_info = data['mpc']
+
             # 記録する情報について
             self.records_info = data['records']
 

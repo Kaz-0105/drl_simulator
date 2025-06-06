@@ -133,6 +133,9 @@ class Link(Object):
             self.type = 'link'
         else:
             self.type = 'connector'
+            self.to_lane_id = self.com.ToLane.AttValue('Index')
+            self.to_lane_id = self.com.ToLane.AttValue('Index')
+
         
         # 紐づくリンクを格納するコンテナを初期化
         self.from_links = Links(self, {'type': 'from'})
@@ -167,11 +170,12 @@ class Link(Object):
         self.vehicle_data['speed'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Speed')]
         self.vehicle_data['lane_id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Lane')]
         self.vehicle_data['vehicle_route'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('VehRoutSta')]
+        self.vehicle_data['next_link_id'] = [int(tmp_data[1]) if tmp_data[1] != None else None for tmp_data in self.com.Vehs.GetMultiAttValues('NextLink')]
     
     def makeFormattedVehicleData(self):
         # 車両が存在しない場合は空のDataFrameを返す
         if len(self.vehicle_data['id']) == 0:
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg']
+            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'next_link_id', 'road_id', 'direction_id', 'go_flg']
             self.vehicle_data = DataFrame(columns = column_names)
             return
         
@@ -214,10 +218,33 @@ class Link(Object):
         self.vehicle_data.reset_index(drop=True, inplace=True)
         
         return
+    
+    @property
+    def to_lane(self):
+        if self.type == 'connector':
+            to_link = self.to_links.getAll()[0]
+            to_lane = to_link.lanes[self.to_lane_id]
+            return to_lane
+        else:
+            return None
 
     @property
     def length(self):
         return self.length_info['length']
+    
+    @property
+    def to_pos(self):
+        if self.type == 'connector':
+            return self.length_info['to_pos']
+        else:
+            return None
+        
+    @property
+    def from_pos(self):
+        if self.type == 'connector':
+            return self.length_info['from_pos']
+        else:
+            return None
 
 class Lanes(Container):
     def __init__(self, upper_object):

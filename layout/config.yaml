@@ -9,7 +9,7 @@ simulator :
   red_steps: 1             # 全赤の時間（time_stepの長さに合わせ調整すること）
   min_successive_steps: 5  # 最小の青時間連続時間（ステップ数）
   max_workers: 20          # 並列実行するワーカー数
-  debug_flg: false         # デバッグモードのフラグ
+  debug_flg: true          # デバッグモードのフラグ
   
 drl:
   method: 'apex'
@@ -46,6 +46,13 @@ apex:
   gamma: 0.5             # 割引率
   learning_rate: 0.004   # 学習率
   epsilon: 0.5           # 探索率（ε-greedy法）
+
+mpc:
+  horizon: 5              # 予測ホライズンの長さ（ステップ数）
+  used_steps: 2           # 採用するホライゾンの長さ（ステップ数）(horizonの半分以下)
+  calc_start_steps: 2     # 計算を開始するときの決まってる将来のステップ数（used_steps以下）
+  min_successive_steps: 5 # 最小の青時間連続時間（ステップ数）
+  num_max_changes: 1      # 1回の予測での最大変化数
 
 records:
   metric:
