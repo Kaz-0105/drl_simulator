@@ -69,7 +69,7 @@ class MpcController(Object):
         self._makeRoadLengthInfoMap()
 
         # 車線の組み合わせを取得
-        self._makeLaneCombinationsMap()
+        self._makeRoadCombinationsMap()
 
         # 道路パラメータを取得
         self._initRoadParameters()
@@ -124,9 +124,9 @@ class MpcController(Object):
             for combination_order_id, combinations in combinations_map.items():
                 # 道路パラメータを初期化
                 if len(combinations) == 1:
-                    road_params = {'p_s': {}}                
+                    params = {'p_s': {}}                
                 else:
-                    road_params = {'p_s': {}, 'D_b': {}}
+                    params = {'p_s': {}, 'D_b': {}}
 
                 # 信号機の位置p_sを取得
                 for lane in combinations:
@@ -137,28 +137,32 @@ class MpcController(Object):
                     link_type = link.get('type')
 
                     if link_type == 'main':
-                        road_params['p_s'][link_id] = length_info[link_id]['length']
+                        params['p_s'][link_id] = length_info[link_id]['length']
                     
                     else:
-                        road_params['p_s'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
+                        params['p_s'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
 
                 # 法定速度v_maxを取得
-                road_params['v_max'] = max_speed * 1000 / 3600
+                params['v_max'] = max_speed * 1000 / 3600
 
                 # 信号の影響圏内に入る距離を定義
-                road_params['D_s'] = max_speed
+                params['D_s'] = max_speed
 
                 # 停止線から信号までの距離を定義
-                road_params['d_s'] = 0
+                params['d_s'] = 0
 
                 # 先行車の影響圏に入る距離を定義
-                road_params['D_f'] = max_speed if max_speed > 60 else max_speed - 15
+                params['D_f'] = max_speed if max_speed > 60 else max_speed - 15
 
                 # 先行車と最接近したときの距離
-                road_params['d_f'] = 5
+                params['d_f'] = 5
+
+                # モデルで使う定数を定義k_s, k_f
+                params['k_s'] = 1 / (params['D_s'] - params['d_s'])
+                params['k_f'] = 1 / (params['D_f'] - params['d_f'])
 
                 # 目的関数で見る信号機付近の範囲
-                road_params['D_t'] = 50
+                params['D_t'] = 50
 
                 # 車線分岐点から信号までの距離を取得
                 if len(combinations) != 1:
@@ -170,18 +174,18 @@ class MpcController(Object):
                         link_type = link.get('type')
 
                         if link_type == 'main':
-                            road_params['D_b'][link_id] = road_params['D_b'][link_id] + length_info[link_id]['length'] if link_id in road_params['D_b'] else length_info[link_id]['length']
+                            params['D_b'][link_id] = params['D_b'][link_id] + length_info[link_id]['length'] if link_id in params['D_b'] else length_info[link_id]['length']
                         
                         else:
                             from_connector = link.from_links.getAll()[0]
                             from_connector_id = from_connector.get('id')
-                            road_params['D_b'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length'] - length_info[from_connector_id]['start_pos']
+                            params['D_b'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length'] - length_info[from_connector_id]['start_pos']
 
                             from_link = from_connector.from_links.getAll()[0]
                             from_link_id = from_link.get('id')
-                            road_params['D_b'][from_link_id] = road_params['D_b'][from_link_id] - length_info[from_connector_id]['start_pos'] if from_link_id in road_params['D_b'] else - length_info[from_connector_id]['start_pos']
+                            params['D_b'][from_link_id] = params['D_b'][from_link_id] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
-                combination_params_map[combination_order_id] = road_params
+                combination_params_map[combination_order_id] = params
 
             road_combination_params_map[road_order_id] = combination_params_map
         
@@ -217,12 +221,12 @@ class MpcController(Object):
 
 
 
-    def _makeLaneCombinationsMap(self):
+    def _makeRoadCombinationsMap(self):
         road_combinations_map = {}
 
         for road_order_id in range(1, self.num_roads + 1):
             road = self.roads[road_order_id]
-            lane_combinations_map = {}
+            combinations_map = {}
 
             left_right_flgs = [False] * 2
             for link in road.links.getAll():
@@ -234,13 +238,13 @@ class MpcController(Object):
                     continue
 
                 # 車線の組み合わせを初期化
-                lane_combinations = []
+                combinations = []
 
                 # 右左折リンクの車線情報を追加
                 link_id = link.get('id')
                 for lane in link.lanes.getAll():
                     lane_id = lane.get('id')
-                    lane_combinations.append(str(link_id) + '-' + str(lane_id))
+                    combinations.append(str(link_id) + '-' + str(lane_id))
                 
                 # メインリンクの車線情報を追加
                 main_link = road.getMainLink()
@@ -254,8 +258,8 @@ class MpcController(Object):
                     left_right_flgs[1] = True
                 lane_id = lane.get('id')
 
-                lane_combinations.append(str(link_id) + '-' + str(lane_id))
-                lane_combinations_map[len(lane_combinations_map) + 1] = lane_combinations
+                combinations.append(str(link_id) + '-' + str(lane_id))
+                combinations_map[len(combinations_map) + 1] = combinations
             
             # メインリンクについて
             main_link = road.getMainLink()
@@ -265,10 +269,10 @@ class MpcController(Object):
             to_lane_id = (main_link.lanes.count() - 1) if left_right_flgs[1] else main_link.lanes.count()
 
             for lane_id in range(from_lane_id, to_lane_id + 1):
-                lane_combinations = [str(main_link_id) + '-' + str(lane_id)]
-                lane_combinations_map[len(lane_combinations_map) + 1] = lane_combinations
+                combinations = [str(main_link_id) + '-' + str(lane_id)]
+                combinations_map[len(combinations_map) + 1] = combinations
             
-            road_combinations_map[road_order_id] = lane_combinations_map
+            road_combinations_map[road_order_id] = combinations_map
         
         self.road_combinations_map = road_combinations_map
 
@@ -368,12 +372,12 @@ class MpcController(Object):
                 vehicle_data['wait_link_id'] = wait_link_ids
                 vehicle_data['wait_lane_id'] = wait_lane_ids
             
-            # lane_combinationsごとに分割していく
+            # combinationsごとに分割していく
             vehicle_data_map = {}
-            for lane_combination_order_id, lane_combinations in self.road_combinations_map[road_order_id].items():
+            for combination_order_id, combinations in self.road_combinations_map[road_order_id].items():
                 # 車両データを取得
                 related_vehicle_data = None
-                for lane in lane_combinations:
+                for lane in combinations:
                     wait_link_id, wait_lane_id = lane.split('-')
                     tmp_vehicle_data = vehicle_data[(vehicle_data['wait_link_id'] == int(wait_link_id)) & (vehicle_data['wait_lane_id'] == int(wait_lane_id))].copy()
                     if related_vehicle_data is None: 
@@ -384,7 +388,7 @@ class MpcController(Object):
                 # いらない列を削除
                 if related_vehicle_data.shape[0] != 0:
                     related_vehicle_data = related_vehicle_data.drop(columns=['next_link_id']).copy()
-                vehicle_data_map[lane_combination_order_id] = related_vehicle_data
+                vehicle_data_map[combination_order_id] = related_vehicle_data
             
             road_vehicle_data_map[road_order_id] = vehicle_data_map
         
@@ -416,12 +420,11 @@ class MpcController(Object):
                 if num_vehicles == 0:
                     continue
                 
-                if A_matrix is None:
-                    A_matrix = np.eye((num_vehicles))
-                else:
-                    A_matrix = la.block_diag(A_matrix, np.eye(num_vehicles))
+                tmp_A = np.eye((num_vehicles))
+                A_matrix = tmp_A if A_matrix is None else la.block_diag(A_matrix, tmp_A)
         
         self.traffic_flow_model['A'] = A_matrix
+        return
     
     def _updateB1(self):
         B1_matrix = None
@@ -433,15 +436,47 @@ class MpcController(Object):
                 if num_vehicles == 0:
                     continue
 
-                if B1_matrix is None:
-                    B1_matrix = np.zeros((num_vehicles, self.num_signals))
-                else:
-                    B1_matrix = np.block([[B1_matrix], [np.zeros((num_vehicles, self.num_signals))]])
+                tmp_B1 = np.zeros((num_vehicles, self.num_signals))
+                B1_matrix = tmp_B1 if B1_matrix is None else np.block([[B1_matrix], [tmp_B1]])
         
         self.traffic_flow_model['B1'] = B1_matrix    
+        return
 
     def _updateB2(self):
-        pass
+        B2_matrix = None
+        for road_order_id in range(1, self.num_roads + 1):
+            # 自動車データを取得
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            dt = self.time_step
+
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
+                
+                v = params['v_max']
+                k_s = params['k_s']
+                k_f = params['k_f']
+                
+                first_end_flg = {}
+                for lane_str in combinations:
+                    first_end_flg[lane_str] = False
+
+                for idx, vehicle in vehicle_data.iterrows():
+                    lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                    if idx == 0:
+                        b2 = np.array([-k_s]) * v * dt
+                        first_end_flg[lane_str] = True
+                    elif not first_end_flg[lane_str]:
+                        b2 = np.array([-k_s, k_f, -k_f]) * v * dt
+                        first_end_flg[lane_str] = True
+                    else:
+                        b2 = np.array([-k_s, k_f, -k_f, k_f, -k_f]) * v * dt
+
+                    B2_matrix = b2 if B2_matrix is None else la.block_diag(B2_matrix, b2)
+
+        self.traffic_flow_model['B2'] = B2_matrix
+        return
 
     def _updateB3(self):
         pass
