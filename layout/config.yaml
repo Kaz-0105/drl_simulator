@@ -53,6 +53,13 @@ mpc:
   calc_start_steps: 2     # 計算を開始するときの決まってる将来のステップ数（used_steps以下）
   min_successive_steps: 5 # 最小の青時間連続時間（ステップ数）
   num_max_changes: 1      # 1回の予測での最大変化数
+  phases:
+    - num_roads: 3
+      type: '4-phase'          # 4-phaseのみ
+    - num_roads: 4
+      type: '17-phase'         # 4-phase, 8-phase, 17-phaseから選択
+    - num_roads: 5
+      type: '10-phase'         # 10-phaseのみ
 
 records:
   metric:

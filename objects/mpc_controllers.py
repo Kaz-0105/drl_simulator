@@ -54,9 +54,13 @@ class MpcController(Object):
 
         # signal_controllerオブジェクトを取得
         self.signal_controller = self.intersection.signal_controller
+        self.num_signals = self.signal_controller.signal_groups.count()
 
         # IDを設定
         self.id = intersection.get('id')
+
+        # フェーズの一覧を取得
+        self._makePhases()
 
         # 各種パラメータについて
         self._initParameters()
@@ -66,7 +70,24 @@ class MpcController(Object):
 
         # 車線の組み合わせを取得
         self._makeLaneCombinationsMap()
+
+    def _makePhases(self):
+        # フェーズ情報を取得
+        mpc_info = self.config.get('mpc_info')
+        for phase_info in mpc_info['phases']:
+            if phase_info['num_roads'] == self.num_roads:
+                break
+
+        self.num_phases = int(phase_info['type'].split('-')[0])
     
+        phases = self.signal_controller.get('phases')
+        self.phases = {}
+        for phase_order_id, phase_list in phases.items():
+            if phase_order_id > self.num_phases:
+                break
+
+            self.phases[phase_order_id] = phase_list
+
     def _initParameters(self):
         simulator_info = self.config.get('simulator_info')
         self.time_step = simulator_info['time_step']
@@ -320,7 +341,16 @@ class MpcController(Object):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
             for combination_order_id, vehicle_data in vehicle_data_map.items():
-                print('test')
+                num_vehicles = vehicle_data.shape[0]
+                if num_vehicles == 0:
+                    continue
+
+                if B1_matrix is None:
+                    B1_matrix = np.zeros((num_vehicles, self.num_signals))
+                else:
+                    B1_matrix = np.block([[B1_matrix], [np.zeros((num_vehicles, self.num_signals))]])
+        
+        self.traffic_flow_model['B1'] = B1_matrix
                 
 
     def _updateB2(self):
