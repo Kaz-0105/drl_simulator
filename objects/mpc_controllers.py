@@ -62,14 +62,17 @@ class MpcController(Object):
         # フェーズの一覧を取得
         self._makePhases()
 
-        # 各種パラメータについて
-        self._initParameters()
+        # MPCパラメータを取得
+        self._initMPCParameters()
 
         # 長さ情報を計算
         self._makeRoadLengthInfoMap()
 
         # 車線の組み合わせを取得
         self._makeLaneCombinationsMap()
+
+        # 道路パラメータを取得
+        self._initRoadParameters()
 
     def _makePhases(self):
         # フェーズ情報を取得
@@ -88,10 +91,11 @@ class MpcController(Object):
 
             self.phases[phase_order_id] = phase_list
 
-    def _initParameters(self):
+    def _initMPCParameters(self):
         simulator_info = self.config.get('simulator_info')
         self.time_step = simulator_info['time_step']
 
+        # MPCのパラメータを取得
         mpc_info = self.config.get('mpc_info')
         self.horizon = mpc_info['horizon']
         self.used_steps = mpc_info['used_steps']
@@ -99,6 +103,90 @@ class MpcController(Object):
         self.min_successive_steps = mpc_info['min_successive_steps']
         self.num_max_changes = mpc_info['num_max_changes']
 
+    def _initRoadParameters(self):
+        road_combination_params_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            # roadオブジェクトを取得
+            road = self.roads[road_order_id]
+
+            # combinations_mapを取得
+            combinations_map = self.road_combinations_map[road_order_id]
+            
+            # 対応する長さ情報を取得
+            length_info = self.road_length_info_map[road_order_id]
+
+            # 法定速度を取得
+            max_speed = road.get('max_speed')
+
+            combination_params_map = {}
+
+            # 組み合わせごとに操作
+            for combination_order_id, combinations in combinations_map.items():
+                # 道路パラメータを初期化
+                if len(combinations) == 1:
+                    road_params = {'p_s': {}}                
+                else:
+                    road_params = {'p_s': {}, 'D_b': {}}
+
+                # 信号機の位置p_sを取得
+                for lane in combinations:
+                    lane_info = lane.split('-')
+                    link_id = int(lane_info[0])
+
+                    link = road.links[link_id]
+                    link_type = link.get('type')
+
+                    if link_type == 'main':
+                        road_params['p_s'][link_id] = length_info[link_id]['length']
+                    
+                    else:
+                        road_params['p_s'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
+
+                # 法定速度v_maxを取得
+                road_params['v_max'] = max_speed * 1000 / 3600
+
+                # 信号の影響圏内に入る距離を定義
+                road_params['D_s'] = max_speed
+
+                # 停止線から信号までの距離を定義
+                road_params['d_s'] = 0
+
+                # 先行車の影響圏に入る距離を定義
+                road_params['D_f'] = max_speed if max_speed > 60 else max_speed - 15
+
+                # 先行車と最接近したときの距離
+                road_params['d_f'] = 5
+
+                # 目的関数で見る信号機付近の範囲
+                road_params['D_t'] = 50
+
+                # 車線分岐点から信号までの距離を取得
+                if len(combinations) != 1:
+                    for lane in combinations:
+                        lane_info = lane.split('-')
+                        link_id = int(lane_info[0])
+
+                        link = road.links[link_id]
+                        link_type = link.get('type')
+
+                        if link_type == 'main':
+                            road_params['D_b'][link_id] = road_params['D_b'][link_id] + length_info[link_id]['length'] if link_id in road_params['D_b'] else length_info[link_id]['length']
+                        
+                        else:
+                            from_connector = link.from_links.getAll()[0]
+                            from_connector_id = from_connector.get('id')
+                            road_params['D_b'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length'] - length_info[from_connector_id]['start_pos']
+
+                            from_link = from_connector.from_links.getAll()[0]
+                            from_link_id = from_link.get('id')
+                            road_params['D_b'][from_link_id] = road_params['D_b'][from_link_id] - length_info[from_connector_id]['start_pos'] if from_link_id in road_params['D_b'] else - length_info[from_connector_id]['start_pos']
+
+                combination_params_map[combination_order_id] = road_params
+
+            road_combination_params_map[road_order_id] = combination_params_map
+        
+        self.road_combination_params_map = road_combination_params_map
+            
     def _makeRoadLengthInfoMap(self):
         road_length_info_map = {}
         for road_order_id in range(1, self.num_roads + 1):
@@ -130,7 +218,7 @@ class MpcController(Object):
 
 
     def _makeLaneCombinationsMap(self):
-        road_lane_combinations_map = {}
+        road_combinations_map = {}
 
         for road_order_id in range(1, self.num_roads + 1):
             road = self.roads[road_order_id]
@@ -180,9 +268,9 @@ class MpcController(Object):
                 lane_combinations = [str(main_link_id) + '-' + str(lane_id)]
                 lane_combinations_map[len(lane_combinations_map) + 1] = lane_combinations
             
-            road_lane_combinations_map[road_order_id] = lane_combinations_map
+            road_combinations_map[road_order_id] = lane_combinations_map
         
-        self.road_lane_combinations_map = road_lane_combinations_map
+        self.road_combinations_map = road_combinations_map
 
     def optimize(self):
         # 残りのステップ数がfixed_stepsと等しくなるまではスキップ
@@ -282,7 +370,7 @@ class MpcController(Object):
             
             # lane_combinationsごとに分割していく
             vehicle_data_map = {}
-            for lane_combination_order_id, lane_combinations in self.road_lane_combinations_map[road_order_id].items():
+            for lane_combination_order_id, lane_combinations in self.road_combinations_map[road_order_id].items():
                 # 車両データを取得
                 related_vehicle_data = None
                 for lane in lane_combinations:
@@ -350,8 +438,7 @@ class MpcController(Object):
                 else:
                     B1_matrix = np.block([[B1_matrix], [np.zeros((num_vehicles, self.num_signals))]])
         
-        self.traffic_flow_model['B1'] = B1_matrix
-                
+        self.traffic_flow_model['B1'] = B1_matrix    
 
     def _updateB2(self):
         pass
