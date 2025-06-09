@@ -129,18 +129,18 @@ class MpcController(Object):
                     params = {'p_s': {}, 'D_b': {}}
 
                 # 信号機の位置p_sを取得
-                for lane in combinations:
-                    lane_info = lane.split('-')
+                for lane_str in combinations:
+                    lane_info = lane_str.split('-')
                     link_id = int(lane_info[0])
 
                     link = road.links[link_id]
                     link_type = link.get('type')
 
                     if link_type == 'main':
-                        params['p_s'][link_id] = length_info[link_id]['length']
+                        params['p_s'][lane_str] = length_info[link_id]['length']
                     
                     else:
-                        params['p_s'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
+                        params['p_s'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
 
                 # 法定速度v_maxを取得
                 params['v_max'] = max_speed * 1000 / 3600
@@ -166,24 +166,35 @@ class MpcController(Object):
 
                 # 車線分岐点から信号までの距離を取得
                 if len(combinations) != 1:
-                    for lane in combinations:
-                        lane_info = lane.split('-')
+                    link_lane_str_map = {}
+                    for lane_str in combinations:
+                        lane_info = lane_str.split('-')
                         link_id = int(lane_info[0])
 
                         link = road.links[link_id]
                         link_type = link.get('type')
 
                         if link_type == 'main':
-                            params['D_b'][link_id] = params['D_b'][link_id] + length_info[link_id]['length'] if link_id in params['D_b'] else length_info[link_id]['length']
+                            link_lane_str_map[link_id] = lane_str
+                        
+                    for lane_str in combinations:
+                        lane_info = lane_str.split('-')
+                        link_id = int(lane_info[0])
+
+                        link = road.links[link_id]
+                        link_type = link.get('type')
+
+                        if link_type == 'main':
+                            params['D_b'][lane_str] = params['D_b'][lane_str] + length_info[link_id]['length'] if lane_str in params['D_b'] else length_info[link_id]['length']
                         
                         else:
                             from_connector = link.from_links.getAll()[0]
                             from_connector_id = from_connector.get('id')
-                            params['D_b'][link_id] = length_info[link_id]['start_pos'] + length_info[link_id]['length'] - length_info[from_connector_id]['start_pos']
+                            params['D_b'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length'] - length_info[from_connector_id]['start_pos']
 
                             from_link = from_connector.from_links.getAll()[0]
                             from_link_id = from_link.get('id')
-                            params['D_b'][from_link_id] = params['D_b'][from_link_id] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
+                            params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
                 combination_params_map[combination_order_id] = params
 
@@ -255,7 +266,7 @@ class MpcController(Object):
                     left_right_flgs[0] = True
                 elif link_type == 'left':
                     lane = main_link.lanes[main_link.lanes.count()]
-                    left_right_flgs[1] = True
+                    left_right_flgs1 = True
                 lane_id = lane.get('id')
 
                 combinations.append(str(link_id) + '-' + str(lane_id))
@@ -380,8 +391,9 @@ class MpcController(Object):
                 for lane in combinations:
                     wait_link_id, wait_lane_id = lane.split('-')
                     tmp_vehicle_data = vehicle_data[(vehicle_data['wait_link_id'] == int(wait_link_id)) & (vehicle_data['wait_lane_id'] == int(wait_lane_id))].copy()
+                    
                     if related_vehicle_data is None: 
-                        related_vehicle_data = tmp_vehicle_data
+                        related_vehicle_data = tmp_vehicle_data.reset_index(drop=True)
                     else:
                         related_vehicle_data = pd.concat([related_vehicle_data, tmp_vehicle_data], ignore_index=True)
                 
@@ -451,38 +463,271 @@ class MpcController(Object):
             dt = self.time_step
 
             for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                # 車線の組み合わせとパラメータを取得
                 combinations = self.road_combinations_map[road_order_id][combination_order_id]
                 params = self.road_combination_params_map[road_order_id][combination_order_id]
                 
+                # 必要なパラメータを取得
                 v = params['v_max']
                 k_s = params['k_s']
                 k_f = params['k_f']
                 
-                first_end_flg = {}
-                for lane_str in combinations:
-                    first_end_flg[lane_str] = False
+                if len(combinations) == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            b2 = np.array([-k_s]) * v * dt
+                        else:
+                            b2 = np.array([-k_s, k_f, -k_f]) * v * dt
+                        
+                        B2_matrix = b2 if B2_matrix is None else la.block_diag(B2_matrix, b2)
+                else:
+                    first_end_flg = {}
+                    for lane_str in combinations:
+                        first_end_flg[lane_str] = False
 
-                for idx, vehicle in vehicle_data.iterrows():
-                    lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
-                    if idx == 0:
-                        b2 = np.array([-k_s]) * v * dt
-                        first_end_flg[lane_str] = True
-                    elif not first_end_flg[lane_str]:
-                        b2 = np.array([-k_s, k_f, -k_f]) * v * dt
-                        first_end_flg[lane_str] = True
-                    else:
-                        b2 = np.array([-k_s, k_f, -k_f, k_f, -k_f]) * v * dt
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            b2 = np.array([-k_s]) * v * dt
+                            first_end_flg[lane_str] = True
+                        elif not first_end_flg[lane_str]:
+                            b2 = np.array([-k_s, k_f, -k_f]) * v * dt
+                            first_end_flg[lane_str] = True
+                        else:
+                            b2 = np.array([-k_s, k_f, -k_f, k_f, -k_f]) * v * dt
 
-                    B2_matrix = b2 if B2_matrix is None else la.block_diag(B2_matrix, b2)
+                        B2_matrix = b2 if B2_matrix is None else la.block_diag(B2_matrix, b2)
 
         self.traffic_flow_model['B2'] = B2_matrix
         return
 
     def _updateB3(self):
-        pass
+        B3_matrix = None
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
+            dt = self.time_step
+
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                # 車線の組み合わせとパラメータを取得
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
+
+                # 必要なパラメータを取得
+                v = params['v_max']
+                k_s = params['k_s']
+                k_f = params['k_f']
+                d_s = params['d_s']
+                d_f = params['d_f']
+                
+                # 分岐車線があるかどうかで場合分け
+                if len(combinations) == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        p_s = params['p_s'][lane_str]
+                        if idx == 0:    
+                            b3 = np.array([0, 0, k_s * (p_s - d_s) - 1, 0, 0, 0, 1]) * v * dt
+                        else:
+                            b3 = np.array([0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
+                        
+                        B3_matrix = b3 if B3_matrix is None else la.block_diag(B3_matrix, b3)
+                else:
+                    first_end_flg = {}
+                    for lane_str in combinations:
+                        first_end_flg[lane_str] = False
+
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        p_s = params['p_s'][lane_str]
+                        if idx == 0:
+                            b3 = np.array([0, 0, k_s * (p_s - d_s) - 1, 0, 0, 0, 1]) * v * dt
+                            lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                            first_end_flg[lane_str] = True
+                        elif not first_end_flg[lane_str]:
+                            b3 = np.array([0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
+                            first_end_flg[lane_str] = True
+                        else:
+                            b3 = np.array([0, 0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, -k_f * d_f, 0, 0, 0, 1]) * v * dt
+                    
+                        B3_matrix = b3 if B3_matrix is None else la.block_diag(B3_matrix, b3)
+
+        self.traffic_flow_model['B3'] = B3_matrix
+        return
+    
     def _updateC(self):
-        pass
+        C_matrix = None
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                num_vehicles = vehicle_data.shape[0]
+                if num_vehicles == 0:
+                    continue
+
+                # tmp_C_matrixを初期化
+                tmp_C_matrix = None
+
+                # 車線の組み合わせとパラメータを取得
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                
+                if len(combinations) == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            c = np.zeros((16, num_vehicles))
+
+                            # delta_dの定義
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_pの定義
+                            c[[2, 3], idx] = [-1, 1]  
+
+                            # delta_t1の定義
+                            c[[6, 7], idx] = [1, -1]
+
+                            # z_1の定義
+                            c[[14, 15], idx] = [1, -1]
+
+                        else:
+                            c = np.zeros((28, num_vehicles))
+
+                            # delta_dの定義
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_pの定義
+                            c[[2, 3], idx] = [-1, 1]
+
+                            # delta_fの定義
+                            c[[4, 5], idx-1] = [1, -1]
+                            c[[4, 5], idx] = [-1, 1]
+
+                            # delta_t1の定義
+                            c[[10, 11], idx] = [1, -1]
+
+                            # z_1の定義
+                            c[[18, 19], idx] = [1, -1]
+
+                            # z_2の定義
+                            c[[22, 23], idx] = [1, -1]
+
+                            # z_3の定義
+                            c[[26, 27], idx] = [1, -1]
+                        
+                        # tmp_C_matrixに追加
+                        tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
+                    
+                else:
+                    # 車線ごとにモデル化を終えた車両の最後のインデックスを保持する辞書を初期化
+                    last_veh_indices = {}
+                    for lane_str in combinations:
+                        last_veh_indices[lane_str] = -1
+                    
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            # 先頭車のc行列を初期化
+                            c = np.zeros((16, num_vehicles))
+
+                            # delta_dの定義
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_pの定義
+                            c[[2, 3], idx] = [-1, 1]
+                            
+                            # delta_t1の定義
+                            c[[6, 7], idx] = [1, -1]
+
+                            # z_1の定義
+                            c[[14, 15], idx] = [1, -1]
+
+                        elif last_veh_indices[lane_str] == -1:
+                            # 準先頭車（分岐前は非先頭車，分岐後は先頭車）のc行列を初期化
+                            c = np.zeros((30, num_vehicles))
+
+                            # delta_dの定義
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_pの定義
+                            c[[2, 3], idx] = [-1, 1]
+
+                            # delta_f1の定義
+                            c[[4, 5], idx-1] = [1, -1]
+                            c[[4, 5], idx] = [-1, 1]
+
+                            # delta_bの定義
+                            c[[6, 7], idx] = [1, -1]
+
+                            # delta_t1の定義
+                            c[[12, 13], idx] = [1, -1]
+
+                            # z_1の定義
+                            c[[20, 21], idx] = [1, -1]
+
+                            # z_2の定義
+                            c[[24, 25], idx-1] = [1, -1]
+
+                            # z_3の定義
+                            c[[28, 29], idx] = [1, -1]
+      
+                        else:
+                            # 先頭車以外のc行列を初期化
+                            c = np.zeros((42, num_vehicles))
+
+                            # 分岐後に追従するべき先行車のインデックスを取得
+                            follow_idx = last_veh_indices[lane_str]
+
+                            # delta_dの定義
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_pの定義
+                            c[[2, 3], idx] = [-1, 1]
+
+                            # delta_f1の定義
+                            c[[4, 5], idx-1] = [1, -1]
+                            c[[4, 5], idx] = [-1, 1]
+
+                            # delta_f2の定義
+                            c[[6, 7], follow_idx] = [1, -1]
+                            c[[6, 7], idx] = [-1, 1]
+
+                            # delta_bの定義
+                            c[[8, 9], idx] = [1, -1]
+
+                            # delta_t1の定義
+                            c[[16, 17], idx] = [1, -1]
+
+                            # z_1の定義
+                            c[[24, 25], idx] = [1, -1]
+
+                            # z_2の定義
+                            c[[28, 29], idx-1] = [1, -1]
+
+                            # z_3の定義
+                            c[[32, 33], idx] = [1, -1]
+
+                            # z_4の定義
+                            c[[36, 37], follow_idx] = [1, -1]
+
+                            # z_5の定義
+                            c[[40, 41], idx] = [1, -1]
+
+                        # last_veh_indicesを更新
+                        last_veh_indices[lane_str] = idx
+                        
+                        # tmp_C_matrixに追加
+                        tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
+                    
+                # C_matrixに追加
+                C_matrix = tmp_C_matrix if C_matrix is None else la.block_diag(C_matrix, tmp_C_matrix)
+
+        # C_matrixを交通流モデルに追加
+        self.traffic_flow_model['C'] = C_matrix
 
     def _updateD1(self):
         pass
