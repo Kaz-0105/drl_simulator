@@ -340,48 +340,65 @@ class MpcController(Object):
             # 道路の車両データを取得
             vehicle_data = road.get('vehicle_data')
 
-            if vehicle_data.shape[0] != 0:
-                # 距離を道路の入口空の距離に変換
-                vehicle_data = self._transformPositionData(road_order_id, vehicle_data)
-                # 必要ない情報を削除
-                vehicle_data = vehicle_data.drop(columns=['in_queue', 'speed', 'road_id']).copy()
-            
-                # 新たに信号待ちする車線に関する情報を追加するために配列を初期化
-                wait_link_ids = []
-                wait_lane_ids = []
+            # 車両データが存在しないとき
+            if vehicle_data.shape[0] == 0:
+                vehicle_data_map = {}
+                for combination_order_id in self.road_combinations_map[road_order_id].keys():
+                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'lane_id', 'link_id', 'wait_link_id', 'wait_lane_id', 'signal_group_id'])
+                road_vehicle_data_map[road_order_id] = vehicle_data_map
+                continue
 
-                # 車両データを走査
-                for _, vehicle in vehicle_data.iterrows():
-                    # next_link_idを取得
-                    next_link_id = vehicle['next_link_id']
+            # 距離を道路の入口空の距離に変換
+            vehicle_data = self._transformPositionData(road_order_id, vehicle_data)
+            # 必要ない情報を削除
+            vehicle_data = vehicle_data.drop(columns=['in_queue', 'speed', 'road_id']).copy()
+        
+            # 新たに信号待ちする車線に関する情報および従う信号機を追加するために配列を初期化
+            wait_link_ids = []
+            wait_lane_ids = []
+            signal_group_ids = []
 
-                    # 次のリンクが道路外の場合（交差点のコネクタの場合）
-                    if next_link_id not in link_ids:
-                        # 今いる車線が信号待ちを行う車線
-                        wait_link_ids.append(int(vehicle['link_id']))
-                        wait_lane_ids.append(int(vehicle['lane_id']))
-                        continue
+            # 車両データを走査
+            for _, vehicle in vehicle_data.iterrows():
+                # next_link_idを取得
+                next_link_id = vehicle['next_link_id']
 
-                    # 次のリンクが道路内の場合（右折レーン，左折レーンに入る場合）
-                    next_link = road.links[next_link_id]
-                    next_link_type = next_link.get('type')
+                # 信号機のIDを取得（まだコースが決まってないものの方向は1にしておく）
+                direction_id = vehicle['direction_id'] if vehicle['direction_id'] != 0 else 1
+                signal_group_id = (road_order_id - 1) * (self.num_roads - 1) + direction_id
+                signal_group_ids.append(int(signal_group_id))
 
-                    # 次のリンクがコネクタか右左折リンクかで分岐
-                    if next_link_type == 'connector':
-                        # コネクタリンクの場合はさらに次のリンクと車線が信号待ちするところ
-                        next_next_link = next_link.from_links.getAll()[0]
-                        next_next_lane = next_link.to_lane
-                        wait_link_ids.append(int(next_next_link.get('id')))
-                        wait_lane_ids.append(int(next_next_lane.get('id')))
-                    else:
-                        # 右左折リンクの場合はそこが信号待ちするところ
-                        wait_link_ids.append(int(next_link_id))
-                        current_link = road.links[vehicle['link_id']]
-                        wait_lane_ids.append(int(current_link.to_lane.get('id')))
-                    
-                # wait_link_idsとwait_lane_idsをデータフレームに追加
-                vehicle_data['wait_link_id'] = wait_link_ids
-                vehicle_data['wait_lane_id'] = wait_lane_ids
+                # 次のリンクが道路外の場合（交差点のコネクタの場合）
+                if next_link_id not in link_ids:
+                    # 今いる車線が信号待ちを行う車線
+                    wait_link_ids.append(int(vehicle['link_id']))
+                    wait_lane_ids.append(int(vehicle['lane_id']))
+                    continue
+
+                # 次のリンクが道路内の場合（右折レーン，左折レーンに入る場合）
+                next_link = road.links[next_link_id]
+                next_link_type = next_link.get('type')
+
+                # 次のリンクがコネクタか右左折リンクかで分岐
+                if next_link_type == 'connector':
+                    # コネクタリンクの場合はさらに次のリンクと車線が信号待ちするところ
+                    next_next_link = next_link.to_links.getAll()[0]
+                    next_next_lane = next_link.to_lane
+                    wait_link_ids.append(int(next_next_link.get('id')))
+                    wait_lane_ids.append(int(next_next_lane.get('id')))
+                else:
+                    # 右左折リンクの場合はそこが信号待ちするところ
+                    wait_link_ids.append(int(next_link_id))
+                    current_link = road.links[vehicle['link_id']]
+                    wait_lane_ids.append(int(current_link.to_lane.get('id')))
+                
+            # wait_link_idsとwait_lane_idsとsignal_group_idsをデータフレームに追加
+            vehicle_data['wait_link_id'] = wait_link_ids
+            vehicle_data['wait_lane_id'] = wait_lane_ids
+            vehicle_data['signal_group_id'] = signal_group_ids
+
+            # いらない列を削除
+            vehicle_data = vehicle_data.drop(columns=['direction_id']).copy()
             
             # combinationsごとに分割していく
             vehicle_data_map = {}
@@ -398,8 +415,7 @@ class MpcController(Object):
                         related_vehicle_data = pd.concat([related_vehicle_data, tmp_vehicle_data], ignore_index=True)
                 
                 # いらない列を削除
-                if related_vehicle_data.shape[0] != 0:
-                    related_vehicle_data = related_vehicle_data.drop(columns=['next_link_id']).copy()
+                related_vehicle_data = related_vehicle_data.drop(columns=['next_link_id']).copy()
                 vehicle_data_map[combination_order_id] = related_vehicle_data
             
             road_vehicle_data_map[road_order_id] = vehicle_data_map
@@ -728,12 +744,206 @@ class MpcController(Object):
 
         # C_matrixを交通流モデルに追加
         self.traffic_flow_model['C'] = C_matrix
-
+        return
     def _updateD1(self):
-        pass
+        # D1行列を初期化
+        D1_matrix = None
+
+        # 道路ごとに走査
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                # 車線の組み合わせを取得
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+
+                # 車線数を取得
+                num_lanes = len(combinations)
+
+                # 車線数が複数あるかどうか（分岐があるかどうか）で場合分け
+                if num_lanes == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            # 先頭車に対するD1行列を初期化
+                            d1 = np.zeros((16, self.num_signals))
+                            
+                            # delta_1の定義
+                            d1[[4, 5], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                            # delta_t2の定義
+                            d1[[8, 9], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                        else:
+                            # 先頭車以外のD1行列を初期化
+                            d1 = np.zeros((28, self.num_signals))
+
+                            # delta_1の定義
+                            d1[[6, 7], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                            # delta_t2の定義
+                            d1[[12, 13], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                    
+                        # D1_matrixに追加
+                        D1_matrix = d1 if D1_matrix is None else np.block([[D1_matrix], [d1]])
+                else:
+                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
+                    first_end_flg = {}
+                    for lane_str in combinations:
+                        first_end_flg[lane_str] = False
+
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            # 先頭車に対するD1行列を初期化
+                            d1 = np.zeros((16, self.num_signals))
+
+                            # delta_1の定義
+                            d1[[4, 5], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                            # delta_t2の定義
+                            d1[[8, 9], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                            # 先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+
+                        elif not first_end_flg[lane_str]:
+                            # 準先頭車に対するD1行列を初期化
+                            d1 = np.zeros((30, self.num_signals))
+
+                            # delta_1の定義
+                            d1[[8, 9], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                            # delta_t2の定義
+                            d1[[14, 15], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                        
+                            # 準先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        else:
+                            # 先頭車以外のD1行列を初期化
+                            d1 = np.zeros((42, self.num_signals))
+
+                            # delta_1の定義
+                            d1[[10, 11], int(vehicle['signal_group_id']) - 1] = [1, -1]
+
+                            # delta_t2の定義
+                            d1[[18, 19], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            
+                        # D1_matrixに追加
+                        D1_matrix = d1 if D1_matrix is None else np.block([[D1_matrix], [d1]])
+                    
+        # D1_matrixを交通流モデルに追加
+        self.traffic_flow_model['D1'] = D1_matrix
+        return
 
     def _updateD2(self):
-        pass
+        # D2行列を初期化
+        D2_matrix = None
+
+        # 道路ごとに走査
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue 
+
+                # 車線の組み合わせを取得
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+
+                # 車線数を取得
+                num_lanes = len(combinations)
+
+                # 車線数が複数あるかどうか（分岐があるかどうか）で場合分け
+                if num_lanes == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            # 先頭車に対するD2行列を初期化
+                            d2 = np.zeros((16, 1))
+
+                            # z_1の定義
+                            d2[12:16, 0] = [-1, 1, -1, 1]
+                        else:
+                            # 先頭車以外のD2行列を初期化
+                            d2 = np.zeros((28, 3))
+
+                            # z_1の定義
+                            d2[16:20, 0] = [-1, 1, -1, 1]
+
+                            # z_2の定義
+                            d2[20:24, 1] = [-1, 1, -1, 1]
+
+                            # z_3の定義
+                            d2[24:28, 2] = [-1, 1, -1, 1]
+                        
+                        D2_matrix = d2 if D2_matrix is None else la.block_diag(D2_matrix, d2)
+
+                else:
+                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
+                    first_end_flg = {}
+                    for lane_str in combinations:
+                        first_end_flg[lane_str] = False
+
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            # 先頭車に対するD2行列を初期化
+                            d2 = np.zeros((16, 1))
+
+                            # z_1の定義
+                            d2[12:16, 0] = [-1, 1, -1, 1]
+
+                            # 先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        elif not first_end_flg[lane_str]:
+                            # 準先頭車に対するD2行列を初期化
+                            d2 = np.zeros((30, 3))
+
+                            # z_1の定義
+                            d2[18:22, 0] = [-1, 1, -1, 1]
+
+                            # z_2の定義
+                            d2[22:26, 1] = [-1, 1, -1, 1]
+
+                            # z_3の定義
+                            d2[26:30, 2] = [-1, 1, -1, 1]
+
+                            # 準先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        else:
+                            # 先頭車以外のD2行列を初期化
+                            d2 = np.zeros((42, 5))
+
+                            # z_1の定義
+                            d2[22:26, 0] = [-1, 1, -1, 1]
+
+                            # z_2の定義
+                            d2[26:30, 1] = [-1, 1, -1, 1]
+
+                            # z_3の定義
+                            d2[30:34, 2] = [-1, 1, -1, 1]
+
+                            # z_4の定義
+                            d2[34:38, 3] = [-1, 1, -1, 1]
+
+                            # z_5の定義
+                            d2[38:42, 4] = [-1, 1, -1, 1]
+
+                        # D2_matrixに追加
+                        D2_matrix = d2 if D2_matrix is None else la.block_diag(D2_matrix, d2)
+          
+        # D2_matrixを交通流モデルに追加
+        self.traffic_flow_model['D2'] = D2_matrix
+        return
 
     def _updateD3(self):
         pass
