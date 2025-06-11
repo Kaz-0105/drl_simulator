@@ -79,7 +79,7 @@ class SumTree:
         if self.current_size < self.capacity:
             # バッファに空きがある場合はサイズと次のデータ格納位置をインクリメント
             self.current_size += 1
-            self.next_data_idx += 1
+            self.next_data_idx = (self.next_data_idx + 1) % self.capacity
         else:
             # バッファが満タンの場合は，循環ができるようにする
             self.next_data_idx = (self.next_data_idx + 1) % self.capacity

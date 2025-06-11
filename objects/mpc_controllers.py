@@ -4,6 +4,8 @@ from libs.object import Object
 import numpy as np
 import scipy.linalg as la
 import pandas as pd
+from collections import deque
+from scipy.optimize import milp, LinearConstraint, Bounds
 
 class MpcControllers(Container):
     def __init__(self, network):
@@ -73,6 +75,11 @@ class MpcController(Object):
 
         # 道路パラメータを取得
         self._initRoadParameters()
+
+        # 過去の信号機変化の有無を保存するリストを初期化
+        self.phi_record = deque(maxlen=self.min_successive_steps)
+        for _ in range(self.min_successive_steps):
+            self.phi_record.append(0)
 
     def _makePhases(self):
         # フェーズ情報を取得
@@ -230,8 +237,6 @@ class MpcController(Object):
             road_length_info_map[road_order_id] = length_info
         self.road_length_info_map = road_length_info_map
 
-
-
     def _makeRoadCombinationsMap(self):
         road_combinations_map = {}
 
@@ -298,10 +303,11 @@ class MpcController(Object):
         # 交通流モデルを更新
         self._updateTrafficFlowModel()
 
-        # 信号機制約を更新
-        self._updateSignalConstraints()
-
+        # 最適化問題を更新
         self._updateOptimizationProblem()
+
+        # 最適化問題を解く
+        self._solveOptimizationProblem()
 
         return
     
@@ -424,7 +430,6 @@ class MpcController(Object):
         
         self.road_vehicle_data_map = road_vehicle_data_map
         
-
     def _updateTrafficFlowModel(self):
         # 初期化
         self.traffic_flow_model = {}
@@ -439,7 +444,13 @@ class MpcController(Object):
         self._updateD2()
         self._updateD3()
         self._updateE()
+
+        # 自動車の位置の初期値を更新
         self._updatePosVehs()
+
+        # 変数のリストを更新
+        self._updateVariableListMap()
+
         return
     
     def _updateA(self):
@@ -1682,12 +1693,263 @@ class MpcController(Object):
         # 位置ベクトルを交通流モデルに追加
         self.traffic_flow_model['pos_vehs'] = pos_vehs
         return
-    
-    def _updateSignalConstraints(self):
-        pass
 
+    def _updateVariableListMap(self):
+        # 変数リストマップを初期化
+        variable_list_map = {
+            'z_1': [],
+            'z_2': [],
+            'z_3': [],
+            'z_4': [],
+            'z_5': [],
+            'delta_d': [],
+            'delta_p': [],
+            'delta_f': [],
+            'delta_f1': [],
+            'delta_f2': [],
+            'delta_b': [],
+            'delta_1': [],
+            'delta_2': [],
+            'delta_3': [],
+            'delta_t1': [],
+            'delta_t2': [],
+            'delta_t3': [],
+            'delta_c': [],
+            'phi': [],
+        }
+
+        variable_length_map = {
+            'u': self.num_signals,
+            'z': None,
+            'delta': None,
+            'v': None,
+        }
+
+        # 現在の変数の数を初期化
+        count = variable_length_map['u'] - 1
+
+        # zに関して変数リストを更新
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            # 道路に紐づく組み合わせのマップを取得
+            combinations_map = self.road_combinations_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                # 組み合わせを取得
+                combinations = combinations_map[combination_order_id]
+
+                if len(combinations) == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            # 先頭車の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+
+                            count += 1
+                        
+                        else:
+                            # 先頭車以外の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+                            variable_list_map['z_2'].append(count + 2)
+                            variable_list_map['z_3'].append(count + 3)
+
+                            count += 3
+                else:
+                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
+                    first_end_flg = {}
+                    for lane_str in combinations:
+                        first_end_flg[lane_str] = False
+
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            # 先頭車の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+
+                            count += 1
+
+                            # 先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        elif not first_end_flg[lane_str]:
+                            # 準先頭車の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+                            variable_list_map['z_2'].append(count + 2)
+                            variable_list_map['z_3'].append(count + 3)
+
+                            count += 3
+
+                            # 準先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        else:
+                            # 先頭車以外の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+                            variable_list_map['z_2'].append(count + 2)
+                            variable_list_map['z_3'].append(count + 3)
+                            variable_list_map['z_4'].append(count + 4)
+                            variable_list_map['z_5'].append(count + 5)
+
+                            count += 5
+
+        # zの変数の長さを更新                   
+        variable_length_map['z'] = (count + 1) - variable_length_map['u']
+
+        # deltaに関して変数リストを更新
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            # 道路に紐づく組み合わせのマップを取得
+            combinations_map = self.road_combinations_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                # 組み合わせを取得
+                combinations = combinations_map[combination_order_id]
+
+                if len(combinations) == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            # 先頭車の変数を追加
+                            variable_list_map['delta_d'].append(count + 1)
+                            variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_1'].append(count + 3)
+                            variable_list_map['delta_t1'].append(count + 4)
+                            variable_list_map['delta_t2'].append(count + 5)
+                            variable_list_map['delta_t3'].append(count + 6)
+                            variable_list_map['delta_c'].append(count + 7)
+
+                            count += 7
+                        else:
+                            # 先頭車以外の変数を追加
+                            variable_list_map['delta_d'].append(count + 1)
+                            variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_f'].append(count + 3)
+                            variable_list_map['delta_1'].append(count + 4)
+                            variable_list_map['delta_2'].append(count + 5)
+                            variable_list_map['delta_t1'].append(count + 6)
+                            variable_list_map['delta_t2'].append(count + 7)
+                            variable_list_map['delta_t3'].append(count + 8)
+                            variable_list_map['delta_c'].append(count + 9)
+
+                            count += 9
+                    
+                else:
+                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
+                    first_end_flg = {}
+                    for lane_str in combinations:
+                        first_end_flg[lane_str] = False
+
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            # 先頭車の変数を追加
+                            variable_list_map['delta_d'].append(count + 1)
+                            variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_1'].append(count + 3)
+                            variable_list_map['delta_t1'].append(count + 4)
+                            variable_list_map['delta_t2'].append(count + 5)
+                            variable_list_map['delta_t3'].append(count + 6)
+                            variable_list_map['delta_c'].append(count + 7)
+
+                            count += 7
+
+                            # 先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        elif not first_end_flg[lane_str]:
+                            # 準先頭車の変数を追加
+                            variable_list_map['delta_d'].append(count + 1)
+                            variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_f1'].append(count + 3)
+                            variable_list_map['delta_b'].append(count + 4)
+                            variable_list_map['delta_1'].append(count + 5)
+                            variable_list_map['delta_2'].append(count + 6)
+                            variable_list_map['delta_t1'].append(count + 7)
+                            variable_list_map['delta_t2'].append(count + 8)
+                            variable_list_map['delta_t3'].append(count + 9)
+                            variable_list_map['delta_c'].append(count + 10)
+
+                            count += 10
+
+                            # 準先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        else:
+                            # 先頭車以外の変数を追加
+                            variable_list_map['delta_d'].append(count + 1)
+                            variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_f1'].append(count + 3)
+                            variable_list_map['delta_f2'].append(count + 4)
+                            variable_list_map['delta_b'].append(count + 5)
+                            variable_list_map['delta_1'].append(count + 6)
+                            variable_list_map['delta_2'].append(count + 7)
+                            variable_list_map['delta_3'].append(count + 8)
+                            variable_list_map['delta_t1'].append(count + 9)
+                            variable_list_map['delta_t2'].append(count + 10)
+                            variable_list_map['delta_t3'].append(count + 11)
+                            variable_list_map['delta_c'].append(count + 12)
+
+                            count += 12
+
+        # deltaの変数の長さを更新
+        variable_length_map['delta'] = (count + 1) - variable_length_map['u'] - variable_length_map['z']
+
+        # u, z, deltaの変数を合わせた変数の長さを更新
+        variable_length_map['v'] = count + 1
+
+        # phiに関して変数リストを更新
+        v_length = variable_length_map['v']
+        for step in range(1, self.horizon):
+            variable_list_map['phi'].append(v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1)
+
+        # 変数リストマップをインスタンスとして保持
+        self.variable_list_map = variable_list_map
+
+        # 変数の長さマップをインスタンスとして保持
+        self.variable_length_map = variable_length_map
+        return
+                    
     def _updateOptimizationProblem(self):
-        P_matrix, q_matrix = self._reshapeTrafficModel()
+        # 最適化問題の係数をまとめるための辞書を初期化
+        self.optimization_problem = {}
+
+        # 不等式制約と等式制約を更新
+        self._updateConstraints()
+
+        # 目的関数の更新
+        self._updateObjectiveFunction()
+
+        # 変数の上限・下限を更新
+        self._updateBounds()
+
+        # バイナリ変数のタイプを更新
+        self._updateIntegrality()
+        return 
+    
+    def _updateConstraints(self):
+        # 交通流モデルのホライゾン分のステップを1つの不等式にまとめる
+        P_matrix, q_matrix, Peq_matrix, qeq_matrix = self._reshapeTrafficModel()
+
+        # 信号機制約を足していく
+        self._updateSignalConstraints(P_matrix, q_matrix, Peq_matrix, qeq_matrix)
+
+        # インスタンスとして保持
+        self.optimization_problem['P'] = P_matrix
+        self.optimization_problem['q'] = q_matrix
+        self.optimization_problem['Peq'] = Peq_matrix
+        self.optimization_problem['qeq'] = qeq_matrix
         return
     
     def _reshapeTrafficModel(self):
@@ -1708,13 +1970,254 @@ class MpcController(Object):
         D_bar = np.kron(np.eye(self.horizon), D_matrix)
         E_bar = np.kron(np.ones((self.horizon, 1)), E_matrix)
 
-
+        # 1つの行列不等式にまとめる
         P_matrix = C_bar @ B_bar + D_bar
         q_matrix = E_bar - C_bar @ A_bar @ pos_vehs
 
-        return P_matrix, q_matrix
+        # 信号機の変数分行列を拡張
+        signal_matrix = np.zeros((P_matrix.shape[0], self.num_phases * self.horizon + (self.num_signals + 1) * (self.horizon - 1)))
+        P_matrix = np.block([P_matrix, signal_matrix])
+
+        # 変数の数をインスタンスとして保持
+        self.num_variables = P_matrix.shape[1]
+
+        # delta_c = 1の制約を作成
+        delta_c_list = self.variable_list_map['delta_c']
+        v_length = self.variable_length_map['v']
+
+        for idx in range(len(delta_c_list)):
+            for step in range(1, self.horizon + 1):
+                peq = np.zeros((1, self.num_variables))
+                peq[:, v_length * (step - 1) + delta_c_list[idx]] = 1
+                
+                qeq = np.array([[1]])
+
+                # Peq_matrix, qeq_matrixに追加
+                Peq_matrix = np.vstack([peq, Peq_matrix]) if 'Peq_matrix' in locals() else peq
+                qeq_matrix = np.vstack([qeq, qeq_matrix]) if 'qeq_matrix' in locals() else qeq
 
 
+        return P_matrix, q_matrix, Peq_matrix, qeq_matrix
 
+    def _updateSignalConstraints(self, P_matrix, q_matrix, Peq_matrix, qeq_matrix):
+        # 交通流モデルの1ステップ分の変数を取得
+        v_length = self.variable_length_map['v']
+
+        # フェーズの変数の定義
+        for phase_id in range(1, self.num_phases + 1):
+            signal_group_ids = self.phases[phase_id]
+
+            for step in range(1, self.horizon + 1):
+                p = np.zeros((2, self.num_variables))
+
+                for signal_group_id in signal_group_ids:
+                    p[:, v_length * (step - 1) + signal_group_id - 1] = [-1, 1]
+                
+                p[:, v_length * self.horizon + phase_id + self.num_phases * (step - 1) - 1] = [self.num_roads, -1]
+
+                q = np.array([[0], [self.num_roads - 1]])
+
+                # P_matrix, q_matrixに追加
+                P_matrix = np.vstack([P_matrix, p])
+                q_matrix = np.vstack([q_matrix, q])
+
+        # 信号現示の変化のバイナリ変数を定義
+        for step in range(1, self.horizon):
+            for signal_group_id in range(1, self.num_signals + 1):
+                p = np.zeros((4, self.num_variables))
+                p[:, v_length * (step - 1) + signal_group_id - 1] = [1, -1, -1, 1]
+                p[:, v_length * step + signal_group_id - 1] = [1, -1, 1, -1]
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_group_id - 1] = [1, 1, -1, -1]
+
+                q = np.array([[2], [0], [0], [0]])
+
+                # P_matrix, q_matrixに追加
+                P_matrix = np.vstack([P_matrix, p])
+                q_matrix = np.vstack([q_matrix, q])
+        
+
+        # 青になっていい信号の数の制限
+        for step in range(1, self.horizon + 1):
+            p = np.zeros((1, self.num_variables))
+            p[:, (v_length * (step - 1)) : (v_length * (step - 1) + self.num_signals)] = [1] * self.num_signals
+
+            q = np.array([[self.num_roads]])
+
+            # P_matrix, q_matrixに追加
+            P_matrix = np.vstack([P_matrix, p])
+            q_matrix = np.vstack([q_matrix, q])
+
+        # 青になっていいフェーズの数の制限
+        for step in range(1, self.horizon + 1):
+            peq = np.zeros((1, self.num_variables))
+            for phase_id in range(1, self.num_phases + 1):
+                peq[:, v_length * self.horizon + self.num_phases * (step - 1) + phase_id - 1] = 1
+            
+            qeq = np.array([[1]])
+
+            # Peq_matrix, qeq_matrixに追加
+            Peq_matrix = np.vstack([Peq_matrix, peq])
+            qeq_matrix = np.vstack([qeq_matrix, qeq])
+        
+        # 信号の変化の回数の制限（一回の予測につき何回変化を許容するか）
+        p = np.zeros((1, self.num_variables))
+        for step in range(1, self.horizon):
+            p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1] = 1
+        
+        q = np.array([[self.num_max_changes]])
+
+        # P_matrix, q_matrixに追加
+        P_matrix = np.vstack([P_matrix, p])
+        q_matrix = np.vstack([q_matrix, q])
+
+        # 信号機全体で変化しているかのバイナリの定義
+        for step in range(1, self.horizon):
+            p = np.zeros((2, self.num_variables))
+            for signal_group_id in range(1, self.num_signals + 1):
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_group_id - 1] = [-1, 1]
+            p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1] = [1, - self.num_signals]
+
+            q = np.array([[0], [0]])
+
+            # P_matrix, q_matrixに追加
+            P_matrix = np.vstack([P_matrix, p])
+            q_matrix = np.vstack([q_matrix, q])
+
+        
+        # 初期値の固定
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+        if len(future_phase_ids) != 0:
+            for step in range(1, self.calc_start_steps + 1):
+                peq = np.zeros((self.num_signals, self.num_variables))
+                for signal_group_id in range(1, self.num_signals + 1):
+                    peq[signal_group_id - 1, v_length * (step - 1) + signal_group_id - 1] = 1
+                
+                qeq = np.zeros((self.num_signals, 1))
+                signal_group_ids = self.phases[future_phase_ids[step - 1]]
+                for signal_group_id in range(1, self.num_signals + 1):
+                    if signal_group_id in signal_group_ids:
+                        qeq[signal_group_id - 1, 0] = 1
+                    
+                # Peq_matrix, qeq_matrixに追加
+                Peq_matrix = np.vstack([Peq_matrix, peq])
+                qeq_matrix = np.vstack([qeq_matrix, qeq])
+
+        
+        # 最小連続回数についての制約
+        for step in range(1, self.horizon):
+            p = np.zeros((1, self.num_variables))
+            q = np.array([[1]])
+
+            for tmp_step in range(1, step + 1):
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * tmp_step - 1] = 1
+
+            for tmp_step in range(1, self.min_successive_steps - step + 1):
+                q -= self.phi_record[-tmp_step]
+            
+            # P_matrix, q_matrixに追加
+            P_matrix = np.vstack([P_matrix, p])
+            q_matrix = np.vstack([q_matrix, q])
+
+        return
+        
+    def _updateObjectiveFunction(self):
+        # 目的関数の係数を初期化
+        f_matrix = np.zeros((1, self.num_variables))
+
+        # delta_t3のリストを取得
+        delta_t3_list = self.variable_list_map['delta_t3']
+
+        # 交通流モデルの変数の長さを取得
+        v_length = self.variable_length_map['v']
+
+        # 目的関数を定義（delta_t3の累積和とする）
+        for step in range(1, self.horizon + 1):
+            for idx in range(len(delta_t3_list)):
+                f_matrix[:, v_length * (step - 1) + delta_t3_list[idx]] = 1
+
+        # 目的関数の係数をインスタンスとして保持
+        self.optimization_problem['f'] = f_matrix
+        return
+
+    def _updateBounds(self):
+        # 変数の下限と上限を初期化
+        lb = np.zeros((self.num_variables, 1))
+        ub = np.ones((self.num_variables, 1))
+
+        # zに関する変数のリストを取得
+        z_list = []
+        z_list.extend(self.variable_list_map['z_1'])
+        z_list.extend(self.variable_list_map['z_2'])
+        z_list.extend(self.variable_list_map['z_3'])
+        z_list.extend(self.variable_list_map['z_4'])
+        z_list.extend(self.variable_list_map['z_5'])
+
+        # 交通流モデルの変数の長さを取得
+        v_length = self.variable_length_map['v']
+
+        # z_1, z_2, z_3, z_4, z_5の変数の下限と上限を設定
+        for step in range(1, self.horizon + 1):
+            for idx in z_list:
+                ub[v_length * (step - 1) + idx] = np.inf
+
+        # インスタンスとして保持
+        self.optimization_problem['lb'] = lb
+        self.optimization_problem['ub'] = ub
+        return
+
+    def _updateIntegrality(self):
+        # 変数のタイプを初期化
+        intergrality = np.full((self.num_variables, 1), 2) # 2はバイナリ変数を示す
+
+        # zに関する変数のリストを取得
+        z_list = []
+        z_list.extend(self.variable_list_map['z_1'])
+        z_list.extend(self.variable_list_map['z_2'])
+        z_list.extend(self.variable_list_map['z_3'])
+        z_list.extend(self.variable_list_map['z_4'])
+        z_list.extend(self.variable_list_map['z_5'])
+
+        # 交通流モデルの変数の長さを取得
+        v_length = self.variable_length_map['v']
+
+        # z_1, z_2, z_3, z_4, z_5の変数のタイプを設定
+        for step in range(1, self.horizon + 1):
+            for idx in z_list:
+                intergrality[v_length * (step - 1) + idx] = 0 # 0は連続変数を示す
+
+        # インスタンスとして保持
+        self.optimization_problem['integrality'] = intergrality
+        return
+
+    def _solveOptimizationProblem(self):
+        # 目的関数の係数を取得
+        f_matrix = self.optimization_problem['f'].flatten()
+        P_matrix = self.optimization_problem['P']
+        q_matrix = self.optimization_problem['q'].flatten()
+        Peq_matrix = self.optimization_problem['Peq']
+        qeq_matrix = self.optimization_problem['qeq'].flatten()
+        lb_matrix = self.optimization_problem['lb'].flatten()
+        ub_matrix = self.optimization_problem['ub'].flatten()
+        integrality_matrix = self.optimization_problem['integrality'].flatten()
+
+        # 問題を定義
+        bounds = Bounds(lb=lb_matrix, ub=ub_matrix)
+        constraints_ineq = LinearConstraint(P_matrix, np.full(P_matrix.shape[0], -np.inf), q_matrix)
+        constraints_eq = LinearConstraint(Peq_matrix, qeq_matrix, qeq_matrix)
+        constraints = [constraints_ineq, constraints_eq]
+
+        # 問題を解く
+        res = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
+
+        # 結果の表示
+        print("最適化結果:")
+        print(f"ステータス: {res.status} ({res.message})")
+        if res.success:
+            print(f"最適解 x: {res.x}")
+            print(f"目的関数値: {res.fun}")
+        else:
+            print("解が見つかりませんでした。")
+
+        print('test')
 
 
