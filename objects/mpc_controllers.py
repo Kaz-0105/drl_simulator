@@ -292,13 +292,18 @@ class MpcController(Object):
         if not self._shouldCalculate():
             return
 
+        # 自動車のデータを更新
         self._updateVehicleData()
 
+        # 交通流モデルを更新
         self._updateTrafficFlowModel()
 
+        # 信号機制約を更新
         self._updateSignalConstraints()
 
         self._updateOptimizationProblem()
+
+        return
     
     def _shouldCalculate(self):
         signal_controller = self.intersection.signal_controller
@@ -434,6 +439,8 @@ class MpcController(Object):
         self._updateD2()
         self._updateD3()
         self._updateE()
+        self._updatePosVehs()
+        return
     
     def _updateA(self):
         A_matrix = None
@@ -742,6 +749,7 @@ class MpcController(Object):
         # C_matrixを交通流モデルに追加
         self.traffic_flow_model['C'] = C_matrix
         return
+    
     def _updateD1(self):
         # D1行列を初期化
         D1_matrix = None
@@ -951,8 +959,9 @@ class MpcController(Object):
             # 道路に紐づくvehicle_data_mapを取得
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
-            # 道路に紐づく組み合わせのマップを取得
+            # 道路に紐づく組み合わせのマップとパラメータのマップを取得
             combinations_map = self.road_combinations_map[road_order_id]
+            combination_params_map = self.road_combination_params_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
             for combination_order_id, vehicle_data in vehicle_data_map.items():
@@ -960,41 +969,397 @@ class MpcController(Object):
                 if vehicle_data.shape[0] == 0:
                     continue
 
-                # 車線の組み合わせを取得
+                # 車線の組み合わせとパラメータを取得
                 combinations = combinations_map[combination_order_id]
+                params = combination_params_map[combination_order_id]
 
                 # 車線数を取得
                 num_lanes = len(combinations)
 
+                # 必要なパラメータを取得
+                p_max = vehicle_data.iloc[0]['position'] + params['v_max'] * self.time_step * self.horizon
+                p_min = vehicle_data.iloc[-1]['position']
+                D_s = params['D_s']
+                d_s = params['d_s']
+                D_f = params['D_f']
+                D_t = params['D_t']
+                h3_min = - p_max + p_min + D_f
+                h3_max = - p_min + p_max + D_f
+                h4_min = - p_max + p_min + D_s
+                h4_max = - p_min + p_max + D_s
+
                 # 車線数が複数あるかどうか（分岐があるかどうか）で場合分け
                 if num_lanes == 1:
+                    # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
+                    last_vehs_map = {}
+                    for direction_id in range(1, self.num_roads):
+                        last_vehs_map[direction_id] = {
+                            'idx': -1,
+                            'row': -1,
+                            'col': -1,
+                        }
+                    
+                    # 必要なパラメータを取得
+                    p_s = params['p_s'][combinations[0]]
+                    h1_min = - p_max + p_s - D_s
+                    h1_max = - p_min + p_s - D_s
+                    h2_min = p_min - p_s + d_s
+                    h2_max = p_max - p_s + d_s
+                    h6_min = - p_max + p_s - D_t
+                    h6_max = - p_min + p_s - D_t
+
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
                             # 先頭車に対するD3行列を初期化
                             d3 = np.zeros((16, 7))
-                        
+
+                            # delta_d(0)の定義
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # delta_p(1)の定義
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # delta_1(2)の定義
+                            d3[4, [0, 1, 2]] = [1, 1, 3]
+                            d3[5, [0, 1, 2]] = [-1, -1, -1]
+
+                            # delta_t1(3)の定義
+                            d3[6, 3] = - h6_min
+                            d3[7, 3] = - h6_max
+
+                            # delta_t2(4)の定義
+                            d3[8, [1, 3, 4]] = [1, 1, 3]
+                            d3[9, [1, 3, 4]] = [-1, -1, -1]
+
+                            # delta_t3(5)の定義
+                            d3[10, 5] = -1
+                            d3[11, 5] = 1
+
+                            # d3のサイズを取得
+                            rows_delta_t3 = [10, 11]
+                            col_delta_t3 = 5
+
+                            # z_1の定義
+                            d3[12:16, 2] = [p_min, -p_max, p_max, -p_min] 
+
                         else:
                             # 先頭車以外のD3行列を初期化
                             d3 = np.zeros((28, 9))
+
+                            # delta_d(0)の定義
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # delta_p(1)の定義
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # delta_f(2)の定義
+                            d3[4, 2] = - h3_min
+                            d3[5, 2] = - h3_max
+
+                            # delta_1(3)の定義
+                            d3[6, [0, 1, 3]] = [1, 1, 3]
+                            d3[7, [0, 1, 3]] = [-1, -1, -1]
+
+                            # delta_2(4)の定義
+                            d3[8, [2, 3, 4]] = [-1, 1, 2]
+                            d3[9, [2, 3, 4]] = [1, -1, -1]
+
+                            # delta_t1(5)の定義
+                            d3[10, 5] = - h6_min
+                            d3[11, 5] = - h6_max
+
+                            # delta_t2(6)の定義
+                            d3[12, [1, 5, 6]] = [1, 1, 3]
+                            d3[13, [1, 5, 6]] = [-1, -1, -1]
+
+                            # delta_t3(7)の定義
+                            target_idx = -1
+                            target_direction_id = None
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle['direction_id']):
+                                    continue
+                                
+                                if last_vehs_map[direction_id]['idx'] > target_idx:
+                                    target_idx = last_vehs_map[direction_id]['idx']
+                                    target_direction_id = direction_id
+                            
+                            if target_idx == -1:
+                                d3[14, 7] = -1
+                                d3[15, 7] = 1
+                            else:
+                                d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
+                                d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+
+                            # d3のサイズを取得
+                            rows_delta_t3 = [14, 15]
+                            col_delta_t3 = 7
+                            
+                            # z_1の定義
+                            d3[16:20, 3] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_2の定義
+                            d3[20:24, 4] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_3の定義
+                            d3[24:28, 4] = [p_min, -p_max, p_max, -p_min]
+
+                        # D3_matrixのサイズを取得
+                        row_D3 = D3_matrix.shape[0] if D3_matrix is not None else 0
+                        col_D3 = D3_matrix.shape[1] if D3_matrix is not None else 0
+
+                        # last_veh_indicesを更新
+                        last_vehs_map[int(vehicle['direction_id'])] = {
+                            'idx': idx,
+                            'rows': [row + row_D3 for row in rows_delta_t3],
+                            'col': col_delta_t3 + col_D3,
+                        }
+                        # D3_matrixにd3を追加
+                        D3_matrix = d3 if D3_matrix is None else la.block_diag(D3_matrix, d3)
+
+                        # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
+                        if idx != 0 and target_direction_id is not None:
+                            target_rows = last_vehs_map[int(vehicle['direction_id'])]['rows']
+                            target_col = last_vehs_map[target_direction_id]['col']
+
+                            D3_matrix[target_rows, target_col] = [-1, 1]                    
+                        
                 else:
-                    # モデル化を終えた車両の最後のインデックスを保持する辞書を初期化
-                    last_veh_indices = {}
+                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
+                    first_end_flg = {}
                     for lane_str in combinations:
-                        last_veh_indices[lane_str] = -1
+                        first_end_flg[lane_str] = False
+                    
+                    # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
+                    last_vehs_map = {}
+                    for lane_str in combinations:
+                        tmp_last_vehs_map = {}
+                        for direction_id in range(1, self.num_roads):
+                            tmp_last_vehs_map[direction_id] = {
+                                'idx': -1,
+                                'rows': -1,
+                                'col': -1,
+                            }
+                        last_vehs_map[lane_str] = tmp_last_vehs_map
 
                     for idx, vehicle in vehicle_data.iterrows():
                         lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        
+                        # 必要なパラメータを取得
+                        p_s = params['p_s'][lane_str]
+                        D_b = params['D_b'][lane_str]
+                        h1_min = - p_max + p_s - D_s
+                        h1_max = - p_min + p_s - D_s
+                        h2_min = p_min - p_s + d_s
+                        h2_max = p_max - p_s + d_s
+                        h5_min = - p_max + p_s - D_b
+                        h5_max = - p_min + p_s - D_b
+                        h6_min = - p_max + p_s - D_t
+                        h6_max = - p_min + p_s - D_t
+
                         if idx == 0:
                             # 先頭車に対するD3行列を初期化
                             d3 = np.zeros((16, 7))
+
+                            # delta_d(0)の定義
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # delta_p(1)の定義
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # delta_1(2)の定義
+                            d3[4, [0, 1, 2]] = [1, 1, 3]
+                            d3[5, [0, 1, 2]] = [-1, -1, -1]
+
+                            # delta_t1(3)の定義
+                            d3[6, 3] = - h6_min
+                            d3[7, 3] = - h6_max
+
+                            # delta_t2(4)の定義
+                            d3[8, [1, 3, 4]] = [1, 1, 3]
+                            d3[9, [1, 3, 4]] = [-1, -1, -1]
+
+                            # delta_t3(5)の定義
+                            d3[10, 5] = -1
+                            d3[11, 5] = 1
+
+                            # d3のサイズを取得
+                            rows_delta_t3 = [10, 11]
+                            col_delta_t3 = 5
+
+                            # z_1の定義
+                            d3[12:16, 2] = [p_min, -p_max, p_max, -p_min]
+
+                            # 先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
                         
-                        elif last_veh_indices[lane_str] == -1:
+                        elif not first_end_flg[lane_str]:
                             # 準先頭車に対するD3行列を初期化
                             d3 = np.zeros((30, 10))
 
+                            # delta_d(0)の定義
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # delta_p(1)の定義
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # delta_f1(2)の定義
+                            d3[4, 2] = - h3_min
+                            d3[5, 2] = - h3_max
+
+                            # delta_b(3)の定義
+                            d3[6, 3] = - h5_min
+                            d3[7, 3] = - h5_max
+
+                            # delta_1(4)の定義
+                            d3[8, [0, 1, 4]] = [1, 1, 3]
+                            d3[9, [0, 1, 4]] = [-1, -1, -1]
+
+                            # delta_2(5)の定義
+                            d3[10, [2, 3, 4, 5]] = [-1, -1, 1, 3]
+                            d3[11, [2, 3, 4, 5]] = [1, 1, -1, -1]
+
+                            # delta_t1(6)の定義
+                            d3[12, 6] = - h6_min
+                            d3[13, 6] = - h6_max
+
+                            # delta_t2(7)の定義
+                            d3[14, [1, 6, 7]] = [1, 1, 3]
+                            d3[15, [1, 6, 7]] = [-1, -1, -1]
+
+                            # delta_t3(8)の定義
+                            d3[16, 8] = -1
+                            d3[17, 8] = 1
+                            
+                            # d3のサイズを取得
+                            rows_delta_t3 = [16, 17]
+                            col_delta_t3 = 8
+
+                            # z_1の定義
+                            d3[18:22, 4] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_2の定義
+                            d3[22:26, 5] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_3の定義
+                            d3[26:30, 5] = [p_min, -p_max, p_max, -p_min]
+
+                            # 準先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+
+                            target_direction_id = None
                         else:
                             # 先頭車以外のD3行列を初期化
                             d3 = np.zeros((42, 12))
+
+                            # delta_d(0)の定義
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # delta_p(1)の定義
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # delta_f1(2)の定義
+                            d3[4, 2] = - h3_min
+                            d3[5, 2] = - h3_max
+
+                            # delta_f2(3)の定義
+                            d3[6, 3] = - h4_min
+                            d3[7, 3] = - h4_max
+
+                            # delta_b(4)の定義
+                            d3[8, 4] = - h5_min
+                            d3[9, 4] = - h5_max
+
+                            # delta_1(5)の定義
+                            d3[10, [0, 1, 5]] = [1, 1, 3]
+                            d3[11, [0, 1, 5]] = [-1, -1, -1]
+
+                            # delta_2(6)の定義
+                            d3[12, [2, 4, 5, 6]] = [-1, -1, 1, 3]
+                            d3[13, [2, 4, 5, 6]] = [1, 1, -1, -1]
+
+                            # delta_3(7)の定義
+                            d3[14, [3, 4, 6, 7]] = [-1, 1, 1, 3]
+                            d3[15, [3, 4, 6, 7]] = [1, -1, -1, -1]
+
+                            # delta_t1(8)の定義
+                            d3[16, 8] = - h6_min
+                            d3[17, 8] = - h6_max
+
+                            # delta_t2(9)の定義
+                            d3[18, [1, 8, 9]] = [1, 1, 3]
+                            d3[19, [1, 8, 9]] = [-1, -1, -1]
+
+                            # delta_t3(10)の定義
+                            target_idx = -1
+                            target_direction_id = None
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle['direction_id']):
+                                    continue
+                                
+                                if last_vehs_map[lane_str][direction_id]['idx'] > target_idx:
+                                    target_idx = last_vehs_map[lane_str][direction_id]['idx']
+                                    target_direction_id = direction_id
+                            
+                            if target_idx == -1:
+                                d3[20, 10] = -1
+                                d3[21, 10] = 1
+                            else:
+                                d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
+                                d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
+
+                            # d3のサイズを取得
+                            rows_delta_t3 = [20, 21]
+                            col_delta_t3 = 10
+
+                            # z_1の定義
+                            d3[22:26, 5] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_2の定義
+                            d3[26:30, 6] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_3の定義
+                            d3[30:34, 6] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_4の定義
+                            d3[34:38, 7] = [p_min, -p_max, p_max, -p_min]
+
+                            # z_5の定義
+                            d3[38:42, 7] = [p_min, -p_max, p_max, -p_min]
+
+                        # D3_matrixのサイズを取得
+                        row_D3 = D3_matrix.shape[0] if D3_matrix is not None else 0
+                        col_D3 = D3_matrix.shape[1] if D3_matrix is not None else 0
+
+                        # last_vehs_mapを更新
+                        last_vehs_map[lane_str][int(vehicle['direction_id'])] = {
+                            'idx': idx,
+                            'rows': [row + row_D3 for row in rows_delta_t3],
+                            'col': col_delta_t3 + col_D3,
+                        }
+
+                        # D3_matrixにd3を追加
+                        D3_matrix = d3 if D3_matrix is None else la.block_diag(D3_matrix, d3)
+
+                        # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
+                        if idx != 0 and target_direction_id is not None:
+                            target_rows = last_vehs_map[lane_str][int(vehicle['direction_id'])]['rows']
+                            target_col = last_vehs_map[lane_str][target_direction_id]['col']
+
+                            D3_matrix[target_rows, target_col] = [-1, 1]
+                        
+        # D3_matrixを交通流モデルに追加
+        self.traffic_flow_model['D3'] = D3_matrix
+        return
 
     def _updateE(self):
         # E行列を初期化
@@ -1040,13 +1405,13 @@ class MpcController(Object):
                     for direction_id in range(1, self.num_roads):
                         last_veh_indices[direction_id] = -1
 
-                    for idx, vehicle in vehicle_data.iterrows():
-                        # 必要なパラメータの取得
-                        p_s = params['p_s'][combinations[0]]
-                        h1_min = - p_max + p_s - D_s
-                        h2_min = p_min - p_s + d_s
-                        h6_min = -p_max + p_s - D_t
+                    # 必要なパラメータの取得
+                    p_s = params['p_s'][combinations[0]]
+                    h1_min = - p_max + p_s - D_s
+                    h2_min = p_min - p_s + d_s
+                    h6_min = -p_max + p_s - D_t
 
+                    for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
                             # 先頭車に対するE行列を初期化
                             e = np.zeros((16, 1))
@@ -1293,11 +1658,62 @@ class MpcController(Object):
         self.traffic_flow_model['E'] = E_matrix
         return
 
+    def _updatePosVehs(self):
+        # 位置ベクトルを初期化
+        pos_vehs = None
+
+        # 道路ごとに走査
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+                
+                # 車両の位置を取得
+                tmp_pos_vehs = vehicle_data['position'].values.reshape(-1, 1)
+
+                # pos_vehsに追加
+                pos_vehs = tmp_pos_vehs if pos_vehs is None else np.block([[pos_vehs], [tmp_pos_vehs]])
+
+        # 位置ベクトルを交通流モデルに追加
+        self.traffic_flow_model['pos_vehs'] = pos_vehs
+        return
+    
     def _updateSignalConstraints(self):
         pass
+
     def _updateOptimizationProblem(self):
-        pass
-        
+        P_matrix, q_matrix = self._reshapeTrafficModel()
+        return
+    
+    def _reshapeTrafficModel(self):
+        # 係数を取得
+        A_matrix = self.traffic_flow_model['A']
+        B_matrix = np.block([self.traffic_flow_model['B1'], self.traffic_flow_model['B2'], self.traffic_flow_model['B3']])
+        C_matrix = self.traffic_flow_model['C']
+        D_matrix = np.block([self.traffic_flow_model['D1'], self.traffic_flow_model['D2'], self.traffic_flow_model['D3']])
+        E_matrix = self.traffic_flow_model['E']
+
+        # 初期値を取得
+        pos_vehs = self.traffic_flow_model['pos_vehs']
+
+        # 行列をホライゾン分に拡張
+        A_bar = np.kron(np.ones((self.horizon, 1)), A_matrix)
+        B_bar = np.kron(np.tril(np.ones((self.horizon, self.horizon)), k=-1), B_matrix)
+        C_bar = np.kron(np.eye(self.horizon), C_matrix)
+        D_bar = np.kron(np.eye(self.horizon), D_matrix)
+        E_bar = np.kron(np.ones((self.horizon, 1)), E_matrix)
+
+
+        P_matrix = C_bar @ B_bar + D_bar
+        q_matrix = E_bar - C_bar @ A_bar @ pos_vehs
+
+        return P_matrix, q_matrix
+
 
 
 
