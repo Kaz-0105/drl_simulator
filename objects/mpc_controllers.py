@@ -424,6 +424,10 @@ class MpcController(Object):
                 
                 # いらない列を削除
                 related_vehicle_data = related_vehicle_data.drop(columns=['next_link_id']).copy()
+
+                # 位置の降順でソート
+                related_vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                related_vehicle_data.reset_index(drop=True, inplace=True)
                 vehicle_data_map[combination_order_id] = related_vehicle_data
             
             road_vehicle_data_map[road_order_id] = vehicle_data_map
@@ -585,7 +589,7 @@ class MpcController(Object):
                             b3 = np.array([0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
                             first_end_flg[lane_str] = True
                         else:
-                            b3 = np.array([0, 0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, -k_f * d_f, 0, 0, 0, 1]) * v * dt
+                            b3 = np.array([0, 0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
                     
                         B3_matrix = b3 if B3_matrix is None else la.block_diag(B3_matrix, b3)
 
@@ -645,7 +649,7 @@ class MpcController(Object):
                             c[[18, 19], idx] = [1, -1]
 
                             # z_2の定義
-                            c[[22, 23], idx] = [1, -1]
+                            c[[22, 23], idx-1] = [1, -1]
 
                             # z_3の定義
                             c[[26, 27], idx] = [1, -1]
@@ -1006,7 +1010,7 @@ class MpcController(Object):
                     for direction_id in range(1, self.num_roads):
                         last_vehs_map[direction_id] = {
                             'idx': -1,
-                            'row': -1,
+                            'row': [-2, -1],
                             'col': -1,
                         }
                     
@@ -1044,9 +1048,9 @@ class MpcController(Object):
                             d3[8, [1, 3, 4]] = [1, 1, 3]
                             d3[9, [1, 3, 4]] = [-1, -1, -1]
 
-                            # delta_t3(5)の定義
-                            d3[10, 5] = -1
-                            d3[11, 5] = 1
+                            # # delta_t3(5)の定義
+                            # d3[10, 5] = -1
+                            # d3[11, 5] = 1
 
                             # d3のサイズを取得
                             rows_delta_t3 = [10, 11]
@@ -1087,23 +1091,23 @@ class MpcController(Object):
                             d3[12, [1, 5, 6]] = [1, 1, 3]
                             d3[13, [1, 5, 6]] = [-1, -1, -1]
 
-                            # delta_t3(7)の定義
-                            target_idx = -1
-                            target_direction_id = None
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle['direction_id']):
-                                    continue
+                            # # delta_t3(7)の定義
+                            # target_idx = -1
+                            # target_direction_id = None
+                            # for direction_id in range(1, self.num_roads):
+                            #     if direction_id == int(vehicle['direction_id']):
+                            #         continue
                                 
-                                if last_vehs_map[direction_id]['idx'] > target_idx:
-                                    target_idx = last_vehs_map[direction_id]['idx']
-                                    target_direction_id = direction_id
+                            #     if last_vehs_map[direction_id]['idx'] > target_idx:
+                            #         target_idx = last_vehs_map[direction_id]['idx']
+                            #         target_direction_id = direction_id
                             
-                            if target_idx == -1:
-                                d3[14, 7] = -1
-                                d3[15, 7] = 1
-                            else:
-                                d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
-                                d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+                            # if target_idx == -1:
+                            #     d3[14, 7] = -1
+                            #     d3[15, 7] = 1
+                            # else:
+                            #     d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
+                            #     d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
 
                             # d3のサイズを取得
                             rows_delta_t3 = [14, 15]
@@ -1131,12 +1135,12 @@ class MpcController(Object):
                         # D3_matrixにd3を追加
                         D3_matrix = d3 if D3_matrix is None else la.block_diag(D3_matrix, d3)
 
-                        # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
-                        if idx != 0 and target_direction_id is not None:
-                            target_rows = last_vehs_map[int(vehicle['direction_id'])]['rows']
-                            target_col = last_vehs_map[target_direction_id]['col']
+                        # # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
+                        # if idx != 0 and target_direction_id is not None:
+                        #     target_rows = last_vehs_map[int(vehicle['direction_id'])]['rows']
+                        #     target_col = last_vehs_map[target_direction_id]['col']
 
-                            D3_matrix[target_rows, target_col] = [-1, 1]                    
+                        #     D3_matrix[target_rows, target_col] = [-1, 1]                    
                         
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
@@ -1151,7 +1155,7 @@ class MpcController(Object):
                         for direction_id in range(1, self.num_roads):
                             tmp_last_vehs_map[direction_id] = {
                                 'idx': -1,
-                                'rows': -1,
+                                'rows': [-2, -1],
                                 'col': -1,
                             }
                         last_vehs_map[lane_str] = tmp_last_vehs_map
@@ -1195,9 +1199,9 @@ class MpcController(Object):
                             d3[8, [1, 3, 4]] = [1, 1, 3]
                             d3[9, [1, 3, 4]] = [-1, -1, -1]
 
-                            # delta_t3(5)の定義
-                            d3[10, 5] = -1
-                            d3[11, 5] = 1
+                            # # delta_t3(5)の定義
+                            # d3[10, 5] = -1
+                            # d3[11, 5] = 1
 
                             # d3のサイズを取得
                             rows_delta_t3 = [10, 11]
@@ -1245,9 +1249,9 @@ class MpcController(Object):
                             d3[14, [1, 6, 7]] = [1, 1, 3]
                             d3[15, [1, 6, 7]] = [-1, -1, -1]
 
-                            # delta_t3(8)の定義
-                            d3[16, 8] = -1
-                            d3[17, 8] = 1
+                            # # delta_t3(8)の定義
+                            # d3[16, 8] = -1
+                            # d3[17, 8] = 1
                             
                             # d3のサイズを取得
                             rows_delta_t3 = [16, 17]
@@ -1310,23 +1314,23 @@ class MpcController(Object):
                             d3[18, [1, 8, 9]] = [1, 1, 3]
                             d3[19, [1, 8, 9]] = [-1, -1, -1]
 
-                            # delta_t3(10)の定義
-                            target_idx = -1
-                            target_direction_id = None
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle['direction_id']):
-                                    continue
+                            # # delta_t3(10)の定義
+                            # target_idx = -1
+                            # target_direction_id = None
+                            # for direction_id in range(1, self.num_roads):
+                            #     if direction_id == int(vehicle['direction_id']):
+                            #         continue
                                 
-                                if last_vehs_map[lane_str][direction_id]['idx'] > target_idx:
-                                    target_idx = last_vehs_map[lane_str][direction_id]['idx']
-                                    target_direction_id = direction_id
+                            #     if last_vehs_map[lane_str][direction_id]['idx'] > target_idx:
+                            #         target_idx = last_vehs_map[lane_str][direction_id]['idx']
+                            #         target_direction_id = direction_id
                             
-                            if target_idx == -1:
-                                d3[20, 10] = -1
-                                d3[21, 10] = 1
-                            else:
-                                d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
-                                d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
+                            # if target_idx == -1:
+                            #     d3[20, 10] = -1
+                            #     d3[21, 10] = 1
+                            # else:
+                            #     d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
+                            #     d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
 
                             # d3のサイズを取得
                             rows_delta_t3 = [20, 21]
@@ -1361,12 +1365,12 @@ class MpcController(Object):
                         # D3_matrixにd3を追加
                         D3_matrix = d3 if D3_matrix is None else la.block_diag(D3_matrix, d3)
 
-                        # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
-                        if idx != 0 and target_direction_id is not None:
-                            target_rows = last_vehs_map[lane_str][int(vehicle['direction_id'])]['rows']
-                            target_col = last_vehs_map[lane_str][target_direction_id]['col']
+                        # # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
+                        # if idx != 0 and target_direction_id is not None:
+                        #     target_rows = last_vehs_map[lane_str][int(vehicle['direction_id'])]['rows']
+                        #     target_col = last_vehs_map[lane_str][target_direction_id]['col']
 
-                            D3_matrix[target_rows, target_col] = [-1, 1]
+                        #     D3_matrix[target_rows, target_col] = [-1, 1]
                         
         # D3_matrixを交通流モデルに追加
         self.traffic_flow_model['D3'] = D3_matrix
@@ -1442,8 +1446,8 @@ class MpcController(Object):
                             # delta_t2の定義
                             e[[8, 9], 0] = [3, -1]
 
-                            # delta_t3の定義
-                            e[[10, 11], 0] = [0, 0]
+                            # # delta_t3の定義
+                            # e[[10, 11], 0] = [0, 0]
 
                             # z_1の定義
                             e[12:16, 0] = [0, 0, p_max, -p_min]
@@ -1475,18 +1479,18 @@ class MpcController(Object):
                             # delta_t2の定義
                             e[[12, 13], 0] = [3, -1]
 
-                            # delta_t3の定義
-                            target_idx = -1
-                            for direction_id in range(1, self.num_roads):
-                                if int(vehicle['direction_id']) == direction_id:
-                                    continue
+                            # # delta_t3の定義
+                            # target_idx = -1
+                            # for direction_id in range(1, self.num_roads):
+                            #     if int(vehicle['direction_id']) == direction_id:
+                            #         continue
 
-                                target_idx = max(target_idx, last_veh_indices[direction_id])
+                            #     target_idx = max(target_idx, last_veh_indices[direction_id])
 
-                            if target_idx == -1:
-                                e[[14, 15], 0] = [0, 0]
-                            else:
-                                e[[14, 15], 0] = [3, 0]
+                            # if target_idx == -1:
+                            #     e[[14, 15], 0] = [0, 0]
+                            # else:
+                            #     e[[14, 15], 0] = [3, 0]
                             
                             # z_1の定義
                             e[16:20, 0] = [0, 0, p_max, -p_min]
@@ -1546,8 +1550,8 @@ class MpcController(Object):
                             # delta_t2の定義
                             e[[8, 9], 0] = [3, -1]
 
-                            # delta_t3の定義
-                            e[[10, 11], 0] = [0, 0]
+                            # # delta_t3の定義
+                            # e[[10, 11], 0] = [0, 0]
 
                             # z_1の定義
                             e[12:16, 0] = [0, 0, p_max, -p_min]
@@ -1583,8 +1587,8 @@ class MpcController(Object):
                             # delta_t2の定義
                             e[[14, 15], 0] = [3, -1]
 
-                            # delta_t3の定義
-                            e[[16, 17], 0] = [0, 0]
+                            # # delta_t3の定義
+                            # e[[16, 17], 0] = [0, 0]
 
                             # z_1の定義
                             e[18:22, 0] = [0, 0, p_max, -p_min]
@@ -1631,18 +1635,18 @@ class MpcController(Object):
                             # delta_t2の定義
                             e[[18, 19], 0] = [3, -1]
 
-                            # delta_t3の定義
-                            target_idx = -1
-                            for direction_id in range(1, self.num_roads):
-                                if int(vehicle['direction_id']) == direction_id:
-                                    continue
+                            # # delta_t3の定義
+                            # target_idx = -1
+                            # for direction_id in range(1, self.num_roads):
+                            #     if int(vehicle['direction_id']) == direction_id:
+                            #         continue
 
-                                target_idx = max(target_idx, last_veh_indices[lane_str][direction_id])
+                            #     target_idx = max(target_idx, last_veh_indices[lane_str][direction_id])
                             
-                            if target_idx == -1:
-                                e[[20, 21], 0] = [0, 0]
-                            else:
-                                e[[20, 21], 0] = [3, 0]
+                            # if target_idx == -1:
+                            #     e[[20, 21], 0] = [0, 0]
+                            # else:
+                            #     e[[20, 21], 0] = [3, 0]
                             
                             # z_1の定義
                             e[22:26, 0] = [0, 0, p_max, -p_min]
@@ -1943,7 +1947,7 @@ class MpcController(Object):
         P_matrix, q_matrix, Peq_matrix, qeq_matrix = self._reshapeTrafficModel()
 
         # 信号機制約を足していく
-        self._updateSignalConstraints(P_matrix, q_matrix, Peq_matrix, qeq_matrix)
+        # self._updateSignalConstraints(P_matrix, q_matrix, Peq_matrix, qeq_matrix)
 
         # インスタンスとして保持
         self.optimization_problem['P'] = P_matrix
@@ -1993,8 +1997,8 @@ class MpcController(Object):
                 qeq = np.array([[1]])
 
                 # Peq_matrix, qeq_matrixに追加
-                Peq_matrix = np.vstack([peq, Peq_matrix]) if 'Peq_matrix' in locals() else peq
-                qeq_matrix = np.vstack([qeq, qeq_matrix]) if 'qeq_matrix' in locals() else qeq
+                Peq_matrix = np.vstack([Peq_matrix, peq]) if 'Peq_matrix' in locals() else peq
+                qeq_matrix = np.vstack([qeq_matrix, qeq]) if 'qeq_matrix' in locals() else qeq
 
 
         return P_matrix, q_matrix, Peq_matrix, qeq_matrix
@@ -2122,18 +2126,22 @@ class MpcController(Object):
         
     def _updateObjectiveFunction(self):
         # 目的関数の係数を初期化
-        f_matrix = np.zeros((1, self.num_variables))
+        f_matrix = np.zeros(self.num_variables)
 
-        # delta_t3のリストを取得
+        # delta_t2とdelta_t3のリストを取得
+        delta_t2_list = self.variable_list_map['delta_t2']
         delta_t3_list = self.variable_list_map['delta_t3']
 
         # 交通流モデルの変数の長さを取得
         v_length = self.variable_length_map['v']
 
-        # 目的関数を定義（delta_t3の累積和とする）
+        # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
         for step in range(1, self.horizon + 1):
+            for idx in range(len(delta_t2_list)):
+                f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
+
             for idx in range(len(delta_t3_list)):
-                f_matrix[:, v_length * (step - 1) + delta_t3_list[idx]] = 1
+                f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
 
         # 目的関数の係数をインスタンスとして保持
         self.optimization_problem['f'] = f_matrix
@@ -2141,8 +2149,8 @@ class MpcController(Object):
 
     def _updateBounds(self):
         # 変数の下限と上限を初期化
-        lb = np.zeros((self.num_variables, 1))
-        ub = np.ones((self.num_variables, 1))
+        lb = np.zeros(self.num_variables)
+        ub = np.ones(self.num_variables)
 
         # zに関する変数のリストを取得
         z_list = []
@@ -2167,7 +2175,7 @@ class MpcController(Object):
 
     def _updateIntegrality(self):
         # 変数のタイプを初期化
-        intergrality = np.full((self.num_variables, 1), 2) # 2はバイナリ変数を示す
+        integrality = np.full(self.num_variables, 1) # 2はバイナリ変数を示す
 
         # zに関する変数のリストを取得
         z_list = []
@@ -2183,22 +2191,22 @@ class MpcController(Object):
         # z_1, z_2, z_3, z_4, z_5の変数のタイプを設定
         for step in range(1, self.horizon + 1):
             for idx in z_list:
-                intergrality[v_length * (step - 1) + idx] = 0 # 0は連続変数を示す
+                integrality[v_length * (step - 1) + idx] = 0 # 0は連続変数を示す
 
         # インスタンスとして保持
-        self.optimization_problem['integrality'] = intergrality
+        self.optimization_problem['integrality'] = integrality
         return
 
     def _solveOptimizationProblem(self):
         # 目的関数の係数を取得
-        f_matrix = self.optimization_problem['f'].flatten()
+        f_matrix = self.optimization_problem['f']
         P_matrix = self.optimization_problem['P']
         q_matrix = self.optimization_problem['q'].flatten()
         Peq_matrix = self.optimization_problem['Peq']
         qeq_matrix = self.optimization_problem['qeq'].flatten()
-        lb_matrix = self.optimization_problem['lb'].flatten()
-        ub_matrix = self.optimization_problem['ub'].flatten()
-        integrality_matrix = self.optimization_problem['integrality'].flatten()
+        lb_matrix = self.optimization_problem['lb']
+        ub_matrix = self.optimization_problem['ub']
+        integrality_matrix = self.optimization_problem['integrality']
 
         # 問題を定義
         bounds = Bounds(lb=lb_matrix, ub=ub_matrix)
