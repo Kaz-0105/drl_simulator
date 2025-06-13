@@ -43,14 +43,14 @@ class Simulation(Common):
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
     def run(self):
+        # デバックフラグが立っているとき30秒進める
+        if self.debug_flg:
+            self._runForDebug()
+        
+        # 信号機の操作権限をこちら側に移す
+        self._getSignalControlAuth()
+
         if self.control_method == 'drl':
-            # デバックフラグが立っているとき30秒進める
-            if self.debug_flg:
-                self._runForDebug()
-
-            # 信号機の操作権限をこちら側に移す
-            self._getSignalControlAuth()
-
             # 最初のネットワークの更新
             self.network.updateData()
 
@@ -94,6 +94,22 @@ class Simulation(Common):
 
             # 次回のエピソードに引き継ぐ情報を保存
             self.network.master_agents.saveSession()
+        elif self.control_method == 'mpc':
+            while self.current_time < self.end_time:
+                # ネットワークの更新
+                self.network.updateData()
+
+                # MPCを起動
+                self.network.mpc_controllers.optimize()
+
+                # Vissimを1ステップ進める
+                self._runSingleStep()
+            
+            # 最後のネットワーク更新
+            self.network.updateData()
+
+
+
 
     def _runSingleStep(self):
         # 信号現示を更新する
