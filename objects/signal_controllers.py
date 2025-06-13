@@ -118,12 +118,12 @@ class SignalController(Object):
             mpc_info = self.config.get('mpc_info')
             self.future_phase_ids = deque(maxlen=mpc_info['utilize_steps'] * 2) 
         
-    def setNextPhase(self, phase_ids):
+    def setNextPhases(self, phase_ids):
         # フェーズをセット
         self.future_phase_ids.extend(phase_ids)
 
         # signal_groupにフェーズをセット
-        self.signal_groups.setNextPhase(phase_ids)
+        self.signal_groups.setNextPhases(phase_ids)
     
     def setNextPhaseToVissim(self):
         # Vissimにフェーズをセット
@@ -200,7 +200,7 @@ class SignalGroups(Container):
             else:
                 raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")       
 
-    def setNextPhase(self, phase_ids):
+    def setNextPhases(self, phase_ids):
         # フェーズのリストを取得
         phases = self.signal_controller.get('phases')
         
@@ -216,7 +216,7 @@ class SignalGroups(Container):
         # 将来の信号現示を保存する（赤➡青の変化時は全赤の時間があるため，赤を１ステップ追加する）
         for signal_group in self.getAll():
             tmp_sig_value_list = [tmp_row[signal_group.get('id') - 1] for tmp_row in sig_value_list]
-            signal_group.setNextPhase(tmp_sig_value_list)
+            signal_group.setNextPhases(tmp_sig_value_list)
 
     def setNextPhaseToVissim(self):
         for signal_group in self.getAll():
@@ -277,15 +277,23 @@ class SignalGroup(Object):
         else:
             raise Exception(f"SignalGroup {self.get('id')} has multiple possible direction IDs: {possible_direction_ids}. Please check the signal head connections.")
             
-    def setNextPhase(self, sig_value_list):
-        if self.future_values:
-            if self.future_values[-1] == 1 and sig_value_list[0] == 3:
-                sig_value_list[0] = 1
-        elif self.value_record:
-            if self.value_record[-1] == 1 and sig_value_list[0] == 3:
-                sig_value_list[0] = 1
+    def setNextPhases(self, sig_value_list):
+        # 赤から青に変化するときは全赤の時間があるため，赤に変更する
+        fixed_sig_value_list = sig_value_list.copy()
+        for idx in range(len(sig_value_list)):
+            if idx == 0:
+                if self.future_values:
+                    if self.future_values[-1] == 1 and sig_value_list[0] == 3:
+                        fixed_sig_value_list[idx] = 1
+                elif self.value_record:
+                    if self.value_record[-1] == 1 and sig_value_list[0] == 3:
+                        fixed_sig_value_list[idx] = 1
+
+            else:
+                if sig_value_list[idx - 1] == 1 and sig_value_list[idx] == 3:
+                    fixed_sig_value_list[idx] = 1
         
-        self.future_values.extend(sig_value_list)
+        self.future_values.extend(fixed_sig_value_list)
 
     def setNextPhaseToVissim(self):
         # 現在の値と同じ場合は何もしない

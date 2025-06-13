@@ -639,7 +639,7 @@ class LocalAgent(Object):
         self.action_record.append(action)
 
         # 信号機の将来のフェーズに追加
-        self.intersection.signal_controller.setNextPhase([self.current_action] * self.duration_steps)
+        self.intersection.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
     
     def getReward(self):
         # 報酬を計算するタイミングかどうかを確認

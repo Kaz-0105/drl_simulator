@@ -2294,7 +2294,7 @@ class MpcController(Object):
             else:
                 utilize_phase_ids = [future_phase_ids[-1]] * (self.utilize_steps)
 
-            self.signal_controller.setNextPhase(utilize_phase_ids)
+            self.signal_controller.setNextPhases(utilize_phase_ids)
             return
         
         # 最適化が成功しているとき
@@ -2316,7 +2316,7 @@ class MpcController(Object):
                 utilize_phase_ids = optimized_phase_ids[:(self.remained_steps + self.utilize_steps)]
             
             # 利用する結果をプッシュ
-            self.signal_controller.setNextPhase(utilize_phase_ids)
+            self.signal_controller.setNextPhases(utilize_phase_ids)
         return
     
     def _updatePhiRecord(self):
