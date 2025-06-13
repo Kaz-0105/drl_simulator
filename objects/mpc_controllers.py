@@ -6,6 +6,7 @@ import scipy.linalg as la
 import pandas as pd
 from collections import deque
 from scipy.optimize import milp, LinearConstraint, Bounds
+from docplex.mp.model import Model
 
 class MpcControllers(Container):
     def __init__(self, network):
@@ -77,9 +78,7 @@ class MpcController(Object):
         self._initRoadParameters()
 
         # 過去の信号機変化の有無を保存するリストを初期化
-        self.phi_record = deque(maxlen=self.min_successive_steps)
-        for _ in range(self.min_successive_steps):
-            self.phi_record.append(0)
+        self.phi_record = deque([np.float64(0)] * self.min_successive_steps, maxlen=self.min_successive_steps)
 
     def _makePhases(self):
         # フェーズ情報を取得
@@ -105,8 +104,8 @@ class MpcController(Object):
         # MPCのパラメータを取得
         mpc_info = self.config.get('mpc_info')
         self.horizon = mpc_info['horizon']
-        self.used_steps = mpc_info['used_steps']
-        self.calc_start_steps = mpc_info['calc_start_steps']
+        self.utilize_steps = mpc_info['utilize_steps']
+        self.remained_steps = mpc_info['remained_steps']
         self.min_successive_steps = mpc_info['min_successive_steps']
         self.num_max_changes = mpc_info['num_max_changes']
 
@@ -309,13 +308,19 @@ class MpcController(Object):
         # 最適化問題を解く
         self._solveOptimizationProblem()
 
+        # 将来の信号機のフェーズを更新
+        self._updateFuturePhaseIds()
+
+        # 信号が変化したかどうかのフラグを更新（次の最適化計算で使う）
+        self._updatePhiRecord()
+
         return
     
     def _shouldCalculate(self):
         signal_controller = self.intersection.signal_controller
         future_phase_ids = signal_controller.get('future_phase_ids')
 
-        if len(future_phase_ids) <= self.calc_start_steps:
+        if len(future_phase_ids) <= self.remained_steps:
             self.should_calculate = True
             return True
     
@@ -462,7 +467,7 @@ class MpcController(Object):
         for road_order_id in range(1, self.num_roads + 1):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
-            for combination_order_id, vehicle_data in vehicle_data_map.items():
+            for _, vehicle_data in vehicle_data_map.items():
                 num_vehicles = vehicle_data.shape[0]
                 if num_vehicles == 0:
                     continue
@@ -564,9 +569,8 @@ class MpcController(Object):
                 
                 # 分岐車線があるかどうかで場合分け
                 if len(combinations) == 1:
+                    p_s = params['p_s'][combinations[0]]
                     for idx, vehicle in vehicle_data.iterrows():
-                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
-                        p_s = params['p_s'][lane_str]
                         if idx == 0:    
                             b3 = np.array([0, 0, k_s * (p_s - d_s) - 1, 0, 0, 0, 1]) * v * dt
                         else:
@@ -992,8 +996,9 @@ class MpcController(Object):
                 num_lanes = len(combinations)
 
                 # 必要なパラメータを取得
-                p_max = vehicle_data.iloc[0]['position'] + params['v_max'] * self.time_step * self.horizon
-                p_min = vehicle_data.iloc[-1]['position']
+                v = params['v_max']
+                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * self.horizon
+                p_min = 0
                 D_s = params['D_s']
                 d_s = params['d_s']
                 D_f = params['D_f']
@@ -1404,9 +1409,10 @@ class MpcController(Object):
                 num_lanes = len(combinations)
 
                 # 必要なパラメータを取得
-                p_max = vehicle_data.iloc[0]['position'] + params['v_max'] * self.time_step * self.horizon
-                p_min = vehicle_data.iloc[-1]['position']
-                D_s = params['D_s']
+                v = params['v_max']
+                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * self.horizon
+                p_min = 0
+                D_s = params['D_s'] 
                 d_s = params['d_s']
                 D_f = params['D_f']  
                 D_t = params['D_t']
@@ -1699,28 +1705,32 @@ class MpcController(Object):
         return
 
     def _updateVariableListMap(self):
-        # 変数リストマップを初期化
+        # 変数リストマップを初期化（現状必要ないのはコメントアウト）
         variable_list_map = {
             'z_1': [],
             'z_2': [],
             'z_3': [],
             'z_4': [],
             'z_5': [],
-            'delta_d': [],
-            'delta_p': [],
-            'delta_f': [],
-            'delta_f1': [],
-            'delta_f2': [],
-            'delta_b': [],
-            'delta_1': [],
-            'delta_2': [],
-            'delta_3': [],
-            'delta_t1': [],
+            # 'delta_d': [],
+            # 'delta_p': [],
+            # 'delta_f': [],
+            # 'delta_f1': [],
+            # 'delta_f2': [],
+            # 'delta_b': [],
+            # 'delta_1': [],
+            # 'delta_2': [],
+            # 'delta_3': [],
+            # 'delta_t1': [],
             'delta_t2': [],
             'delta_t3': [],
             'delta_c': [],
             'phi': [],
         }
+
+        # フェーズの変数リストを追加
+        for phase_order_id in range(1, self.num_phases + 1):
+            variable_list_map['p_' + str(phase_order_id)] = []
 
         variable_length_map = {
             'u': self.num_signals,
@@ -1825,11 +1835,11 @@ class MpcController(Object):
                 if len(combinations) == 1:
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
-                            # 先頭車の変数を追加
-                            variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
-                            variable_list_map['delta_1'].append(count + 3)
-                            variable_list_map['delta_t1'].append(count + 4)
+                            # 先頭車の変数を追加（現状必要ないのはコメントアウト）
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_1'].append(count + 3)
+                            # variable_list_map['delta_t1'].append(count + 4)
                             variable_list_map['delta_t2'].append(count + 5)
                             variable_list_map['delta_t3'].append(count + 6)
                             variable_list_map['delta_c'].append(count + 7)
@@ -1837,12 +1847,12 @@ class MpcController(Object):
                             count += 7
                         else:
                             # 先頭車以外の変数を追加
-                            variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
-                            variable_list_map['delta_f'].append(count + 3)
-                            variable_list_map['delta_1'].append(count + 4)
-                            variable_list_map['delta_2'].append(count + 5)
-                            variable_list_map['delta_t1'].append(count + 6)
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_f'].append(count + 3)
+                            # variable_list_map['delta_1'].append(count + 4)
+                            # variable_list_map['delta_2'].append(count + 5)
+                            # variable_list_map['delta_t1'].append(count + 6)
                             variable_list_map['delta_t2'].append(count + 7)
                             variable_list_map['delta_t3'].append(count + 8)
                             variable_list_map['delta_c'].append(count + 9)
@@ -1859,10 +1869,10 @@ class MpcController(Object):
                         lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
                         if idx == 0:
                             # 先頭車の変数を追加
-                            variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
-                            variable_list_map['delta_1'].append(count + 3)
-                            variable_list_map['delta_t1'].append(count + 4)
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_1'].append(count + 3)
+                            # variable_list_map['delta_t1'].append(count + 4)
                             variable_list_map['delta_t2'].append(count + 5)
                             variable_list_map['delta_t3'].append(count + 6)
                             variable_list_map['delta_c'].append(count + 7)
@@ -1874,13 +1884,13 @@ class MpcController(Object):
                         
                         elif not first_end_flg[lane_str]:
                             # 準先頭車の変数を追加
-                            variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
-                            variable_list_map['delta_f1'].append(count + 3)
-                            variable_list_map['delta_b'].append(count + 4)
-                            variable_list_map['delta_1'].append(count + 5)
-                            variable_list_map['delta_2'].append(count + 6)
-                            variable_list_map['delta_t1'].append(count + 7)
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_f1'].append(count + 3)
+                            # variable_list_map['delta_b'].append(count + 4)
+                            # variable_list_map['delta_1'].append(count + 5)
+                            # variable_list_map['delta_2'].append(count + 6)
+                            # variable_list_map['delta_t1'].append(count + 7)
                             variable_list_map['delta_t2'].append(count + 8)
                             variable_list_map['delta_t3'].append(count + 9)
                             variable_list_map['delta_c'].append(count + 10)
@@ -1892,15 +1902,15 @@ class MpcController(Object):
                         
                         else:
                             # 先頭車以外の変数を追加
-                            variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
-                            variable_list_map['delta_f1'].append(count + 3)
-                            variable_list_map['delta_f2'].append(count + 4)
-                            variable_list_map['delta_b'].append(count + 5)
-                            variable_list_map['delta_1'].append(count + 6)
-                            variable_list_map['delta_2'].append(count + 7)
-                            variable_list_map['delta_3'].append(count + 8)
-                            variable_list_map['delta_t1'].append(count + 9)
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_f1'].append(count + 3)
+                            # variable_list_map['delta_f2'].append(count + 4)
+                            # variable_list_map['delta_b'].append(count + 5)
+                            # variable_list_map['delta_1'].append(count + 6)
+                            # variable_list_map['delta_2'].append(count + 7)
+                            # variable_list_map['delta_3'].append(count + 8)
+                            # variable_list_map['delta_t1'].append(count + 9)
                             variable_list_map['delta_t2'].append(count + 10)
                             variable_list_map['delta_t3'].append(count + 11)
                             variable_list_map['delta_c'].append(count + 12)
@@ -1917,6 +1927,12 @@ class MpcController(Object):
         v_length = variable_length_map['v']
         for step in range(1, self.horizon):
             variable_list_map['phi'].append(v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1)
+
+        # フェーズの変数リストを更新
+        for phase_order_id in range(1, self.num_phases + 1):
+            phase_str = 'p_' + str(phase_order_id)
+            for step in range(1, self.horizon + 1):
+                variable_list_map[phase_str].append(v_length * self.horizon + self.num_phases * (step - 1) + phase_order_id - 1)
 
         # 変数リストマップをインスタンスとして保持
         self.variable_list_map = variable_list_map
@@ -1989,17 +2005,16 @@ class MpcController(Object):
         delta_c_list = self.variable_list_map['delta_c']
         v_length = self.variable_length_map['v']
 
-        for idx in range(len(delta_c_list)):
+        for idx in delta_c_list:
             for step in range(1, self.horizon + 1):
                 peq = np.zeros((1, self.num_variables))
-                peq[:, v_length * (step - 1) + delta_c_list[idx]] = 1
+                peq[:, v_length * (step - 1) + idx] = 1
                 
                 qeq = np.array([[1]])
 
                 # Peq_matrix, qeq_matrixに追加
                 Peq_matrix = np.vstack([Peq_matrix, peq]) if 'Peq_matrix' in locals() else peq
                 qeq_matrix = np.vstack([qeq_matrix, qeq]) if 'qeq_matrix' in locals() else qeq
-
 
         return P_matrix, q_matrix, Peq_matrix, qeq_matrix
 
@@ -2086,34 +2101,14 @@ class MpcController(Object):
             # P_matrix, q_matrixに追加
             P_matrix = np.vstack([P_matrix, p])
             q_matrix = np.vstack([q_matrix, q])
-
-        
-        # 初期値の固定
-        future_phase_ids = self.signal_controller.get('future_phase_ids')
-        if len(future_phase_ids) != 0:
-            for step in range(1, self.calc_start_steps + 1):
-                peq = np.zeros((self.num_signals, self.num_variables))
-                for signal_group_id in range(1, self.num_signals + 1):
-                    peq[signal_group_id - 1, v_length * (step - 1) + signal_group_id - 1] = 1
-                
-                qeq = np.zeros((self.num_signals, 1))
-                signal_group_ids = self.phases[future_phase_ids[step - 1]]
-                for signal_group_id in range(1, self.num_signals + 1):
-                    if signal_group_id in signal_group_ids:
-                        qeq[signal_group_id - 1, 0] = 1
-                    
-                # Peq_matrix, qeq_matrixに追加
-                Peq_matrix = np.vstack([Peq_matrix, peq])
-                qeq_matrix = np.vstack([qeq_matrix, qeq])
-
         
         # 最小連続回数についての制約
         for step in range(1, self.horizon):
             p = np.zeros((1, self.num_variables))
-            q = np.array([[1]])
+            q = np.array([[1.0]])
 
             for tmp_step in range(1, step + 1):
-                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * tmp_step - 1] = 1
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * tmp_step - 1] = 1.0
 
             for tmp_step in range(1, self.min_successive_steps - step + 1):
                 q -= self.phi_record[-tmp_step]
@@ -2121,6 +2116,26 @@ class MpcController(Object):
             # P_matrix, q_matrixに追加
             P_matrix = np.vstack([P_matrix, p])
             q_matrix = np.vstack([q_matrix, q])
+
+        self.tmp_P_matrix = P_matrix
+        self.tmp_q_matrix = q_matrix
+        self.tmp_Peq_matrix = Peq_matrix
+        self.tmp_qeq_matrix = qeq_matrix
+
+        # 初期値の固定
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+        if len(future_phase_ids) != 0:
+            for step in range(1, self.remained_steps + 1):
+                peq = np.zeros((self.num_phases, self.num_variables))
+                for phase_id in range(1, self.num_phases + 1):
+                    peq[phase_id - 1, v_length * self.horizon + self.num_phases * (step - 1) + phase_id - 1] = 1.0
+                
+                qeq = np.zeros((self.num_phases, 1))
+                qeq[future_phase_ids[step - 1] - 1, 0] = 1.0
+                    
+                # Peq_matrix, qeq_matrixに追加
+                Peq_matrix = np.vstack([Peq_matrix, peq])
+                qeq_matrix = np.vstack([qeq_matrix, qeq])
 
         return P_matrix, q_matrix, Peq_matrix, qeq_matrix
         
@@ -2175,7 +2190,7 @@ class MpcController(Object):
 
     def _updateIntegrality(self):
         # 変数のタイプを初期化
-        integrality = np.full(self.num_variables, 1) # 2はバイナリ変数を示す
+        integrality = np.full(self.num_variables, 1) # 1は整数変数である
 
         # zに関する変数のリストを取得
         z_list = []
@@ -2214,17 +2229,59 @@ class MpcController(Object):
         constraints_eq = LinearConstraint(Peq_matrix, qeq_matrix, qeq_matrix)
         constraints = [constraints_ineq, constraints_eq]
 
-        # 問題を解く
-        res = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
+        options = {
+            'disp': False,
+            'mip_rel_gap': 0.01,
+        }
+
+        # 問題を解く（インスタンスとして保持）
+        self.response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints, options=options)
 
         # 結果の表示
         print("最適化結果:")
-        if res.success:
-            print(f"最適解 x: {res.x}")
-            print(f"目的関数値: {res.fun}")
+        if self.response.success:
+            print(f"目的関数値: {self.response.fun}")
         else:
+            constraints_ineq = LinearConstraint(self.tmp_P_matrix, np.full(self.tmp_P_matrix.shape[0], -np.inf), self.tmp_q_matrix.flatten())
+            constraints_eq = LinearConstraint(self.tmp_Peq_matrix, self.tmp_qeq_matrix.flatten(), self.tmp_qeq_matrix.flatten())
+            constraints = [constraints_ineq, constraints_eq]
+            response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
             print("解が見つかりませんでした。")
+        return
 
-        print('test')
+    def _updateFuturePhaseIds(self):
+        # 最適化が成功しているとき
+        if self.response.success:
+            # signal_controllerから将来のフェーズを取得
+            future_phase_ids = self.signal_controller.get('future_phase_ids')
 
+            # 最適化計算の結果からフェーズIDを抽出
+            optimized_phase_ids = []
+            for step in range(1, self.horizon + 1):
+                for phase_id in range(1, self.num_phases + 1):
+                    value = self.response.x[self.variable_list_map['p_' + str(phase_id)][step - 1]]
+                    if round(value) == 1:
+                        optimized_phase_ids.append(phase_id)
+                        break
+            
+            # 初めての最適化計算時とそうでないときで場合分け
+            if len(future_phase_ids) != 0:
+                utilize_phase_ids = optimized_phase_ids[self.remained_steps : (self.remained_steps + self.utilize_steps)]
+            else:
+                # 最初だけ残ってる将来のフェーズが少ないのでその分多く採用
+                utilize_phase_ids = optimized_phase_ids[:(self.remained_steps + self.utilize_steps)]
+            
+            # 利用する結果をプッシュ
+            self.signal_controller.setNextPhase(utilize_phase_ids)
+        return
+    
+    def _updatePhiRecord(self):
+        # phiの変数リストを取得
+        phi_list = self.variable_list_map['phi']
 
+        # 最適化結果からphiの値を取得
+        phi_values = self.response.x[phi_list]
+
+        # phiの記録を更新
+        self.phi_record.extend(phi_values[: self.utilize_steps])
+        return
