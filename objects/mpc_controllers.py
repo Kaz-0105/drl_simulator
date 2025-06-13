@@ -6,7 +6,6 @@ import scipy.linalg as la
 import pandas as pd
 from collections import deque
 from scipy.optimize import milp, LinearConstraint, Bounds
-from docplex.mp.model import Model
 
 class MpcControllers(Container):
     def __init__(self, network):
