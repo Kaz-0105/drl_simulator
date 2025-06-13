@@ -463,7 +463,6 @@ class MpcController(Object):
         return
     
     def _updateA(self):
-        A_matrix = None
         for road_order_id in range(1, self.num_roads + 1):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
@@ -473,13 +472,22 @@ class MpcController(Object):
                     continue
                 
                 tmp_A = np.eye((num_vehicles))
-                A_matrix = tmp_A if A_matrix is None else la.block_diag(A_matrix, tmp_A)
+                A_matrix = la.block_diag(A_matrix, tmp_A) if 'A_matrix' in locals() else tmp_A
         
-        self.traffic_flow_model['A'] = A_matrix
+        # 結果とともに自動車が存在するかのフラグも作成
+        if 'A_matrix' not in locals():
+            self.vehicle_exist_flg = False
+        else:
+            self.vehicle_exist_flg = True
+            self.traffic_flow_model['A'] = A_matrix
+ 
         return
     
     def _updateB1(self):
-        B1_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
+        
         for road_order_id in range(1, self.num_roads + 1):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
@@ -489,13 +497,16 @@ class MpcController(Object):
                     continue
 
                 tmp_B1 = np.zeros((num_vehicles, self.num_signals))
-                B1_matrix = tmp_B1 if B1_matrix is None else np.block([[B1_matrix], [tmp_B1]])
+                B1_matrix = np.vstack([B1_matrix, tmp_B1]) if 'B1_matrix' in locals() else tmp_B1
         
         self.traffic_flow_model['B1'] = B1_matrix    
         return
 
     def _updateB2(self):
-        B2_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
+        
         for road_order_id in range(1, self.num_roads + 1):
             # 自動車データを取得
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
@@ -523,7 +534,7 @@ class MpcController(Object):
                         else:
                             b2 = np.array([-k_s, k_f, -k_f]) * v * dt
                         
-                        B2_matrix = b2 if B2_matrix is None else la.block_diag(B2_matrix, b2)
+                        B2_matrix = la.block_diag(B2_matrix, b2) if 'B2_matrix' in locals() else b2
                 else:
                     first_end_flg = {}
                     for lane_str in combinations:
@@ -540,13 +551,16 @@ class MpcController(Object):
                         else:
                             b2 = np.array([-k_s, k_f, -k_f, k_f, -k_f]) * v * dt
 
-                        B2_matrix = b2 if B2_matrix is None else la.block_diag(B2_matrix, b2)
+                        B2_matrix = la.block_diag(B2_matrix, b2) if 'B2_matrix' in locals() else b2
 
         self.traffic_flow_model['B2'] = B2_matrix
         return
 
     def _updateB3(self):
-        B3_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
+        
         for road_order_id in range(1, self.num_roads + 1):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
@@ -576,7 +590,7 @@ class MpcController(Object):
                         else:
                             b3 = np.array([0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
                         
-                        B3_matrix = b3 if B3_matrix is None else la.block_diag(B3_matrix, b3)
+                        B3_matrix = la.block_diag(B3_matrix, b3) if 'B3_matrix' in locals() else b3
                 else:
                     first_end_flg = {}
                     for lane_str in combinations:
@@ -594,14 +608,17 @@ class MpcController(Object):
                             first_end_flg[lane_str] = True
                         else:
                             b3 = np.array([0, 0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
-                    
-                        B3_matrix = b3 if B3_matrix is None else la.block_diag(B3_matrix, b3)
+
+                        B3_matrix = la.block_diag(B3_matrix, b3) if 'B3_matrix' in locals() else b3
 
         self.traffic_flow_model['B3'] = B3_matrix
         return
     
     def _updateC(self):
-        C_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
+
         for road_order_id in range(1, self.num_roads + 1):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
@@ -763,15 +780,16 @@ class MpcController(Object):
                         tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
                     
                 # C_matrixに追加
-                C_matrix = tmp_C_matrix if C_matrix is None else la.block_diag(C_matrix, tmp_C_matrix)
+                C_matrix = la.block_diag(C_matrix, tmp_C_matrix) if 'C_matrix' in locals() else tmp_C_matrix
 
         # C_matrixを交通流モデルに追加
         self.traffic_flow_model['C'] = C_matrix
         return
     
     def _updateD1(self):
-        # D1行列を初期化
-        D1_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
 
         # 道路ごとに走査
         for road_order_id in range(1, self.num_roads + 1):
@@ -814,7 +832,7 @@ class MpcController(Object):
                             d1[[12, 13], int(vehicle['signal_group_id']) - 1] = [1, -1]
                     
                         # D1_matrixに追加
-                        D1_matrix = d1 if D1_matrix is None else np.block([[D1_matrix], [d1]])
+                        D1_matrix = np.vstack([D1_matrix, d1]) if 'D1_matrix' in locals() else d1
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
@@ -860,15 +878,16 @@ class MpcController(Object):
                             d1[[18, 19], int(vehicle['signal_group_id']) - 1] = [1, -1]
                             
                         # D1_matrixに追加
-                        D1_matrix = d1 if D1_matrix is None else np.block([[D1_matrix], [d1]])
-                    
+                        D1_matrix = np.vstack([D1_matrix, d1]) if 'D1_matrix' in locals() else d1
+                       
         # D1_matrixを交通流モデルに追加
         self.traffic_flow_model['D1'] = D1_matrix
         return
 
     def _updateD2(self):
-        # D2行列を初期化
-        D2_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
 
         # 道路ごとに走査
         for road_order_id in range(1, self.num_roads + 1):
@@ -909,7 +928,7 @@ class MpcController(Object):
                             # z_3の定義
                             d2[24:28, 2] = [-1, 1, -1, 1]
                         
-                        D2_matrix = d2 if D2_matrix is None else la.block_diag(D2_matrix, d2)
+                        D2_matrix = la.block_diag(D2_matrix, d2) if 'D2_matrix' in locals() else d2
 
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
@@ -963,15 +982,16 @@ class MpcController(Object):
                             d2[38:42, 4] = [-1, 1, -1, 1]
 
                         # D2_matrixに追加
-                        D2_matrix = d2 if D2_matrix is None else la.block_diag(D2_matrix, d2)
+                        D2_matrix = la.block_diag(D2_matrix, d2) if 'D2_matrix' in locals() else d2
           
         # D2_matrixを交通流モデルに追加
         self.traffic_flow_model['D2'] = D2_matrix
         return
 
     def _updateD3(self):
-        # D3行列を初期化
-        D3_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
 
         # 道路ごとに走査
         for road_order_id in range(1, self.num_roads + 1):
@@ -1128,8 +1148,8 @@ class MpcController(Object):
                             d3[24:28, 4] = [p_min, -p_max, p_max, -p_min]
 
                         # D3_matrixのサイズを取得
-                        row_D3 = D3_matrix.shape[0] if D3_matrix is not None else 0
-                        col_D3 = D3_matrix.shape[1] if D3_matrix is not None else 0
+                        row_D3 = D3_matrix.shape[0] if 'D3_matrix' in locals() else 0
+                        col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
 
                         # last_veh_indicesを更新
                         last_vehs_map[int(vehicle['direction_id'])] = {
@@ -1138,7 +1158,7 @@ class MpcController(Object):
                             'col': col_delta_t3 + col_D3,
                         }
                         # D3_matrixにd3を追加
-                        D3_matrix = d3 if D3_matrix is None else la.block_diag(D3_matrix, d3)
+                        D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
 
                         # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
                         if idx != 0 and target_direction_id is not None:
@@ -1357,8 +1377,8 @@ class MpcController(Object):
                             d3[38:42, 7] = [p_min, -p_max, p_max, -p_min]
 
                         # D3_matrixのサイズを取得
-                        row_D3 = D3_matrix.shape[0] if D3_matrix is not None else 0
-                        col_D3 = D3_matrix.shape[1] if D3_matrix is not None else 0
+                        row_D3 = D3_matrix.shape[0] if 'D3_matrix' in locals() else 0
+                        col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
 
                         # last_vehs_mapを更新
                         last_vehs_map[lane_str][int(vehicle['direction_id'])] = {
@@ -1368,7 +1388,7 @@ class MpcController(Object):
                         }
 
                         # D3_matrixにd3を追加
-                        D3_matrix = d3 if D3_matrix is None else la.block_diag(D3_matrix, d3)
+                        D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
 
                         # target_idxが存在するとき（自分と同じ車線かつ進路の異なる車両が存在するとき）
                         if idx != 0 and target_direction_id is not None:
@@ -1382,8 +1402,9 @@ class MpcController(Object):
         return
 
     def _updateE(self):
-        # E行列を初期化
-        E_matrix = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
 
         # 道路ごとに走査
         for road_order_id in range(1, self.num_roads + 1):
@@ -1511,7 +1532,7 @@ class MpcController(Object):
                             last_veh_indices[int(vehicle['direction_id'])] = idx
                         
                         # E_matrixに追加
-                        E_matrix = e if E_matrix is None else np.block([[E_matrix], [e]])
+                        E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
 
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
@@ -1673,15 +1694,16 @@ class MpcController(Object):
                         last_veh_indices[lane_str][int(vehicle['direction_id'])] = idx
 
                         # E_matrixに追加
-                        E_matrix = e if E_matrix is None else np.block([[E_matrix], [e]])
+                        E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
         
         # E_matrixを交通流モデルに追加
         self.traffic_flow_model['E'] = E_matrix
         return
 
     def _updatePosVehs(self):
-        # 位置ベクトルを初期化
-        pos_vehs = None
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
 
         # 道路ごとに走査
         for road_order_id in range(1, self.num_roads + 1):
@@ -1698,13 +1720,17 @@ class MpcController(Object):
                 tmp_pos_vehs = vehicle_data['position'].values.reshape(-1, 1)
 
                 # pos_vehsに追加
-                pos_vehs = tmp_pos_vehs if pos_vehs is None else np.block([[pos_vehs], [tmp_pos_vehs]])
+                pos_vehs = np.vstack([pos_vehs, tmp_pos_vehs]) if 'pos_vehs' in locals() else tmp_pos_vehs
 
         # 位置ベクトルを交通流モデルに追加
         self.traffic_flow_model['pos_vehs'] = pos_vehs
         return
 
     def _updateVariableListMap(self):
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
+        
         # 変数リストマップを初期化（現状必要ないのはコメントアウト）
         variable_list_map = {
             'z_1': [],
@@ -1944,6 +1970,10 @@ class MpcController(Object):
     def _updateOptimizationProblem(self):
         # 最適化問題の係数をまとめるための辞書を初期化
         self.optimization_problem = {}
+
+        # 自動車が存在しない場合はスキップ
+        if not self.vehicle_exist_flg:
+            return
 
         # 不等式制約と等式制約を更新
         self._updateConstraints()
@@ -2213,6 +2243,10 @@ class MpcController(Object):
         return
 
     def _solveOptimizationProblem(self):
+        # 自動車が存在するかで場合分け
+        if not self.vehicle_exist_flg:
+            return
+        
         # 目的関数の係数を取得
         f_matrix = self.optimization_problem['f']
         P_matrix = self.optimization_problem['P']
@@ -2247,14 +2281,25 @@ class MpcController(Object):
             constraints = [constraints_ineq, constraints_eq]
             response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
             print("解が見つかりませんでした。")
+        
         return
 
     def _updateFuturePhaseIds(self):
+        # signal_controllerから将来のフェーズを取得
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+
+        # 自動車が存在しないときは現在のフェーズを維持
+        if not self.vehicle_exist_flg:
+            if len(future_phase_ids) == 0:
+                utilize_phase_ids = [1] * (self.remained_steps + self.utilize_steps)
+            else:
+                utilize_phase_ids = [future_phase_ids[-1]] * (self.utilize_steps)
+
+            self.signal_controller.setNextPhase(utilize_phase_ids)
+            return
+        
         # 最適化が成功しているとき
         if self.response.success:
-            # signal_controllerから将来のフェーズを取得
-            future_phase_ids = self.signal_controller.get('future_phase_ids')
-
             # 最適化計算の結果からフェーズIDを抽出
             optimized_phase_ids = []
             for step in range(1, self.horizon + 1):
@@ -2276,6 +2321,12 @@ class MpcController(Object):
         return
     
     def _updatePhiRecord(self):
+        # 自動車が存在しないときは現状維持なので0を追加
+        if not self.vehicle_exist_flg:
+            phi_values = [0] * self.utilize_steps
+            self.phi_record.extend(phi_values)
+            return
+        
         # phiの変数リストを取得
         phi_list = self.variable_list_map['phi']
 
