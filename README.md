@@ -15,8 +15,18 @@ source venv/Scripts/activate
 pip install {モジュール名}
 ```
 
-終了するときは下記コマンドを入力
+終了するときは下記コマンドを入力．
 
+```
+deactivate
+```
+
+必要なパッケージは`requirements.txt`にまとめてある．
+これらをまとめてインストールする場合は下記のコマンドを入力．
+
+```
+pip install -r requirements.txt
+```
 
 # yamlファイルの作り方
 以下の記事を参照するとよい．
