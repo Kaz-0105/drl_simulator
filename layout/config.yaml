@@ -49,8 +49,8 @@ apex:
 
 mpc:
   horizon: 5              # 予測ホライズンの長さ（ステップ数）
-  utilize_steps: 2           # 採用するホライゾンの長さ（ステップ数）(horizonの半分以下)
-  remained_steps: 2     # 計算を開始するときの決まってる将来のステップ数（utilize_steps以下，またhorizon > utilize_steps + remained_stepsになるようにすること）
+  utilize_steps: 2        # 採用するホライゾンの長さ（ステップ数）(horizonの半分以下)
+  remained_steps: 2       # 計算を開始するときの決まってる将来のステップ数（utilize_steps以下，またhorizon > utilize_steps + remained_stepsになるようにすること）
   min_successive_steps: 5 # 最小の青時間連続時間（ステップ数）
   num_max_changes: 1      # 1回の予測での最大変化数
   phases:
