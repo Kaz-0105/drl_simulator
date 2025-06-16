@@ -1016,8 +1016,8 @@ class MpcController(Object):
 
                 # 必要なパラメータを取得
                 v = params['v_max']
-                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * self.horizon
-                p_min = 0
+                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * (self.horizon + 1)
+                p_min = - v * self.time_step
                 D_s = params['D_s']
                 d_s = params['d_s']
                 D_f = params['D_f']
@@ -1430,8 +1430,8 @@ class MpcController(Object):
 
                 # 必要なパラメータを取得
                 v = params['v_max']
-                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * self.horizon
-                p_min = 0
+                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * (self.horizon + 1)
+                p_min = - v * self.time_step
                 D_s = params['D_s'] 
                 d_s = params['d_s']
                 D_f = params['D_f']  
@@ -2287,8 +2287,8 @@ class MpcController(Object):
         # signal_controllerから将来のフェーズを取得
         future_phase_ids = self.signal_controller.get('future_phase_ids')
 
-        # 自動車が存在しないときは現在のフェーズを維持
-        if not self.vehicle_exist_flg:
+        # 自動車が存在しないときと実行可能解が存在しないときは現在のフェーズを維持
+        if not self.vehicle_exist_flg or not self.response.success:
             if len(future_phase_ids) == 0:
                 utilize_phase_ids = [1] * (self.remained_steps + self.utilize_steps)
             else:
@@ -2320,8 +2320,8 @@ class MpcController(Object):
         return
     
     def _updatePhiRecord(self):
-        # 自動車が存在しないときは現状維持なので0を追加
-        if not self.vehicle_exist_flg:
+        # 自動車が存在しないときと実行可能解がなかったときは現状維持なので0を追加
+        if not self.vehicle_exist_flg or not self.response.success:
             phi_values = [0] * self.utilize_steps
             self.phi_record.extend(phi_values)
             return
