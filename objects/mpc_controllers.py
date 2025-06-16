@@ -359,7 +359,7 @@ class MpcController(Object):
             if vehicle_data.shape[0] == 0:
                 vehicle_data_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
-                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_group_id'])
+                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
                 road_vehicle_data_map[road_order_id] = vehicle_data_map
                 continue
 
@@ -371,7 +371,7 @@ class MpcController(Object):
             # 新たに信号待ちする車線に関する情報および従う信号機を追加するために配列を初期化
             wait_link_ids = []
             wait_lane_ids = []
-            signal_group_ids = []
+            signal_ids = []
 
             # 車両データを走査
             for _, vehicle in vehicle_data.iterrows():
@@ -380,8 +380,8 @@ class MpcController(Object):
 
                 # 信号機のIDを取得（まだコースが決まってないものの方向は1にしておく）
                 direction_id = vehicle['direction_id'] if vehicle['direction_id'] != 0 else 1
-                signal_group_id = (road_order_id - 1) * (self.num_roads - 1) + direction_id
-                signal_group_ids.append(int(signal_group_id))
+                signal_id = (road_order_id - 1) * (self.num_roads - 1) + direction_id
+                signal_ids.append(int(signal_id))
 
                 # 次のリンクが道路外の場合（交差点のコネクタの場合）
                 if next_link_id not in link_ids:
@@ -407,10 +407,10 @@ class MpcController(Object):
                     current_link = road.links[vehicle['link_id']]
                     wait_lane_ids.append(int(current_link.to_lane.get('id')))
                 
-            # wait_link_idsとwait_lane_idsとsignal_group_idsをデータフレームに追加
+            # wait_link_idsとwait_lane_idsとsignal_idsをデータフレームに追加
             vehicle_data['wait_link_id'] = wait_link_ids
             vehicle_data['wait_lane_id'] = wait_lane_ids
-            vehicle_data['signal_group_id'] = signal_group_ids
+            vehicle_data['signal_id'] = signal_ids
             
             # combinationsごとに分割していく
             vehicle_data_map = {}
@@ -815,20 +815,20 @@ class MpcController(Object):
                             d1 = np.zeros((16, self.num_signals))
                             
                             # delta_1の定義
-                            d1[[4, 5], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[4, 5], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # delta_t2の定義
-                            d1[[8, 9], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[8, 9], int(vehicle['signal_id']) - 1] = [1, -1]
 
                         else:
                             # 先頭車以外のD1行列を初期化
                             d1 = np.zeros((28, self.num_signals))
 
                             # delta_1の定義
-                            d1[[6, 7], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[6, 7], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # delta_t2の定義
-                            d1[[12, 13], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[12, 13], int(vehicle['signal_id']) - 1] = [1, -1]
                     
                         # D1_matrixに追加
                         D1_matrix = np.vstack([D1_matrix, d1]) if 'D1_matrix' in locals() else d1
@@ -845,10 +845,10 @@ class MpcController(Object):
                             d1 = np.zeros((16, self.num_signals))
 
                             # delta_1の定義
-                            d1[[4, 5], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[4, 5], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # delta_t2の定義
-                            d1[[8, 9], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[8, 9], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # 先頭車のフラグを更新
                             first_end_flg[lane_str] = True
@@ -858,10 +858,10 @@ class MpcController(Object):
                             d1 = np.zeros((30, self.num_signals))
 
                             # delta_1の定義
-                            d1[[8, 9], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[8, 9], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # delta_t2の定義
-                            d1[[14, 15], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[14, 15], int(vehicle['signal_id']) - 1] = [1, -1]
                         
                             # 準先頭車のフラグを更新
                             first_end_flg[lane_str] = True
@@ -871,10 +871,10 @@ class MpcController(Object):
                             d1 = np.zeros((42, self.num_signals))
 
                             # delta_1の定義
-                            d1[[10, 11], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[10, 11], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # delta_t2の定義
-                            d1[[18, 19], int(vehicle['signal_group_id']) - 1] = [1, -1]
+                            d1[[18, 19], int(vehicle['signal_id']) - 1] = [1, -1]
                             
                         # D1_matrixに追加
                         D1_matrix = np.vstack([D1_matrix, d1]) if 'D1_matrix' in locals() else d1
@@ -2053,13 +2053,13 @@ class MpcController(Object):
 
         # フェーズの変数の定義
         for phase_id in range(1, self.num_phases + 1):
-            signal_group_ids = self.phases[phase_id]
+            signal_ids = self.phases[phase_id]
 
             for step in range(1, self.horizon + 1):
                 p = np.zeros((2, self.num_variables))
 
-                for signal_group_id in signal_group_ids:
-                    p[:, v_length * (step - 1) + signal_group_id - 1] = [-1, 1]
+                for signal_id in signal_ids:
+                    p[:, v_length * (step - 1) + signal_id - 1] = [-1, 1]
                 
                 p[:, v_length * self.horizon + phase_id + self.num_phases * (step - 1) - 1] = [self.num_roads, -1]
 
@@ -2071,11 +2071,11 @@ class MpcController(Object):
 
         # 信号現示の変化のバイナリ変数を定義
         for step in range(1, self.horizon):
-            for signal_group_id in range(1, self.num_signals + 1):
+            for signal_id in range(1, self.num_signals + 1):
                 p = np.zeros((4, self.num_variables))
-                p[:, v_length * (step - 1) + signal_group_id - 1] = [1, -1, -1, 1]
-                p[:, v_length * step + signal_group_id - 1] = [1, -1, 1, -1]
-                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_group_id - 1] = [1, 1, -1, -1]
+                p[:, v_length * (step - 1) + signal_id - 1] = [1, -1, -1, 1]
+                p[:, v_length * step + signal_id - 1] = [1, -1, 1, -1]
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_id - 1] = [1, 1, -1, -1]
 
                 q = np.array([[2], [0], [0], [0]])
 
@@ -2121,8 +2121,8 @@ class MpcController(Object):
         # 信号機全体で変化しているかのバイナリの定義
         for step in range(1, self.horizon):
             p = np.zeros((2, self.num_variables))
-            for signal_group_id in range(1, self.num_signals + 1):
-                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_group_id - 1] = [-1, 1]
+            for signal_id in range(1, self.num_signals + 1):
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_id - 1] = [-1, 1]
             p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1] = [1, - self.num_signals]
 
             q = np.array([[0], [0]])
@@ -2146,6 +2146,19 @@ class MpcController(Object):
             P_matrix = np.vstack([P_matrix, p])
             q_matrix = np.vstack([q_matrix, q])
 
+        # 採用するステップ以降の入力の固定について
+        if self.horizon > self.remained_steps + self.utilize_steps:
+            for step in range(self.remained_steps + self.utilize_steps + 1, self.horizon + 1):
+                peq = np.zeros((self.num_signals, self.num_variables))
+                for signal_id in range(1, self.num_signals + 1):
+                    peq[signal_id - 1, v_length * (self.remained_steps + self.utilize_steps - 1) + signal_id - 1] = 1.0
+                    peq[signal_id - 1, v_length * (step - 1) + signal_id - 1] = - 1.0
+                
+                qeq = np.zeros((self.num_signals, 1))
+
+                Peq_matrix = np.vstack([Peq_matrix, peq])
+                qeq_matrix = np.vstack([qeq_matrix, qeq])
+        
         self.tmp_P_matrix = P_matrix
         self.tmp_q_matrix = q_matrix
         self.tmp_Peq_matrix = Peq_matrix
