@@ -67,11 +67,11 @@ class Simulation(Common):
                 # ネットワークの更新
                 self.network.updateData()
 
-                # 報酬を計算
-                self.network.local_agents.getReward()
-
                 # 次の状態量を計算
                 self.network.local_agents.getState()
+
+                # 前回の報酬を計算
+                self.network.local_agents.getReward()
 
                 # バッファーに送るデータを作成
                 self.network.local_agents.makeLearningData()

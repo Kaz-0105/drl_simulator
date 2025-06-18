@@ -223,11 +223,101 @@ class LocalAgent(Object):
         self.infer_flg = True
         return True
 
+    def _updateVehicleData(self):
+        lane_str_vehicle_data_map = {}
+        
+        # 道路を走査
+        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+            # lanesオブジェクトを取得
+            lanes = self.road_lanes_map[road_order_id]
+
+            # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
+            if self.features_info['vehicle']['wait_flg']:
+                direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+
+            # 車線を走査
+            for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                lane_str = f"{road_order_id}-{lane_order_id}"
+
+                # laneオブジェクトを取得
+                lane = lanes[lane_order_id]
+
+                # vehicle_dataを位置情報でソート
+                vehicle_data = lane.get('vehicle_data').copy()
+                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                vehicle_data.reset_index(drop=True, inplace=True)
+
+                # 先頭からnum_vehicles台の車両を取得
+                vehicle_data = vehicle_data.head(self.num_vehicles).copy()
+
+                # 距離情報を信号との距離に変換
+                length_info = lane.get('length_info')
+                vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+
+                # near_flgを追加（交差点に近いかどうか）
+                if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
+                    near_flgs = []
+                    for _, row in vehicle_data.iterrows():
+                        if row['position'] <= 100:
+                            near_flgs.append(True)
+                        else:
+                            near_flgs.append(False)
+                    
+                    vehicle_data['near_flg'] = near_flgs
+
+                direction_ids = vehicle_data['direction_id']
+
+                # wait_flgを追加（信号待ちの状況かどうか）
+                if self.features_info['vehicle']['wait_flg']:
+                    # wait_flgを初期化
+                    wait_flgs = []
+                    for _, row in vehicle_data.iterrows():
+                        # 交差点に近くない自動車はスコープから外す
+                        if row['position'] > 100:
+                            wait_flgs.append(False)
+                            continue
+
+                        # 信号が赤の場合は信号待ち
+                        signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
+                        if signal_value == 1:
+                            wait_flgs.append(True)
+                            continue
+                        
+                        # 先頭車の場合
+                        if len(wait_flgs) == 0:
+                            wait_flgs.append(False)
+                            continue
+
+                        # 先頭車でない場合は進路が異なる先行車を探す
+                        found_flg = False
+                        for i in range(len(wait_flgs) - 1, - 1, -1):
+                            if direction_ids[i] != row['direction_id']:
+                                wait_flgs.append(True if wait_flgs[i] else False)
+                                found_flg = True
+                                break
+                        
+                        # 先行車が見つからないとき
+                        if not found_flg:
+                            wait_flgs.append(False)
+                            
+
+                        
+                    # wait_flgsをvehicle_dataに追加
+                    vehicle_data['wait_flg'] = wait_flgs
+                
+                lane_str_vehicle_data_map[lane_str] = vehicle_data
+        
+        self.lane_str_vehicle_data_map = lane_str_vehicle_data_map  
+        return
+
     def getState(self):
         # 状態量を取得するタイミングかどうかを確認
         self._shouldInfer()
         if self.infer_flg == False:
             return
+        
+        # 自動車に関する情報を更新
+        self._updateVehicleData()
         
         # Ape-Xの場合
         if self.config.get('drl_info')['method'] == 'apex':
@@ -251,10 +341,6 @@ class LocalAgent(Object):
                 # lanesオブジェクトを取得
                 lanes = self.road_lanes_map[road_order_id]
 
-                # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
-                if self.features_info['vehicle']['wait_flg']:
-                    direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
-
                 # 車線を走査
                 for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
                     # laneオブジェクトを取得
@@ -263,57 +349,9 @@ class LocalAgent(Object):
                     # 車線の状態量を初期化
                     lane_state = {}
 
-                    # vehicle_dataを位置情報でソート
-                    vehicle_data = lane.get('vehicle_data').copy()
-                    vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                    vehicle_data.reset_index(drop=True, inplace=True)
-
-                    # 先頭からnum_vehicles台の車両を取得
-                    vehicle_data = vehicle_data.head(self.num_vehicles).copy()
-
-                    # 距離情報を信号との距離に変換
-                    length_info = lane.get('length_info')
-                    vehicle_data['position'] = length_info['length'] - vehicle_data['position']
-
-                    # near_flgを追加（交差点に近いかどうか）
-                    if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
-                        near_flgs = []
-                        for index, row in vehicle_data.iterrows():
-                            if row['position'] <= 100:
-                                near_flgs.append(True)
-                            else:
-                                near_flgs.append(False)
-                        
-                        vehicle_data['near_flg'] = near_flgs
-
-                    # wait_flgを追加（信号待ちの状況かどうか）
-                    if self.features_info['vehicle']['wait_flg']:
-                        # wait_flgを初期化
-                        wait_flgs = []
-                        for index, row in vehicle_data.iterrows():
-                            # 交差点に近くない自動車はスコープから外す
-                            if row['position'] > 100:
-                                wait_flgs.append(False)
-                                continue
-
-                            # 信号が赤の場合は信号待ち
-                            signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
-                            if signal_value == 1:
-                                wait_flgs.append(True)
-                                continue
-                            
-                            # 先行車が信号待ちしている場合は信号待ち
-                            if len(wait_flgs) > 0 and wait_flgs[-1] == True:
-                                wait_flgs.append(True)
-                                continue
-
-                            # それ以外は信号待ちではない
-                            wait_flgs.append(False)
-                            
-                        # wait_flgsをvehicle_dataに追加
-                        vehicle_data['wait_flg'] = wait_flgs
+                    # 自動車のデータを取得
+                    vehicle_data = self.lane_str_vehicle_data_map.get(f"{road_order_id}-{lane_order_id}")
                     
-
                     # 車両に関する状態を取得
                     vehicles_state = {}
                     for index in range(self.num_vehicles):
@@ -371,6 +409,9 @@ class LocalAgent(Object):
 
                     # 評価指標に関する状態量を取得
                     lane_state['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
+
+                    # 道路の情報を取得
+                    length_info = lane.get('length_info')
                     
                     # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
                     if lane.link.get('type') == 'main':
@@ -627,7 +668,7 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.randint(1, 8)
+            action = random.choice([i for i in range(1, 9)])
         else:
             with torch.no_grad():
                 self.model.set('requires_grad_flg', False)
@@ -643,29 +684,42 @@ class LocalAgent(Object):
     
     def getReward(self):
         # 報酬を計算するタイミングかどうかを確認
-        if self.infer_flg == False:
+        self._shouldEvaluate()
+        if self.evaluate_flg == False:
             return
         
-        # 車列の長さで報酬を計算
-        scores = []
-        for road in self.roads.getAll():
-            road_length = road.get('length')
-            max_queue_length = 0
-            for link in road.links.getAll():
-                if link.has('queue_counter'):
-                    max_queue_length = max(link.queue_counter.get('current_queue_length'), max_queue_length)
-            
-            # 1から-1の範囲に正規化
-            scores.append(round(-2 * (max_queue_length / road_length) + 1, 1))
+        # 道路ごとの速度の平均を利用
+        score = 0
+        for _, vehicle_data in self.lane_str_vehicle_data_map.items():
+            if vehicle_data.shape[0] == 0:
+                continue
 
-        # 報酬は各道路のスコアの合計（一番悪いスコアは２倍で効くようにする）
-        # -1から1の範囲に正規化
-        self.current_reward = (sum(scores) + min(scores)) / (len(scores) + 1)
-        
+            for _, row in vehicle_data.iterrows():
+                if not row['wait_flg']:
+                    score += 1
+                else:
+                    score -= 1
+
+        # 報酬を計算（-1から1の範囲に正規化）
+        self.current_reward = score
+
         # 記録する
         self.reward_record.append(self.current_reward)
         self.total_rewards += self.current_reward
+
+    def _shouldEvaluate(self):
+        # 現在残っている将来のフェーズを取得
+        signal_controller = self.intersection.signal_controller
+        future_phase_ids = signal_controller.get('future_phase_ids')
+
+        # 2ステップ以上残っていた場合は評価しなくてよい
+        if len(future_phase_ids) > 1:
+            self.evaluate_flg = False
+            return False
         
+        self.evaluate_flg = True
+        return True   
+       
     def makeLearningData(self):
         # 推論の必要がないときはスキップ
         if self.infer_flg == False:
