@@ -16,19 +16,19 @@ class SignalControllers(Container):
         self.com = self.network.com.SignalControllers
 
         # 下位の紐づくオブジェクトを初期化
-        self.makeElements()
+        self._makeElements()
 
         # intersectionオブジェクトと紐づける
-        self.makeIntersectionConnections()
+        self._makeIntersectionConnections()
 
         # phasesを作成する
-        self.makePhases()
+        self._makePhases()
 
-    def makeElements(self):
+    def _makeElements(self):
         for signal_controller_com in self.com.GetAll():
             self.add(SignalController(signal_controller_com, self))
     
-    def makeIntersectionConnections(self):
+    def _makeIntersectionConnections(self):
         for signal_controller in self.getAll():
             input_road_ids = []
             for signal_group in signal_controller.signal_groups.getAll():
@@ -46,7 +46,7 @@ class SignalControllers(Container):
             if success_flg == False:
                 raise Exception(f"SignalController {signal_controller.get('id')} has input roads {input_road_ids}, but no matching intersection found.")
 
-    def makePhases(self):
+    def _makePhases(self):
         num_roads_phases_map = self.config.get('num_roads_phases_map')
 
         for signal_controller in self.getAll():
@@ -82,8 +82,8 @@ class SignalController(Object):
         self.signal_groups = SignalGroups(self)
 
         # phase_recordとfuture_phase_idsを初期化
-        self.initPhaseRecord()
-        self.initFuturePhaseIds()
+        self._initPhaseRecord()
+        self._initFuturePhaseIds()
 
         # red_stepsを初期化
         simulation_info = self.config.get('simulator_info')
@@ -100,14 +100,28 @@ class SignalController(Object):
         else:
             return None # レコードがない場合はNoneを返す
 
-    def initPhaseRecord(self):
+    @property
+    def signal_change_flg(self):
+        if self.current_phase_id is None:
+            return False
+        
+        if self.current_phase_id == self.future_phase_ids[0]:
+            return False
+    
+        return True
+    
+    @property
+    def next_phase_id(self):
+        return self.future_phase_ids[0] if self.future_phase_ids else None
+    
+    def _initPhaseRecord(self):
         records_info = self.config.get('records_info')
         if records_info['metric']['phase'] == True:
             self.phase_record = []
         else:
             self.phase_record = deque(maxlen=records_info['max_len'])
     
-    def initFuturePhaseIds(self):
+    def _initFuturePhaseIds(self):
         simulator_info = self.config.get('simulator_info')
         if simulator_info['control_method'] == 'drl':
             drl_info = self.config.get('drl_info')
@@ -147,23 +161,23 @@ class SignalGroups(Container):
             self.com = self.signal_controller.com.SGs
 
             # 下位の紐づくオブジェクトを初期化
-            self.makeElements()
+            self._makeElements()
 
             # signal_groupとsignal_headを紐づける
-            self.makeSignalHeadConnections()
+            self._makeSignalHeadConnections()
 
             # signal_groupとroadを紐づける
-            self.makeRoadConnections()
+            self._makeRoadConnections()
         
         elif upper_object.__class__.__name__ == 'Road':
             # 上位の紐づくオブジェクトを取得
             self.road = upper_object
     
-    def makeElements(self):
+    def _makeElements(self):
         for signal_group_com in self.com.GetAll():
             self.add(SignalGroup(signal_group_com, self))
     
-    def makeSignalHeadConnections(self):
+    def _makeSignalHeadConnections(self):
         for signal_group in self.getAll():
             signal_heads = signal_group.signal_heads
             
@@ -178,7 +192,7 @@ class SignalGroups(Container):
         elif self.has('road'):
             return self.road.roads.network
     
-    def makeRoadConnections(self):
+    def _makeRoadConnections(self):
         for signal_group in self.getAll():
             signal_heads = signal_group.signal_heads
 

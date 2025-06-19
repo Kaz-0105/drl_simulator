@@ -10,4 +10,3 @@ for count in range(1000):
 
     vissim.exit()
     
-    print(f"Run {count + 1} completed.")
