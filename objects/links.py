@@ -265,9 +265,15 @@ class Lanes(Container):
             # 下位の紐づくオブジェクトを初期化
             self.makeElements()
         
-        elif upper_object.__class__.__name__ == 'DRLController':
+        elif upper_object.__class__.__name__ == 'LocalAgent':
             # 上位の紐づくオブジェクトを取得
             self.drl_controller = upper_object
+        
+        elif upper_object.__class__.__name__ == 'MpcController':
+            # 上位の紐づくオブジェクトを取得
+            self.mpc_controller = upper_object
+
+        return   
     
     def makeElements(self):
         for lane_com in self.com.GetAll():

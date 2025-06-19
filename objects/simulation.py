@@ -70,7 +70,7 @@ class Simulation(Common):
                 # 次の状態量を計算
                 self.network.local_agents.getState()
 
-                # 前回の報酬を計算
+                # 前回の報酬を計算（状態量が必要なため，次の状態量を決めた後に計算）
                 self.network.local_agents.getReward()
 
                 # バッファーに送るデータを作成
@@ -94,6 +94,7 @@ class Simulation(Common):
 
             # 次回のエピソードに引き継ぐ情報を保存
             self.network.master_agents.saveSession()
+            
         elif self.control_method == 'mpc':
             while self.current_time < self.end_time:
                 # ネットワークの更新
@@ -102,14 +103,22 @@ class Simulation(Common):
                 # MPCを起動
                 self.network.mpc_controllers.optimize()
 
+                if self.network.get('bc_flg'):
+                    # 信号が変化するときは状態量と行動を更新する
+                    self.network.mpc_controllers.updateBcData()
+
+                    # bcバッファにデータを保存する
+                    self.network.bc_buffers.saveBcData()
+
                 # Vissimを1ステップ進める
                 self._runSingleStep()
             
+            # bcバッファのデータをファイルに保存
+            self.network.bc_buffers.writeToFile()
+            
             # 最後のネットワーク更新
             self.network.updateData()
-
-
-
+        return
 
     def _runSingleStep(self):
         # 信号現示を更新する

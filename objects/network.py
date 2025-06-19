@@ -13,6 +13,7 @@ from objects.data_collections import DataCollectionPoints, DataCollectionMeasure
 from objects.master_agents import MasterAgents
 from objects.local_agents import LocalAgents
 from objects.mpc_controllers import MpcControllers
+from objects.bc_buffers import BcBuffers
 
 class Network(Common):
     def __init__(self, vissim):
@@ -47,12 +48,22 @@ class Network(Common):
         self.data_collection_points = DataCollectionPoints(self)
         self.data_collection_measurements = DataCollectionMeasurements(self)
 
-        # agentオブジェクトの初期化
+        
         if self.control_method == 'drl':
+            # マスターエージェントとローカルエージェントを初期化
             self.master_agents = MasterAgents(self)
             self.local_agents = LocalAgents(self)
+
         elif self.control_method == 'mpc':
+            # MPCコントローラを初期化
             self.mpc_controllers = MpcControllers(self)
+
+            # 行動クローンのデータ集めをする場合はBCバッファを初期化
+            mpc_info = self.config.get('mpc_info')
+            bc_buffer_info = mpc_info['bc_buffer']
+            self.bc_flg = bc_buffer_info['flg']
+            if self.bc_flg:
+                self.bc_buffers = BcBuffers(self)
 
         # simulationオブジェクトと紐づける
         self.simulation = self.vissim.simulation
