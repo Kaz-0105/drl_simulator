@@ -3,6 +3,8 @@ from libs.object import Object
 from objects.links import Links
 from objects.signal_controllers import SignalGroups
 from objects.queue_counters import QueueCounters
+from objects.data_collections import DataCollectionPoints
+
 from pandas import DataFrame
 import pandas as pd
 
@@ -92,6 +94,9 @@ class Road(Object):
 
         # SignalGroupオブジェクトの信号方向との対応関係を示す辞書型配列を初期化
         self.direction_signal_group_map = {}
+
+        # data_collection_pointを初期化
+        self.data_collection_points = DataCollectionPoints(self)
 
     def addLink(self, link, link_type):
         self.links.add(link)

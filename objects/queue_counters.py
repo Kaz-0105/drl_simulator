@@ -77,36 +77,27 @@ class QueueCounter(Object):
         # IDを取得
         self.id = self.com.AttValue('No')
 
+        # networkオブジェクトと紐づける
+        self.network = queue_counters.network
+
         # current_queue_lengthを初期化
         self.current_queue_length = 0
 
         # queue_lengths（時系列データ）を初期化
-        self.queue_lengths = None
+        self.queue_lengths = pd.DataFrame(columns=['time', 'queue_length'])
+        return
 
-    @property
-    def network(self):
-        return self.queue_counters.network
-    
+    def updateData(self, queue_length):    
+        # current_queue_lengthを更新
+        self.current_queue_length = 0.0 if queue_length is None else round(queue_length, 1)
+
+        # queue_lengthsを更新
+        self.queue_lengths.loc[len(self.queue_lengths)] = [self.current_time, self.current_queue_length]
+
     @property
     def current_time(self):
         return self.network.simulation.get('current_time')
 
-    def updateData(self, queue_length):
-        # 最初はNoneが返ってくるので、0に置き換える
-        if queue_length is None:
-            queue_length = 0
-            
-        # current_queue_lengthを更新
-        self.current_queue_length = round(queue_length, 1)
-
-        # queue_lengthsを更新
-        new_queue_length = pd.DataFrame({'time': [self.current_time], 'queue_length': [self.current_queue_length]})
-
-        if self.queue_lengths is None:
-            self.queue_lengths = new_queue_length
-        else:
-            self.queue_lengths = pd.concat([self.queue_lengths, new_queue_length], ignore_index = True)
-    
     @property
     def delta_queue_length(self):
         if len(self.queue_lengths) < 2:

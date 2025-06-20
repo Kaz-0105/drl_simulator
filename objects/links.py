@@ -1,5 +1,6 @@
 from libs.container import Container
 from libs.object import Object
+from objects.data_collections import DataCollectionPoints
 
 from pandas import DataFrame
 
@@ -149,19 +150,18 @@ class Link(Object):
         if self.type == 'connector':
             self.length_info['to_pos'] = self.com.AttValue('ToPos')
             self.length_info['from_pos'] = self.com.AttValue('FromPos')
-    
-    @property
-    def queue_length(self):
-        return self.queue_counter.get('current_queue_length')
+        
+        # data_collection_pointsオブジェクトを初期化
+        self.data_collection_points = DataCollectionPoints(self)
     
     def updateData(self):
         # 車両データを取得
-        self.getVehicleDataFromVissim()
+        self._getVehicleDataFromVissim()
 
         # 非同期処理で車両データを整形
-        self.executor.submit(self.makeFormattedVehicleData)
+        self.executor.submit(self._makeFormattedVehicleData)
     
-    def getVehicleDataFromVissim(self):
+    def _getVehicleDataFromVissim(self):
         # Vissimから車両データを取得
         self.vehicle_data = {}
         self.vehicle_data['id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('No')]
@@ -172,7 +172,7 @@ class Link(Object):
         self.vehicle_data['vehicle_route'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('VehRoutSta')]
         self.vehicle_data['next_link_id'] = [int(tmp_data[1]) if tmp_data[1] != None else None for tmp_data in self.com.Vehs.GetMultiAttValues('NextLink')]
     
-    def makeFormattedVehicleData(self):
+    def _makeFormattedVehicleData(self):
         # 車両が存在しない場合は空のDataFrameを返す
         if len(self.vehicle_data['id']) == 0:
             column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'next_link_id', 'road_id', 'direction_id', 'go_flg']
@@ -245,6 +245,24 @@ class Link(Object):
             return self.length_info['from_pos']
         else:
             return None
+
+    @property
+    def queue_length(self):
+        return self.queue_counter.get('current_queue_length')
+
+    @property
+    def from_link(self):
+        if self.type != 'connector':
+            return None
+        
+        return self.from_links.getAll()[0]
+
+    @property
+    def to_link(self):
+        if self.type != 'connector':
+            return None
+        
+        return self.to_links.getAll()[0]
 
 class Lanes(Container):
     def __init__(self, upper_object):
