@@ -10,3 +10,4 @@ for count in range(1000):
 
     vissim.exit()
     
+    print(f"Simulation {count + 1} completed.")

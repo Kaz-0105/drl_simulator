@@ -39,6 +39,10 @@ class MpcControllers(Container):
             self.executor.submit(mpc_controller.optimize)
         
         self.executor.wait()
+
+        for mpc_controller in self.getAll():
+            mpc_controller.showOptimizationResult()
+
     
     def updateBcData(self):
         for mpc_controller in self.getAll():
@@ -2363,6 +2367,7 @@ class MpcController(Object):
         constraints_eq = LinearConstraint(Peq_matrix, qeq_matrix, qeq_matrix)
         constraints = [constraints_ineq, constraints_eq]
 
+        # オプションを設定
         options = {
             'disp': False,
             'mip_rel_gap': 0.01,
@@ -2371,18 +2376,35 @@ class MpcController(Object):
         # 問題を解く（インスタンスとして保持）
         self.response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints, options=options)
 
-        # 結果の表示
-        print("最適化結果:")
-        if self.response.success:
-            print(f"目的関数値: {self.response.fun}")
-        else:
+        # 失敗したときのデバッグ用
+        if not self.response.success:
             constraints_ineq = LinearConstraint(self.tmp_P_matrix, np.full(self.tmp_P_matrix.shape[0], -np.inf), self.tmp_q_matrix.flatten())
             constraints_eq = LinearConstraint(self.tmp_Peq_matrix, self.tmp_qeq_matrix.flatten(), self.tmp_qeq_matrix.flatten())
             constraints = [constraints_ineq, constraints_eq]
             response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
-            print("解が見つかりませんでした。")
         
         return
+    
+    def showOptimizationResult(self):
+        # 計算を行っていないときはスキップ
+        if not self.should_calculate:
+            return
+        
+        # 自動車が存在するかで場合分け
+        if not self.vehicle_exist_flg:
+            return
+        
+        # 最適化結果を表示
+        print(f"intersection id: {self.intersection.get('id')}")
+        print(f"optimization result:")
+        if self.response.success:
+            print(f"  condition: optimization problem solved successfully.")
+            print(f"  optimal objective values: {round(self.response.fun, 1)}")
+        
+        else: 
+            print(f"  condition: optimization problem failed.") 
+
+        return        
 
     def _updateFuturePhaseIds(self):
         # signal_controllerから将来のフェーズを取得
