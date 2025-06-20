@@ -86,6 +86,10 @@ class BcBuffer(Object):
 
         # ネットワークIDを取得
         self.network_id = bc_buffer_info['network_id']
+
+        # 状態量として取得する自動車台数を取得
+        drl_info =self.config.get('drl_info')
+        self.num_vehicles = drl_info['num_vehicles']
         return
 
     def _loadBuffer(self):
@@ -94,7 +98,7 @@ class BcBuffer(Object):
         self.count = 0
         while True:
             self.count += 1
-            self.buffer_path = Path(f'buffers/bc_buffer_{self.network_id}_{roads_str}_{self.count}.pkl')
+            self.buffer_path = Path(f'buffers/bc_buffer_{self.network_id}_{roads_str}_{self.num_vehicles}_{self.count}.pkl')
 
             if self.buffer_path.exists():
                 continue
@@ -106,7 +110,7 @@ class BcBuffer(Object):
             
             # 一番新しいBCバッファを読み込み
             self.count -= 1
-            self.buffer_path = Path(f'buffers/bc_buffer_{roads_str}_{self.count}.pkl')
+            self.buffer_path = Path(f'buffers/bc_buffer_{self.network_id}_{roads_str}_{self.num_vehicles}_{self.count}.pkl')
             with open(self.buffer_path, 'rb') as f:
                 self.buffer = pickle.load(f)
             
@@ -116,7 +120,7 @@ class BcBuffer(Object):
             
             # 上限に達しているときは新しいバッファを作成
             self.count += 1
-            self.buffer_path = Path(f'buffers/bc_buffer_{roads_str}_{self.count}.pkl')
+            self.buffer_path = Path(f'buffers/bc_buffer_{self.network_id}_{roads_str}_{self.num_vehicles}_{self.count}.pkl')
             self.buffer = []
             return
         
@@ -166,7 +170,7 @@ class BcBuffer(Object):
         # 次の保存先を設定
         self.count += 1
         roads_str = ''.join(map(str, self.num_lanes_list))
-        self.buffer_path = Path(f'buffers/bc_buffer_{self.network_id}_{roads_str}_{self.count}.pkl')
+        self.buffer_path = Path(f'buffers/bc_buffer_{self.network_id}_{roads_str}_{self.num_vehicles}_{self.count}.pkl')
         return
     
 
