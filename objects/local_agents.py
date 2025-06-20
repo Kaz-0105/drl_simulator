@@ -120,6 +120,7 @@ class LocalAgent(Object):
         drl_info = self.config.get('drl_info')
         self.num_vehicles = drl_info['num_vehicles']
         self.num_lanes_map = self.master_agent.num_lanes_map
+        self.reward_id = drl_info['reward_id']
 
         # 特徴量に関する設定を取得
         self.features_info = drl_info['features']
@@ -685,20 +686,51 @@ class LocalAgent(Object):
         if self.evaluate_flg == False:
             return
         
-        # 道路ごとの速度の平均を利用
-        score = 0
-        for _, vehicle_data in self.lane_str_vehicle_data_map.items():
-            if vehicle_data.shape[0] == 0:
-                continue
+        if self.reward_id == 1:
+            # 信号待ちの自動車の数をカウント
+            score = 0
+            for _, vehicle_data in self.lane_str_vehicle_data_map.items():
+                if vehicle_data.shape[0] == 0:
+                    continue
 
-            for _, row in vehicle_data.iterrows():
-                if not row['wait_flg']:
-                    score += 1
-                else:
-                    score -= 1
+                for _, row in vehicle_data.iterrows():
+                    if not row['wait_flg']:
+                        score += 1
+                    else:
+                        score -= 1
 
-        # 報酬を計算（-1から1の範囲に正規化）
-        self.current_reward = score
+            # 報酬を計算（-1から1の範囲に正規化）
+            self.current_reward = score
+        
+        elif self.reward_id == 2:
+            # 信号待ちの自動車の数をカウント
+            score = 0
+            for _, vehicle_data in self.lane_str_vehicle_data_map.items():
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                for _, row in vehicle_data.iterrows():
+                    if not row['wait_flg']:
+                        score += 1
+                    else:
+                        score -= 1
+
+            # 前回の行動からの交差点の通過車両の数をカウント
+            for road in self.roads.getAll():
+                for data_collection_point in road.data_collection_points.getAll():
+                    if data_collection_point.get('type') != 'intersection':
+                        continue
+
+                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                        if data_collection_measurement.get('type') == 'multiple':
+                            continue
+                        
+                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
+                        score += sum(num_vehs_list)
+        
+            # current_rewardを更新
+            self.current_reward = score
 
         # 記録する
         self.reward_record.append(self.current_reward)
