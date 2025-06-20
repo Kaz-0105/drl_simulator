@@ -70,9 +70,9 @@ class Network(Common):
         self.simulation.set('network', self)
 
         # Vissimに各種パラメータを反映
-        self.setParametersToVissim()
+        self._setParametersToVissim()
 
-    def setParametersToVissim(self):
+    def _setParametersToVissim(self):
         # 流入量をセット
         for vehicle_input in self.vehicle_inputs.getAll():
             input_volume = vehicle_input.link.get('input_volume')
@@ -88,6 +88,7 @@ class Network(Common):
         self.roads.updateData()
         self.queue_counters.updateData()
         self.delay_measurements.updateData()
+        self.data_collection_measurements.updateData()
 
         # 並列処理が終わるまで待機
         self.executor.wait()
