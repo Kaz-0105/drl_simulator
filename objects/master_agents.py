@@ -155,10 +155,10 @@ class MasterAgent(Object):
         num_vehs_str = str(self.num_vehicles)
 
         # モデルの保存先を定義
-        self.model_path = Path('models/q_net' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
-        self.target_model_path = Path('models/target_q_net' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
-        self.update_count_path = Path('results/update_count' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
-        self.rewards_record_path = Path('results/rewards_record' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
+        self.model_path = Path('models/q_net_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
+        self.target_model_path = Path('models/target_q_net_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
+        self.update_count_path = Path('results/update_count_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
+        self.rewards_record_path = Path('results/rewards_record_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
         
     def _makeModel(self):
         if self.config.get('drl_info')['method'] =='apex':

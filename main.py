@@ -3,7 +3,8 @@ from objects.vissim import Vissim
 
 config = Config()
 
-for count in range(1000):
+simulator_info = config.get('simulator_info')
+for count in range(simulator_info['simulation_count']):
     vissim = Vissim(config)
 
     vissim.run()

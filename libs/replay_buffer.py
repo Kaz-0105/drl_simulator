@@ -41,7 +41,7 @@ class ReplayBuffer (Common):
 
         # ネットワークの文字列を作成
         network_str = str(self.master_agent.get('network_id'))
-        self.buffer_path = Path('buffers/buffer' + network_str + '_' + num_lanes_str + '_' + num_vehs_str + '.npz')
+        self.buffer_path = Path('buffers/buffer_' + network_str + '_' + num_lanes_str + '_' + num_vehs_str + '.npz')
 
     def _loadBuffer(self):
         # バッファーのファイルが存在する場合は読み込む
