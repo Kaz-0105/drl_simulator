@@ -1,6 +1,6 @@
 simulator :
   network_name: 'twenty_intersections_two_lane'  # シミュレーションに使うネットワーク名（ディレクトリ名）
-  control_method: 'drl'     # 制御手法の指定
+  control_method: 'mpc'     # 制御手法の指定
   simulation_time: 200      # シミュレーションを行う時間（秒）
   seed:
     is_random: true         # シード値をランダムにするかどうか
