@@ -8,7 +8,7 @@ simulator :
   time_step: 2              # シミュレーションの更新の時間幅（秒）
   red_steps: 1              # 全赤の時間（time_stepの長さに合わせ調整すること）
   min_successive_steps: 5   # 最小の青時間連続時間（ステップ数）
-  max_workers: 12           # 並列実行するワーカー数
+  max_workers: 5            # 並列実行するワーカー数
   debug_flg: false          # デバッグモードのフラグ
   
 drl:

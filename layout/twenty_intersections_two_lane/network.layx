@@ -292,7 +292,7 @@
 			</gParSet>
 		</networkEditorLayout>
 		<networkEditorLayout name="" no="3" synchronization="NONE">
-			<camera coord2DX="30.576138108006546" coord2DY="-2182.665303466425" coord3DX="276.21997821990499" coord3DY="-90.020170982136847" coord3DZ="39.567624619823739" foV="45" pitchAngle="0.65079632679489596" rollAngle="0" yawAngle="1.9807963267948963" zoom2D="7.5145388937470363"/>
+			<camera coord2DX="-1818.6564842235891" coord2DY="-2123.7331681883447" coord3DX="276.21997821990499" coord3DY="-90.020170982136847" coord3DZ="39.567624619823739" foV="45" pitchAngle="0.65079632679489596" rollAngle="0" yawAngle="1.9807963267948963" zoom2D="14.676833776849682"/>
 			<gParSet>
 				<backgroundGPars borderColor="ff000000" borderLineStyle="NOLINE" labelAttribute="NO" labelBackgrColor="00000000" labelColor="ff000000" labelDecimals="3" labelFontSize="3" labelVisibility="false" legdInclLabColor="false" objectVisibility="true" useLabelColorScheme="false"/>
 				<baseGPars autoLvlTransp="true" backgroundColor="ffc0c0c0" compassPos="BOTTOMRIGHT" legdOffset="10 10" legdPos="BOTTOMRIGHT" legdScale="1" logoFilename="" logoOffset="20 20" logoPos="TOPLEFT" mapGrayScale="false" mapIntensity="100" mapType="DEFAULTMAPPROVIDER" mode3D="false" rubberbandColor="fff0f000" selectionColor="fff0f000" showCompass="false" showGrid="true" showLegd="false" showLogo="false" showMap="false" showScale="true" showSimTmLabel="false" simTmLabelColor="ff000000" simTmLabelFontSize="20" simTmLabelOffset="15 30" simTmLabelPos="BOTTOMLEFT" wireframeMode="false">
