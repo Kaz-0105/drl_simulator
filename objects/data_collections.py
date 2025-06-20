@@ -181,7 +181,7 @@ class DataCollectionMeasurement(Object):
 
         # 自動車の通過台数を初期化
         self.current_num_vehs = 0
-        self.veh_nums = pd.DataFrame(columns=['time', 'num_vehs'])
+        self.num_vehs_record = pd.DataFrame(columns=['time', 'num_vehs'])
         return
 
     
@@ -206,7 +206,7 @@ class DataCollectionMeasurement(Object):
     
     def updateData(self, num_vehs):
         self.current_num_vehs = 0 if num_vehs is None else num_vehs
-        self.veh_nums.loc[len(self.veh_nums)] = [self.current_time, self.current_num_vehs]
+        self.num_vehs_record.loc[len(self.num_vehs_record)] = [self.current_time, self.current_num_vehs]
         return
 
     @property
