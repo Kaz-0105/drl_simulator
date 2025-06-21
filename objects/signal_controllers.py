@@ -123,14 +123,14 @@ class SignalController(Object):
     
     def _initFuturePhaseIds(self):
         simulator_info = self.config.get('simulator_info')
-        if simulator_info['control_method'] == 'drl':
+        if simulator_info['control_method'] == 'drl' or simulator_info['control_method'] == 'bc':
             drl_info = self.config.get('drl_info')
-            if drl_info['method'] == 'apex':
-                apex_info = self.config.get('apex_info')
-                self.future_phase_ids = deque(maxlen=apex_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
+            self.future_phase_ids = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
         elif simulator_info['control_method'] == 'mpc':
             mpc_info = self.config.get('mpc_info')
-            self.future_phase_ids = deque(maxlen=mpc_info['utilize_steps'] * 2) 
+            self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps']) 
+        
+        return
         
     def setNextPhases(self, phase_ids):
         # フェーズをセット
@@ -271,14 +271,12 @@ class SignalGroup(Object):
     
     def initFutureValues(self):
         simulator_info = self.config.get('simulator_info')
-        if simulator_info['control_method'] == 'drl':
+        if simulator_info['control_method'] == 'drl' or simulator_info['control_method'] == 'bc':
             drl_info = self.config.get('drl_info')
-            if drl_info['method'] == 'apex':
-                apex_info = self.config.get('apex_info')
-                self.future_values = deque(maxlen=apex_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
+            self.future_values = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
         elif simulator_info['control_method'] == 'mpc':
             mpc_info = self.config.get('mpc_info')
-            self.future_values = deque(maxlen=mpc_info['utilize_steps'] * 2)
+            self.future_values = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
 
     @property
     def direction_id(self):

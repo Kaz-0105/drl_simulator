@@ -14,6 +14,7 @@ from objects.master_agents import MasterAgents
 from objects.local_agents import LocalAgents
 from objects.mpc_controllers import MpcControllers
 from objects.bc_buffers import BcBuffers
+from objects.bc_agent import BcAgent
 
 class Network(Common):
     def __init__(self, vissim):
@@ -64,6 +65,9 @@ class Network(Common):
             self.bc_flg = bc_buffer_info['flg']
             if self.bc_flg:
                 self.bc_buffers = BcBuffers(self)
+        
+        elif self.control_method == 'bc':
+            self.bc_agent = BcAgent(self)
 
         # simulationオブジェクトと紐づける
         self.simulation = self.vissim.simulation

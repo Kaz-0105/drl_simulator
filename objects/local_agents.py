@@ -1,9 +1,9 @@
 from libs.container import Container
 from libs.object import Object
 from objects.links import Lanes
-from neural_networks.q_net import QNet
-from neural_networks.q_net2 import QNet2
-from neural_networks.q_net3 import QNet3
+from neural_networks.q_net_1 import QNet1
+from neural_networks.q_net_2 import QNet2
+from neural_networks.q_net_3 import QNet3
 
 import torch
 import random
@@ -99,6 +99,9 @@ class LocalAgent(Object):
         self.intersection = intersection
         self.intersection.set('local_agent', self)
 
+        # signal_controllerオブジェクトと紐づける
+        self.signal_controller = self.intersection.signal_controller
+
         # master_agentと紐づける
         self._makeMasterAgentConnections()
 
@@ -106,21 +109,19 @@ class LocalAgent(Object):
         self.roads = self.intersection.input_roads
         self._makeRoadLanesMap()
 
-        # 1回の推論で決定する時間幅を取得
-        apex_info = self.config.get('apex_info')
-        self.duration_steps = apex_info['duration_steps']
-
-        # 強化学習関連のハイパーパラメータを取得
-        self.network_id = apex_info['network_id']
-        self.td_steps = apex_info['td_steps']
-        self.epsilon = apex_info['epsilon']
-        self.gamma = apex_info['gamma']
-
-        # ネットワーク関連のハイパーパラメータを取得
+        # DRL共通のパラメータを設定
         drl_info = self.config.get('drl_info')
+        self.network_id = drl_info['network_id']
+        self.duration_steps = drl_info['duration_steps']
         self.num_vehicles = drl_info['num_vehicles']
         self.num_lanes_map = self.master_agent.num_lanes_map
         self.reward_id = drl_info['reward_id']
+
+        # APEXに関するパラメータを設定
+        apex_info = self.config.get('apex_info')
+        self.td_steps = apex_info['td_steps']
+        self.epsilon = apex_info['epsilon']
+        self.gamma = apex_info['gamma']
 
         # 特徴量に関する設定を取得
         self.features_info = drl_info['features']
@@ -192,7 +193,7 @@ class LocalAgent(Object):
         if self.config.get('drl_info')['method'] =='apex':
             # モデルを初期化
             if (self.network_id == 1):
-                self.model = QNet(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+                self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
             elif (self.network_id == 2):
                 self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
             elif (self.network_id == 3):
@@ -210,19 +211,6 @@ class LocalAgent(Object):
 
         # 自分のモデルにパラメータをセット
         self.model.load_state_dict(model_state_dict)
-
-    def _shouldInfer(self):
-        # 現在残っている将来のフェーズを取得
-        signal_controller = self.intersection.signal_controller
-        future_phase_ids = signal_controller.get('future_phase_ids')
-
-        # 2ステップ以上残っていた場合は推論しなくてよい
-        if len(future_phase_ids) > 1:
-            self.infer_flg = False
-            return False
-        
-        self.infer_flg = True
-        return True
 
     def _updateVehicleData(self):
         lane_str_vehicle_data_map = {}
@@ -312,8 +300,7 @@ class LocalAgent(Object):
 
     def getState(self):
         # 状態量を取得するタイミングかどうかを確認
-        self._shouldInfer()
-        if self.infer_flg == False:
+        if not self.infer_flg:
             return
         
         # 自動車に関する情報を更新
@@ -454,8 +441,7 @@ class LocalAgent(Object):
 
     def getState2(self):
         # 状態量を取得するタイミングかどうかを確認
-        self._shouldInfer()
-        if self.infer_flg == False:
+        if not self.infer_flg:
             return
         
         # 状態量を初期化
@@ -569,8 +555,7 @@ class LocalAgent(Object):
 
     def getState3(self):
         # 状態量を取得するタイミングかどうかを確認
-        self._shouldInfer()
-        if self.infer_flg == False:
+        if not self.infer_flg:
             return
         
         # 状態量を初期化
@@ -661,7 +646,7 @@ class LocalAgent(Object):
 
     def getAction(self):
         # 推論の必要がないときはスキップ
-        if self.infer_flg == False:
+        if not self.infer_flg:
             return
         
         # ε-greedy法に従って行動を選択
@@ -678,12 +663,11 @@ class LocalAgent(Object):
         self.action_record.append(action)
 
         # 信号機の将来のフェーズに追加
-        self.intersection.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
+        self.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
     
     def getReward(self):
         # 報酬を計算するタイミングかどうかを確認
-        self._shouldEvaluate()
-        if self.evaluate_flg == False:
+        if not self.evaluate_flg:
             return
         
         if self.reward_id == 1:
@@ -734,20 +718,7 @@ class LocalAgent(Object):
 
         # 記録する
         self.reward_record.append(self.current_reward)
-        self.total_rewards += self.current_reward
-
-    def _shouldEvaluate(self):
-        # 現在残っている将来のフェーズを取得
-        signal_controller = self.intersection.signal_controller
-        future_phase_ids = signal_controller.get('future_phase_ids')
-
-        # 2ステップ以上残っていた場合は評価しなくてよい
-        if len(future_phase_ids) > 1:
-            self.evaluate_flg = False
-            return False
-        
-        self.evaluate_flg = True
-        return True   
+        self.total_rewards += self.current_reward 
        
     def makeLearningData(self):
         # 推論の必要がないときはスキップ
@@ -775,3 +746,13 @@ class LocalAgent(Object):
 
         # マスターに送るデータを作成
         self.learning_data.append((state, action, cumulative_reward, next_state, done))
+    
+    @property
+    def infer_flg(self):
+        # 現在残っている将来のフェーズを取得
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+        return len(future_phase_ids) <= 1
+
+    @property
+    def evaluate_flg(self):
+        return self.infer_flg

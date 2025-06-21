@@ -3,9 +3,9 @@ from libs.object import Object
 from libs.replay_buffer import ReplayBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
-from neural_networks.q_net import QNet
-from neural_networks.q_net2 import QNet2
-from neural_networks.q_net3 import QNet3
+from neural_networks.q_net_1 import QNet1
+from neural_networks.q_net_2 import QNet2
+from neural_networks.q_net_3 import QNet3
 
 from pathlib import Path
 import torch
@@ -64,9 +64,9 @@ class MasterAgents(Container):
         
         self.executor.wait()
     
-    def updateRewardsRecord(self):
+    def updateTotalRewardRecord(self):
         for master_agent in self.getAll():
-            master_agent.updateRewardsRecord()
+            master_agent.updateTotalRewardRecord()
     
     def saveSession(self):
         for master_agent in self.getAll():
@@ -92,19 +92,14 @@ class MasterAgent(Object):
         # intersectionsオブジェクトと紐づける
         self._makeIntersectionConnections(num_lanes_turple)
 
-        # 車線数の情報と自動車台数の情報を取得
+        # 車線数の情報を取得
         self._makeNumLanesMap(num_lanes_turple)
-        drl_info = self.config.get('drl_info')
-        self.drl_method = drl_info['method']
-        self.num_vehicles = drl_info['num_vehicles']
 
-        # 強化学習関連のハイパーパラメータを取得
-        apex_info = self.config.get('apex_info')
-        self.network_id = apex_info['network_id']
-        self.update_interval = apex_info['update_interval']
-        self.gamma = apex_info['gamma']
-        self.learning_rate = apex_info['learning_rate']
-        self.td_steps = apex_info['td_steps']
+        # 強化学習で共通のパラメータを取得
+        self._getDrlParameters()
+
+        # Apexのパラメータを取得
+        self._getApexParameters()
 
         # 保存先のパスを定義
         self._makeSavePaths()
@@ -124,6 +119,8 @@ class MasterAgent(Object):
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
+
+        return
 
     def _makeIntersectionConnections(self, num_lanes_turple):
         # intersection_listを取得
@@ -145,6 +142,21 @@ class MasterAgent(Object):
 
         self.num_lanes_map = num_lanes_map
 
+    def _getDrlParameters(self):
+        drl_info = self.config.get('drl_info')
+        self.drl_method = drl_info['method']
+        self.num_vehicles = drl_info['num_vehicles']
+        self.network_id = drl_info['network_id']
+        return
+    
+    def _getApexParameters(self):
+        apex_info = self.config.get('apex_info')
+        self.update_interval = apex_info['update_interval']
+        self.gamma = apex_info['gamma']
+        self.learning_rate = apex_info['learning_rate']
+        self.td_steps = apex_info['td_steps']
+        return
+    
     def _makeSavePaths(self):
         # 車線情報を文字列に変換
         num_lanes_str = ''
@@ -161,28 +173,29 @@ class MasterAgent(Object):
         self.rewards_record_path = Path('results/rewards_record_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
         
     def _makeModel(self):
-        if self.config.get('drl_info')['method'] =='apex':
-            # モデルを初期化（学習用にセット）
-            if self.network_id == 1:
-                self.model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
-            elif self.network_id == 2:
-                self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
-            elif self.network_id == 3:
-                self.model = QNet3(self.config, self.num_lanes_map)
-            self.model.train()
+        # モデルを初期化（学習用にセット）
+        if self.network_id == 1:
+            self.model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+        elif self.network_id == 2:
+            self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
+        elif self.network_id == 3:
+            self.model = QNet3(self.config, self.num_lanes_map)
+        self.model.train()
 
-            # ターゲットモデルを初期化（学習用と同期，推論用にセット）
-            if self.network_id == 1:
-                self.target_model = QNet(self.config, self.num_vehicles, self.num_lanes_map)
-            elif self.network_id == 2:
-                self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
-            elif self.network_id == 3:
-                self.target_model = QNet3(self.config, self.num_lanes_map)
+        # ターゲットモデルを初期化（学習用と同期，推論用にセット）
+        if self.network_id == 1:
+            self.target_model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+        elif self.network_id == 2:
+            self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
+        elif self.network_id == 3:
+            self.target_model = QNet3(self.config, self.num_lanes_map)
 
-            # 過去に学習済みの場合はそれを読み込む
-            self._loadModel()
-    
-            self.target_model.eval()
+        # 過去に学習済みの場合はそれを読み込む
+        self._loadModel()
+
+        self.target_model.eval()
+
+        return
 
     def _loadModel(self):
         # メインのモデルを読み込む
@@ -379,7 +392,7 @@ class MasterAgent(Object):
         # エピソードごとの累積報酬を保存
         np.save(self.rewards_record_path, np.array(self.rewards_record, dtype=object))
 
-    def updateRewardsRecord(self):
+    def updateTotalRewardRecord(self):
         rewards_list = []
         for local_agent in self.local_agents.getAll():
             total_rewards = local_agent.get('total_rewards')
@@ -389,6 +402,7 @@ class MasterAgent(Object):
         average_rewards = round(sum(rewards_list) / len(rewards_list), 2)
         self.rewards_record.append(average_rewards)
         print(f"Master agent {self.id} average rewards: {average_rewards:.2f}")
+
 
 
 

@@ -2,13 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 from libs.common import Common
 
 class Executor(Common):
-    def __init__(self, vissim):
+    def __init__(self, config):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = vissim.config
-        self.vissim = vissim
+        # 設定オブジェクトを取得
+        self.config = config
 
         # スレッドプールを初期化
         simulator_info = self.config.get('simulator_info')
@@ -31,10 +30,10 @@ class Executor(Common):
         self.futures = []
 
     def shutdown(self):
+        # 全てのタスクが完了するまで待機
+        self.wait()
+
         # スレッドプールをシャットダウン
         self.object.shutdown(wait = True)
-        
-        # futureを空にする
-        self.futures = []
 
         return

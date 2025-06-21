@@ -23,6 +23,9 @@ class Config(Common):
 
         # フェーズの一覧を取得する
         self.getNumRoadPhasesMap()
+
+        # 行動クローンのときは1交差点系限定とする
+        self._validateBcEnvironment()
     
     def readConfigFile(self):
         with open('layout/config.yaml', 'r', encoding='utf-8') as file:
@@ -39,6 +42,9 @@ class Config(Common):
 
             # MPCに関する情報について
             self.mpc_info = data['mpc']
+
+            # 行動クローンに関する情報について
+            self.bc_info = data['bc']
 
             # 記録する情報について
             self.records_info = data['records']
@@ -57,6 +63,13 @@ class Config(Common):
                 continue
 
             self.num_roads_phases_map[num_roads] = pd.read_csv('layout/phases' + str(num_roads) + '.csv')
+    
+    def _validateBcEnvironment(self):
+        if self.simulator_info['control_method'] != 'bc':
+            return
+        
+        if self.intersections.shape[0] != 1:
+            raise ValueError('The simulation of behavior cloning is only available for a single intersection environment. \n Please check the network configuration in config.yaml.')
         
             
 
