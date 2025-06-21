@@ -29,3 +29,12 @@ class Executor(Common):
         
         # futureを空にする
         self.futures = []
+
+    def shutdown(self):
+        # スレッドプールをシャットダウン
+        self.object.shutdown(wait = True)
+        
+        # futureを空にする
+        self.futures = []
+
+        return

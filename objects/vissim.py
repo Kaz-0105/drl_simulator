@@ -36,6 +36,8 @@ class Vissim(Common):
     
     def exit(self):
         self.com.Exit()
+        self.executor.shutdown()
+        return
 
         
         
