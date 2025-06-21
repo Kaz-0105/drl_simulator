@@ -290,6 +290,10 @@ class Lanes(Container):
         elif upper_object.__class__.__name__ == 'MpcController':
             # 上位の紐づくオブジェクトを取得
             self.mpc_controller = upper_object
+        
+        elif upper_object.__class__.__name__ == 'BcAgent':
+            # 上位の紐づくオブジェクトを取得
+            self.bc_agent = upper_object
 
         return   
     

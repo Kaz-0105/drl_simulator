@@ -1,12 +1,13 @@
 from libs.common import Common
-import win32com.client
-import os
 from objects.network import Network
 from objects.simulation import Simulation
 from libs.executor import Executor
 
+import win32com.client
+import os
+
 class Vissim(Common):
-    def __init__(self, config):
+    def __init__(self, config, executor):
         # 継承
         super().__init__()
 
@@ -14,7 +15,7 @@ class Vissim(Common):
         self.config = config
         
         # 非同期処理オブジェクトを初期化
-        self.executor = Executor(self)
+        self.executor = executor
 
         # VissimのCOMオブジェクトを取得
         self.getVissimCom()
@@ -36,7 +37,6 @@ class Vissim(Common):
     
     def exit(self):
         self.com.Exit()
-        self.executor.shutdown()
         return
 
         

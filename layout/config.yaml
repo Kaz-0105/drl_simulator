@@ -1,7 +1,7 @@
 simulator :
-  network_name: '20-4-1'    # シミュレーションに使うネットワーク名（ディレクトリ名）
-  control_method: 'drl'     # 制御手法の指定
-  simulation_count: 50      # シミュレーションの回数（エピソード数）
+  network_name: '1-4-1'     # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  control_method: 'bc'     # 制御手法の指定
+  simulation_count: 1       # シミュレーションの回数（エピソード数）
   simulation_time: 200      # シミュレーションを行う時間（秒）
   seed:
     is_random: true         # シード値をランダムにするかどうか
@@ -13,15 +13,17 @@ simulator :
   
 drl:
   method: 'apex'            # DRLの手法の指定（apex）
-  learning_flg: true        # 学習を 
+  learning_flg: true        # 学習を行うかどうか
+  duration_steps: 5         # 1回の予測で決める時間ステップ幅
+  network_id: 1             # ニューラルネットワークのID
   features:
     vehicle:
-      position: false
-      speed: false
-      in_queue: false
-      direction: false
+      position: true
+      speed: true
+      in_queue: true
+      direction: true
       wait_flg: true
-      near_flg: false
+      near_flg: true
     lane:
       metric: 
         num_vehicles: true
@@ -36,8 +38,6 @@ drl:
   reward_id: 2
 
 apex:
-  network_id: 1          # ニューラルネットワークのID
-  duration_steps: 5      # 1回の予測で決める時間ステップ幅
   td_steps: 3            # TD法の参照するステップ数
   update_interval: 200   # ターゲットネットワークの同期間隔
   buffer:
@@ -48,6 +48,13 @@ apex:
   learning_rate: 0.002   # 学習率
   epsilon: 0.9           # 探索率（ε-greedy法）
 
+bc:
+  learning_flg: true      # 学習を行うかどうか
+  network_id: 1           # 行動クローンを行うネットワーク構造のID
+  learning_rate: 0.001    # 学習率
+  batch_size: 128         # バッチサイズ
+  num_epochs: 200         # エポック数  
+  
 mpc:
   horizon: 5              # 予測ホライズンの長さ（ステップ数）
   utilize_steps: 2        # 採用するホライゾンの長さ（ステップ数）(horizonの半分以下)

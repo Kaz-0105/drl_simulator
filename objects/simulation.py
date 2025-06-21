@@ -51,15 +51,19 @@ class Simulation(Common):
         self._getSignalControlAuth()
 
         if self.control_method == 'drl':
+            # 必要なオブジェクトを取得
+            local_agents = self.network.local_agents
+            master_agents = self.network.master_agents
+
             # 最初のネットワークの更新
             self.network.updateData()
 
             # 状態量を計算
-            self.network.local_agents.getState()
+            local_agents.getState()
             
             while self.current_time < self.end_time:
                 # 行動を計算
-                self.network.local_agents.getAction()
+                local_agents.getAction()
 
                 # Vissimを1ステップ進める
                 self._runSingleStep()
@@ -68,56 +72,89 @@ class Simulation(Common):
                 self.network.updateData()
 
                 # 次の状態量を計算
-                self.network.local_agents.getState()
+                local_agents.getState()
 
                 # 前回の報酬を計算（状態量が必要なため，次の状態量を決めた後に計算）
-                self.network.local_agents.getReward()
+                local_agents.getReward()
 
                 # バッファーに送るデータを作成
-                self.network.local_agents.makeLearningData()
+                local_agents.makeLearningData()
 
                 # データをバッファーに保存
-                self.network.master_agents.saveLearningData()
+                master_agents.saveLearningData()
 
                 # 学習を行う
-                self.network.master_agents.train()
+                master_agents.train()
 
                 # ローカルエージェントと同期する
-                self.network.master_agents.updateLocalAgents()
+                master_agents.updateLocalAgents()
 
                 # 終了フラグが立っていた場合終了
-                if self.network.local_agents.done_flg:
+                if local_agents.done_flg:
                     break
+            
+            # 最後のネットワーク更新
+            self.network.updateData()
 
             # トータルの報酬を更新
-            self.network.master_agents.updateRewardsRecord()
+            master_agents.updateTotalRewardRecord()
 
             # 次回のエピソードに引き継ぐ情報を保存
-            self.network.master_agents.saveSession()
+            master_agents.saveSession()
             
         elif self.control_method == 'mpc':
+            # 必要なオブジェクトを取得
+            mpc_controllers = self.network.mpc_controllers
+            if self.network.get('bc_flg'):
+                bc_buffers = self.network.bc_buffers
+
             while self.current_time < self.end_time:
                 # ネットワークの更新
                 self.network.updateData()
 
-                # MPCを起動
-                self.network.mpc_controllers.optimize()
+                # MPCで最適な行動を計算
+                mpc_controllers.optimize()
 
+                # 行動クローン用のデータを作成
                 if self.network.get('bc_flg'):
-                    # 信号が変化するときは状態量と行動を更新する
-                    self.network.mpc_controllers.updateBcData()
-
-                    # bcバッファにデータを保存する
-                    self.network.bc_buffers.saveBcData()
+                    mpc_controllers.updateBcData()
+                    bc_buffers.saveBcData()
 
                 # Vissimを1ステップ進める
                 self._runSingleStep()
             
             # bcバッファのデータをファイルに保存
-            self.network.bc_buffers.writeToFile()
+            if self.network.get('bc_flg'):
+                bc_buffers.writeToFile()
             
             # 最後のネットワーク更新
             self.network.updateData()
+        
+        elif self.control_method == 'bc':
+            # 行動クローンを行う
+            bc_agent = self.network.bc_agent
+            bc_agent.cloneExpert()
+
+            while self.current_time < self.end_time:
+                # 最初のネットワークの更新
+                self.network.updateData()
+
+                # 状態・報酬・行動を計算
+                bc_agent.updateState()
+                bc_agent.updateReward()
+                bc_agent.updateAction()
+
+                # Vissimを1ステップ進める
+                self._runSingleStep()
+            
+            # 最後のネットワーク更新
+            self.network.updateData()
+
+            # トータルの報酬を表示
+            bc_agent.showTotalReward()
+
+            # モデルを保存
+            bc_agent.saveModel()
         return
 
     def _runSingleStep(self):
