@@ -174,7 +174,7 @@ class BcAgent(Common):
         self.model.train()
 
         if self.model_path.exists():
-            self.model.load(self.model_path)
+            self.model.load_state_dict(torch.load(self.model_path))
 
         return
 
