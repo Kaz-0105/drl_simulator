@@ -46,7 +46,7 @@ apex:
     batch_size: 128      # バッチサイズ
   gamma: 0.8             # 割引率
   learning_rate: 0.002   # 学習率
-  epsilon: 0.9           # 探索率（ε-greedy法）
+  epsilon: 0.1           # 探索率（ε-greedy法）
 
 bc:
   learning_flg: false     # 学習を行うかどうか
