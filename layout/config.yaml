@@ -1,7 +1,7 @@
 simulator :
-  network_name: '1-4-1'    # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'bc'     # 制御手法の指定
-  simulation_count: 5       # シミュレーションの回数（エピソード数）
+  network_name: '1-4-1'     # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  control_method: 'mpc'      # 制御手法の指定
+  simulation_count: 30      # シミュレーションの回数（エピソード数）
   simulation_time: 200      # シミュレーションを行う時間（秒）
   seed:
     is_random: true         # シード値をランダムにするかどうか
