@@ -1,9 +1,13 @@
+from libs.common import Common
 import numpy as np
 import math
 
 
-class SumTree:
+class SumTree (Common):
     def __init__(self, capacity):
+        # 継承
+        super().__init__()
+        
         # ツリーに格納するデータ数の最大値を設定
         self.capacity = capacity
         self.actual_capacity = 2**math.ceil(math.log2(capacity)) # 完全二分木のサイズに調整

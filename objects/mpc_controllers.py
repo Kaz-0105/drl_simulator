@@ -2504,16 +2504,21 @@ class MpcController(Object):
         # 行動クローン用の車線から車両データへのマップを初期化
         self.bc_lane_str_vehicle_data_map = {}
 
+        # 信号付近かどうかを判断するため最大キュー長を取得
+        max_queue_length = self.intersection.get('max_queue_length')
+
         # 道路ごとに走査
         for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            # roadオブジェクトを取得
+            # roadオブジェクトとlanesオブジェクトを取得
             road = self.roads[road_order_id]
-
-            # lanesオブジェクトを取得
             lanes = self.bc_road_lanes_map[road_order_id]
 
             # direction_signal_value_mapを取得
             direction_signal_value_map = road.get('direction_signal_value_map')
+
+            # 信号付近の距離を定義
+            v_max = road.get('max_speed')
+            near_length = max_queue_length if max_queue_length > v_max else v_max
 
             # 車線を走査
             for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
@@ -2538,7 +2543,7 @@ class MpcController(Object):
                 # near_flg（交差点に近いかどうか）を初期化
                 near_flgs = []
                 for _, row in vehicle_data.iterrows():
-                    if row['position'] <= 100:
+                    if row['position'] <= near_length:
                         near_flgs.append(True)
                     else:
                         near_flgs.append(False)

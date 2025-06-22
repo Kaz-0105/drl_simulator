@@ -110,24 +110,14 @@ class LocalAgent(Object):
         self._makeRoadLanesMap()
 
         # DRL共通のパラメータを設定
-        drl_info = self.config.get('drl_info')
-        self.network_id = drl_info['network_id']
-        self.duration_steps = drl_info['duration_steps']
-        self.num_vehicles = drl_info['num_vehicles']
-        self.num_lanes_map = self.master_agent.num_lanes_map
-        self.reward_id = drl_info['reward_id']
+        self._makeDrlParameters()
 
         # APEXに関するパラメータを設定
-        apex_info = self.config.get('apex_info')
-        self.td_steps = apex_info['td_steps']
-        self.epsilon = apex_info['epsilon']
-        self.gamma = apex_info['gamma']
+        self._makeApeXParameters()
 
-        # 特徴量に関する設定を取得
-        self.features_info = drl_info['features']
-
-        # ネットワークを作成
+        # ネットワークを作成してマスターと同期させる
         self._makeModel()
+        self._syncModel()
 
         # 状態量，行動，報酬，終了フラグを初期化
         self.current_state = None
@@ -136,7 +126,7 @@ class LocalAgent(Object):
         self.done_flg = False
 
         # トータルのリワードを初期化
-        self.total_rewards = 0
+        self.total_reward = 0
 
         # バッファーに送る学習データを格納するためのリストを初期化
         self.learning_data = []
@@ -147,10 +137,9 @@ class LocalAgent(Object):
         self.reward_record = deque(maxlen=self.td_steps)
     
     def _makeMasterAgentConnections(self):
-        # master_agentを取得
-        master_agent = self.intersection.master_agent
-        self.master_agent = master_agent
+        self.master_agent = self.intersection.get('master_agent')
         self.master_agent.local_agents.add(self)
+        return
     
     def _makeRoadLanesMap(self):
         # road_lanes_mapを初期化
@@ -189,40 +178,59 @@ class LocalAgent(Object):
 
         self.road_lanes_map = road_lanes_map
 
+    def _makeDrlParameters(self):
+        drl_info = self.config.get('drl_info')
+        self.network_id = drl_info['network_id']
+        self.features_info = drl_info['features']
+        self.duration_steps = drl_info['duration_steps']
+        self.num_vehicles = drl_info['num_vehicles']
+        self.num_lanes_map = self.master_agent.num_lanes_map
+        self.reward_id = drl_info['reward_id']
+        return
+    
+    def _makeApeXParameters(self):
+        apex_info = self.config.get('apex_info')
+        self.td_steps = apex_info['td_steps']
+        self.epsilon = apex_info['epsilon']
+        self.gamma = apex_info['gamma']
+        return
+    
     def _makeModel(self):
-        if self.config.get('drl_info')['method'] =='apex':
-            # モデルを初期化
-            if (self.network_id == 1):
-                self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-            elif (self.network_id == 2):
-                self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-            elif (self.network_id == 3):
-                self.model = QNet3(self.config, self.master_agent.num_lanes_map)
-
-            # 推論用にする
-            self.model.eval()
-
-            # master_agentのモデルと同期させる
-            self._syncModel()
+        # モデルを初期化
+        if (self.network_id == 1):
+            self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+        elif (self.network_id == 2):
+            self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+        elif (self.network_id == 3):
+            self.model = QNet3(self.config, self.master_agent.num_lanes_map)
+        self.model.eval()
+        return
         
     def _syncModel(self):
-        # master_agentのパラメータを取得
-        model_state_dict = self.master_agent.model.state_dict()
-
-        # 自分のモデルにパラメータをセット
-        self.model.load_state_dict(model_state_dict)
+        master_agent_model = self.master_agent.get('model')
+        self.model.load_state_dict(master_agent_model.state_dict())
+        return
 
     def _updateVehicleData(self):
-        lane_str_vehicle_data_map = {}
-        
+        # 車両データのマップを初期化
+        self.lane_str_vehicle_data_map = {} 
+
+        # 信号付近の定義で利用するため最大キュー長を取得
+        max_queue_length = self.intersection.get('max_queue_length')
+
         # 道路を走査
         for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            # lanesオブジェクトを取得
+            # roadオブジェクトとlanesオブジェクトを取得
+            road = self.roads[road_order_id]
             lanes = self.road_lanes_map[road_order_id]
 
             # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
             if self.features_info['vehicle']['wait_flg']:
                 direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+
+            # 信号付近の距離を定義
+            v_max = road.get('max_speed')
+            near_length = max_queue_length if max_queue_length > v_max else v_max
 
             # 車線を走査
             for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
@@ -247,7 +255,7 @@ class LocalAgent(Object):
                 if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
                     near_flgs = []
                     for _, row in vehicle_data.iterrows():
-                        if row['position'] <= 100:
+                        if row['position'] <=  near_length:
                             near_flgs.append(True)
                         else:
                             near_flgs.append(False)
@@ -260,9 +268,9 @@ class LocalAgent(Object):
                 if self.features_info['vehicle']['wait_flg']:
                     # wait_flgを初期化
                     wait_flgs = []
-                    for _, row in vehicle_data.iterrows():
+                    for idx, row in vehicle_data.iterrows():
                         # 交差点に近くない自動車はスコープから外す
-                        if row['position'] > 100:
+                        if not near_flgs[idx]:
                             wait_flgs.append(False)
                             continue
 
@@ -293,9 +301,7 @@ class LocalAgent(Object):
                     # wait_flgsをvehicle_dataに追加
                     vehicle_data['wait_flg'] = wait_flgs
                 
-                lane_str_vehicle_data_map[lane_str] = vehicle_data
-        
-        self.lane_str_vehicle_data_map = lane_str_vehicle_data_map  
+                self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
     def getState(self):
@@ -718,7 +724,7 @@ class LocalAgent(Object):
 
         # 記録する
         self.reward_record.append(self.current_reward)
-        self.total_rewards += self.current_reward 
+        self.total_reward += self.current_reward 
        
     def makeLearningData(self):
         # 推論の必要がないときはスキップ

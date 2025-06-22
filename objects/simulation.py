@@ -99,7 +99,8 @@ class Simulation(Common):
             # トータルの報酬を更新
             master_agents.updateTotalRewardRecord()
 
-            # 次回のエピソードに引き継ぐ情報を保存
+            # 各データを保存
+            master_agents.saveModel()
             master_agents.saveSession()
             
         elif self.control_method == 'mpc':
