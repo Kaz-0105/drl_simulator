@@ -212,16 +212,28 @@ class BcAgent(Common):
         return
     
     def _updateVehicleData(self):
-        lane_str_vehicle_data_map = {}
+        if not self.infer_flg:
+            return
+        
+        # 車両のデータのマップを初期化
+        self.lane_str_vehicle_data_map = {}
+
+        # 信号機付近かどうかの判断に使うため，交差点の最大キュー長を取得
+        max_queue_length = self.intersection.get('max_queue_length')
         
         # 道路を走査
         for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            # lanesオブジェクトを取得
+            # roadオブジェクトとlanesオブジェクトを取得
+            road = self.roads[road_order_id]
             lanes = self.road_lanes_map[road_order_id]
 
             # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
             if self.features_info['vehicle']['wait_flg']:
                 direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+
+            # 信号機の付近を定義
+            v_max = road.get('max_speed')
+            near_length = max_queue_length if max_queue_length > v_max else v_max
 
             # 車線を走査
             for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
@@ -246,7 +258,7 @@ class BcAgent(Common):
                 if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
                     near_flgs = []
                     for _, row in vehicle_data.iterrows():
-                        if row['position'] <= 100:
+                        if row['position'] <= near_length:
                             near_flgs.append(True)
                         else:
                             near_flgs.append(False)
@@ -259,9 +271,9 @@ class BcAgent(Common):
                 if self.features_info['vehicle']['wait_flg']:
                     # wait_flgを初期化
                     wait_flgs = []
-                    for _, row in vehicle_data.iterrows():
+                    for idx, row in vehicle_data.iterrows():
                         # 交差点に近くない自動車はスコープから外す
-                        if row['position'] > 100:
+                        if not near_flgs[idx]:
                             wait_flgs.append(False)
                             continue
 
@@ -292,9 +304,8 @@ class BcAgent(Common):
                     # wait_flgsをvehicle_dataに追加
                     vehicle_data['wait_flg'] = wait_flgs
                 
-                lane_str_vehicle_data_map[lane_str] = vehicle_data
+                self.lane_str_vehicle_data_map[lane_str] = vehicle_data
         
-        self.lane_str_vehicle_data_map = lane_str_vehicle_data_map  
         return
     
     def updateState(self):
