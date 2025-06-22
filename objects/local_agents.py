@@ -110,24 +110,14 @@ class LocalAgent(Object):
         self._makeRoadLanesMap()
 
         # DRL共通のパラメータを設定
-        drl_info = self.config.get('drl_info')
-        self.network_id = drl_info['network_id']
-        self.duration_steps = drl_info['duration_steps']
-        self.num_vehicles = drl_info['num_vehicles']
-        self.num_lanes_map = self.master_agent.num_lanes_map
-        self.reward_id = drl_info['reward_id']
+        self._makeDrlParameters()
 
         # APEXに関するパラメータを設定
-        apex_info = self.config.get('apex_info')
-        self.td_steps = apex_info['td_steps']
-        self.epsilon = apex_info['epsilon']
-        self.gamma = apex_info['gamma']
+        self._makeApeXParameters()
 
-        # 特徴量に関する設定を取得
-        self.features_info = drl_info['features']
-
-        # ネットワークを作成
+        # ネットワークを作成してマスターと同期させる
         self._makeModel()
+        self._syncModel()
 
         # 状態量，行動，報酬，終了フラグを初期化
         self.current_state = None
@@ -136,7 +126,7 @@ class LocalAgent(Object):
         self.done_flg = False
 
         # トータルのリワードを初期化
-        self.total_rewards = 0
+        self.total_reward = 0
 
         # バッファーに送る学習データを格納するためのリストを初期化
         self.learning_data = []
@@ -147,10 +137,9 @@ class LocalAgent(Object):
         self.reward_record = deque(maxlen=self.td_steps)
     
     def _makeMasterAgentConnections(self):
-        # master_agentを取得
-        master_agent = self.intersection.master_agent
-        self.master_agent = master_agent
+        self.master_agent = self.intersection.get('master_agent')
         self.master_agent.local_agents.add(self)
+        return
     
     def _makeRoadLanesMap(self):
         # road_lanes_mapを初期化
@@ -189,28 +178,38 @@ class LocalAgent(Object):
 
         self.road_lanes_map = road_lanes_map
 
+    def _makeDrlParameters(self):
+        drl_info = self.config.get('drl_info')
+        self.network_id = drl_info['network_id']
+        self.features_info = drl_info['features']
+        self.duration_steps = drl_info['duration_steps']
+        self.num_vehicles = drl_info['num_vehicles']
+        self.num_lanes_map = self.master_agent.num_lanes_map
+        self.reward_id = drl_info['reward_id']
+        return
+    
+    def _makeApeXParameters(self):
+        apex_info = self.config.get('apex_info')
+        self.td_steps = apex_info['td_steps']
+        self.epsilon = apex_info['epsilon']
+        self.gamma = apex_info['gamma']
+        return
+    
     def _makeModel(self):
-        if self.config.get('drl_info')['method'] =='apex':
-            # モデルを初期化
-            if (self.network_id == 1):
-                self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-            elif (self.network_id == 2):
-                self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-            elif (self.network_id == 3):
-                self.model = QNet3(self.config, self.master_agent.num_lanes_map)
-
-            # 推論用にする
-            self.model.eval()
-
-            # master_agentのモデルと同期させる
-            self._syncModel()
+        # モデルを初期化
+        if (self.network_id == 1):
+            self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+        elif (self.network_id == 2):
+            self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+        elif (self.network_id == 3):
+            self.model = QNet3(self.config, self.master_agent.num_lanes_map)
+        self.model.eval()
+        return
         
     def _syncModel(self):
-        # master_agentのパラメータを取得
-        model_state_dict = self.master_agent.model.state_dict()
-
-        # 自分のモデルにパラメータをセット
-        self.model.load_state_dict(model_state_dict)
+        master_agent_model = self.master_agent.get('model')
+        self.model.load_state_dict(master_agent_model.state_dict())
+        return
 
     def _updateVehicleData(self):
         # 車両データのマップを初期化
@@ -725,7 +724,7 @@ class LocalAgent(Object):
 
         # 記録する
         self.reward_record.append(self.current_reward)
-        self.total_rewards += self.current_reward 
+        self.total_reward += self.current_reward 
        
     def makeLearningData(self):
         # 推論の必要がないときはスキップ

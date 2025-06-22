@@ -1,6 +1,6 @@
 from libs.container import Container
 from libs.object import Object
-from libs.replay_buffer import ReplayBuffer
+from objects.replay_buffer import ReplayBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
 from neural_networks.q_net_1 import QNet1
@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 import torch.optim as optim
 import torch.nn as nn
-import numpy as np
+import pickle
 
 class MasterAgents(Container):
     def __init__(self, network):
@@ -65,14 +65,30 @@ class MasterAgents(Container):
         self.executor.wait()
     
     def updateTotalRewardRecord(self):
+        # トータルの報酬のレコードを更新
         for master_agent in self.getAll():
-            master_agent.updateTotalRewardRecord()
+            self.executor.submit(master_agent.updateTotalRewardRecord)
+        self.executor.wait()
+
+        # 結果を表示
+        for master_agent_id in self.getKeys(container_flg=True, sorted_flg=True):
+            master_agent = self[master_agent_id]
+            master_agent.showTotalReward()
+        return
+    
+    def saveModel(self):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.saveModel)
+        
+        self.executor.wait()
+        return
     
     def saveSession(self):
         for master_agent in self.getAll():
             self.executor.submit(master_agent.saveSession)
         
         self.executor.wait()
+        return
 
 class MasterAgent(Object):
     def __init__(self, master_agents, num_lanes_turple):
@@ -85,6 +101,9 @@ class MasterAgent(Object):
 
         # 上位オブジェクトを取得
         self.master_agents = master_agents
+
+        # networkオブジェクトと紐づける
+        self.network = master_agents.network
 
         # IDを設定
         self.id = self.master_agents.count() + 1
@@ -99,26 +118,24 @@ class MasterAgent(Object):
         self._getDrlParameters()
 
         # Apexのパラメータを取得
-        self._getApexParameters()
+        self._getApeXParameters()
 
         # 保存先のパスを定義
-        self._makeSavePaths()
-        
-        # 前回のシミュレーション終了時点の更新回数を読み込む
-        self._restoreSession()
+        self._makePaths()
 
-        # 使用する強化学習の手法で分岐
+        # モデルを初期化
         self._makeModel()
+        
+        # 前回までのセッションを読み込む
+        self._loadSession()
+        self._loadModel()
+        
+        # LocalAgentオブジェクトを初期化
+        self.local_agents = LocalAgents(self)
 
         # 最適化手法と評価関数を定義
         self.criterion = nn.MSELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        
-        # 経験再生用のバッファを初期化
-        self.replay_buffer = ReplayBuffer(self)
-        
-        # LocalAgentオブジェクトを初期化
-        self.local_agents = LocalAgents(self)
 
         return
 
@@ -147,9 +164,10 @@ class MasterAgent(Object):
         self.drl_method = drl_info['method']
         self.num_vehicles = drl_info['num_vehicles']
         self.network_id = drl_info['network_id']
+        self.bc_flg = drl_info['bc_flg']
         return
     
-    def _getApexParameters(self):
+    def _getApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.update_interval = apex_info['update_interval']
         self.gamma = apex_info['gamma']
@@ -157,20 +175,26 @@ class MasterAgent(Object):
         self.td_steps = apex_info['td_steps']
         return
     
-    def _makeSavePaths(self):
+    def _makePaths(self):
         # 車線情報を文字列に変換
-        num_lanes_str = ''
+        lanes_str = ''
         for num_lanes in self.num_lanes_map.values():
-            num_lanes_str += str(num_lanes)
+            lanes_str += str(num_lanes)
         
         # 自動車台数の情報を文字列に変換
         num_vehs_str = str(self.num_vehicles)
 
-        # モデルの保存先を定義
-        self.model_path = Path('models/q_net_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
-        self.target_model_path = Path('models/target_q_net_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.pth')
-        self.update_count_path = Path('results/update_count_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
-        self.rewards_record_path = Path('results/rewards_record_' + str(self.network_id) + '_' + num_lanes_str + '_' + num_vehs_str + '.npy')
+        self.path_map = {
+            'model': Path(f"models/q_net_{self.network_id}_{lanes_str}_{num_vehs_str}.pth"),
+            'target_model': Path(f"models/target_q_net_{self.network_id}_{lanes_str}_{num_vehs_str}.pth"),
+            'replay_buffer': Path(f"buffers/replay_buffer_{self.network_id}_{lanes_str}_{num_vehs_str}.pkl"),
+            'session': Path(f"results/session_{self.network_id}_{lanes_str}_{num_vehs_str}.pkl"),
+        }
+
+        if self.bc_flg:
+            self.path_map['bc_model'] = Path(f"models/bc_q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth")
+
+        return
         
     def _makeModel(self):
         # モデルを初期化（学習用にセット）
@@ -189,40 +213,37 @@ class MasterAgent(Object):
             self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
         elif self.network_id == 3:
             self.target_model = QNet3(self.config, self.num_lanes_map)
-
-        # 過去に学習済みの場合はそれを読み込む
-        self._loadModel()
-
         self.target_model.eval()
+        return
 
+    def _loadSession(self):
+        # リプレイバッファーを取得
+        self.replay_buffer = ReplayBuffer(self)
+
+        # update_countとtotal_reward_recordを取得
+        self.update_count = 0
+        self.total_reward_record = []
+        if self.path_map['session'].exists():
+            with self.path_map['session'].open('rb') as f:
+                loaded_data = pickle.load(f)
+                self.update_count = loaded_data['update_count'] 
+                self.total_reward_record = loaded_data['total_reward_record']
         return
 
     def _loadModel(self):
         # メインのモデルを読み込む
-        if self.model_path.exists():
-            self.model.load_state_dict(torch.load(self.model_path))
+        if self.path_map['model'].exists():
+            self.model.load_state_dict(torch.load(self.path_map['model']))
+        elif self.bc_flg and self.path_map['bc_model'].exists():
+            self.model.load_state_dict(torch.load(self.path_map['bc_model']))
         
         # ターゲットモデルを読み込む
-        if not self.target_model_path.exists() or self.update_count == 0:
+        if not self.path_map['target_model'].exists() or self.update_count == 0:
             self.target_model.load_state_dict(self.model.state_dict())
         else:
-            self.target_model.load_state_dict(torch.load(self.target_model_path))
+            self.target_model.load_state_dict(torch.load(self.path_map['target_model']))
+        return
     
-    def _restoreSession(self):
-        # update_countを初期化
-        self.update_count = 0
-
-        # 存在する場合は読み込む
-        if self.update_count_path.exists():
-            self.update_count = np.load(self.update_count_path, allow_pickle=True).item()
-        
-        # エピソードごとの累積報酬のデータを初期化
-        self.rewards_record = []
-
-        # 存在する場合は読み込む
-        if self.rewards_record_path.exists():
-            self.rewards_record = np.load(self.rewards_record_path, allow_pickle=True).tolist()
-
     def saveLearningData(self):
         # ローカルエージェントを走査
         self.buffer_change_flg = False
@@ -243,6 +264,7 @@ class MasterAgent(Object):
             if not self.buffer_change_flg:
                 # バッファーのサイズが変化した場合はフラグを立てる
                 self.buffer_change_flg = True
+        return
     
     def train(self):
         if not self.buffer_change_flg:
@@ -259,7 +281,7 @@ class MasterAgent(Object):
         # 勾配を初期化
         self.optimizer.zero_grad()
         
-        if self.drl_method == 'apex' and self.network_id == 1:
+        if self.network_id == 1:
             # とった行動をテンソルに変換
             actions = torch.tensor([tmp_data[1] - 1 for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
 
@@ -301,7 +323,7 @@ class MasterAgent(Object):
             # メインモデルを学習モードに戻す
             self.model.train()
 
-        elif self.drl_method == 'apex' and self.network_id == 3:
+        elif self.network_id == 3:
             # Q値を計算
             actions = torch.tensor([tmp_data[1] - 1 for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
             states = torch.stack([tmp_data[0] for tmp_data in batch_data]).squeeze(1)
@@ -377,31 +399,47 @@ class MasterAgent(Object):
             # ローカルエージェントを走査
             for local_agent in self.local_agents.getAll():
                 local_agent.model.load_state_dict(self.model.state_dict())
+
+    def saveModel(self):
+        # モデルを保存
+        torch.save(self.model.state_dict(), self.path_map['model'])
+        torch.save(self.target_model.state_dict(), self.path_map['target_model'])    
+        return
     
     def saveSession(self):
-        # モデルを保存
-        torch.save(self.model.state_dict(), self.model_path)
-        torch.save(self.target_model.state_dict(), self.target_model_path)
-
         # バッファーを保存
         self.replay_buffer.save()
 
-        # update_countを保存
-        np.save(self.update_count_path, np.array(self.update_count, dtype=np.int64))
-
-        # エピソードごとの累積報酬を保存
-        np.save(self.rewards_record_path, np.array(self.rewards_record, dtype=object))
+        # その他のセッション情報を保存
+        with self.path_map['session'].open('wb') as f:
+            session_data = {
+                'update_count': self.update_count,
+                'total_reward_record': self.total_reward_record
+            }
+            pickle.dump(session_data, f)
+        return
 
     def updateTotalRewardRecord(self):
-        rewards_list = []
+        sum_total_reward = 0
         for local_agent in self.local_agents.getAll():
-            total_rewards = local_agent.get('total_rewards')
-            rewards_list.append(local_agent.get('total_rewards'))
-            print(f"Local agent {self.id}-{local_agent.get('id')} total rewards: {total_rewards}")
+            total_reward = local_agent.get('total_reward')
+            sum_total_reward += total_reward
         
-        average_rewards = round(sum(rewards_list) / len(rewards_list), 2)
-        self.rewards_record.append(average_rewards)
-        print(f"Master agent {self.id} average rewards: {average_rewards:.2f}")
+        avg_total_reward = sum_total_reward / self.local_agents.count()
+        self.total_reward_record.append(avg_total_reward)
+        return
+    
+    def showTotalReward(self):
+        for local_agent_id in self.local_agents.getKeys(container_flg=True, sorted_flg=True):
+            local_agent = self.local_agents[local_agent_id]
+            print(f"Local Agent {local_agent_id}: Total Reward = {local_agent.get('total_reward'):.1f}")
+        
+        print(f"Master Agent {self.id}: Average Total Reward = {self.total_reward_record[-1]:.1f}")
+        return
+        
+    @property
+    def replay_buffer_path(self):
+        return self.path_map['replay_buffer']
 
 
 
