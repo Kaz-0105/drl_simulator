@@ -55,14 +55,6 @@ class Intersection(Object):
 
         return road_order_map
 
-    @property
-    def current_phase_id(self):
-        return self.signal_controller.get('current_phase_id')
-    
-    @property
-    def num_phases(self):
-        return self.signal_controller.get('num_phases')
-
     def getNumLanesTurple(self):
         # 車線数のリストを初期化
         num_lanes_list = []
@@ -82,3 +74,19 @@ class Intersection(Object):
             num_lanes_list.append(num_lanes)
 
         return tuple(num_lanes_list)
+    
+    @property
+    def current_phase_id(self):
+        return self.signal_controller.get('current_phase_id')
+    
+    @property
+    def num_phases(self):
+        return self.signal_controller.get('num_phases')
+    
+    @property
+    def max_queue_length(self):
+        max_queue_length = 0
+        for road in self.input_roads.getAll():
+            if road.queue_counters.get('max_queue_length') > max_queue_length:
+                max_queue_length = road.queue_counters.get('max_queue_length')
+        return max_queue_length

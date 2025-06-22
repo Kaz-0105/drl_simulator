@@ -89,7 +89,10 @@ class Road(Object):
         # リンクのタイプを格納する辞書型配列を初期化
         self.link_types = {}
 
-        # 紐づくSignalGroupオブジェクトを格納するコンテナを初期化
+        # queue_countersオブジェクトを初期化
+        self.queue_counters = QueueCounters(self)
+
+        # signal_groupsオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
 
         # SignalGroupオブジェクトの信号方向との対応関係を示す辞書型配列を初期化
@@ -101,46 +104,13 @@ class Road(Object):
     def addLink(self, link, link_type):
         self.links.add(link)
         self.link_types[link.get('id')] = link_type
-    
-    def getMainLink(self):
-        for link_id, link_type in self.link_types.items():
-            if link_type == 'main':
-                return self.links[link_id]
 
     def getVehicleRoutingDecision(self):
-        main_link = self.getMainLink()
+        main_link = self.get('main_link')
         if main_link.has('vehicle_routing_decision'):
             return main_link.vehicle_routing_decision
         else:
             return None
-    
-    @property
-    def queue_counters(self):
-        return QueueCounters(self)
-    
-    @property
-    def max_queue_length(self):
-        max_queue_length = 0
-        for queue_counter in self.queue_counters.getAll():
-            if queue_counter.get('current_queue_length') > max_queue_length:
-                max_queue_length = queue_counter.get('current_queue_length')
-        
-        return max_queue_length
-
-    @property
-    def average_delay(self):
-        delays = []
-        for link in self.links.getAll():
-            if link.has('delay_measurements'):
-                for delay_measurement in link.delay_measurements.getAll(): 
-                    delays.append(delay_measurement.get('current_delay'))
-        
-        return sum(delays) / len(delays) if len(delays) > 0 else 0
-
-    @property
-    def length(self):
-        main_link = self.getMainLink()
-        return main_link.get('length')
     
     def updateData(self):
         # 紐づくlinkオブジェクトのデータを更新
@@ -170,6 +140,32 @@ class Road(Object):
         # 1台も車両がいないときNoneになるので、DataFrameを初期化
         if self.vehicle_data is None:
             self.vehicle_data = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg'])
+    
+    @property
+    def main_link(self):
+        for link in self.links.getAll():
+            if link.get('type') == 'main':
+                return link
+        return None
+    
+    @property
+    def max_queue_length(self):
+        return self.queue_counters.get('max_queue_length')
+
+    @property
+    def average_delay(self):
+        delays = []
+        for link in self.links.getAll():
+            if link.has('delay_measurements'):
+                for delay_measurement in link.delay_measurements.getAll(): 
+                    delays.append(delay_measurement.get('current_delay'))
+        
+        return sum(delays) / len(delays) if len(delays) > 0 else 0
+
+    @property
+    def length(self):
+        main_link = self.get
+        return main_link.get('length')
     
     @property
     def num_vehicles(self):
