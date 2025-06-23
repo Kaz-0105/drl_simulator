@@ -63,7 +63,7 @@ class BcAgent(Common):
 
         # 損失関数と最適化手法を設定
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         # total_rewardを初期化
         self.total_reward = 0
@@ -83,6 +83,7 @@ class BcAgent(Common):
         self.learning_rate = bc_info['learning_rate']
         self.batch_size = bc_info['batch_size']
         self.num_epochs = bc_info['num_epochs']
+        self.weight_decay = bc_info['weight_decay']
         return
     
     def _makeNumLanesMap(self):
