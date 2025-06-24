@@ -1,5 +1,6 @@
 from libs.common import Common
 import numpy as np
+import random
 import math
 
 class SumTree (Common):
@@ -63,7 +64,7 @@ class SumTree (Common):
         self.tree[tree_idx] = priority
 
         # 親ノードの値を順に更新
-        self._propagate(tree_idx, change)
+        self._propagate(tree_idx, change.item())
 
         # データを保存
         self.data[self.next_data_idx] = tmp_data
@@ -91,12 +92,18 @@ class SumTree (Common):
         tree_indices = [self._retrieve(0, sample_value) for sample_value in sample_values]
 
         # データのインデックスを取得
-        data_indices = [tree_idx - self.num_leaves + 1 for tree_idx in tree_indices]
+        data_indices = []
+        for tree_idx in tree_indices:
+            data_idx = tree_idx - self.num_leaves + 1
+            if data_idx + 1 > self.current_size:
+                data_idx = random.randint(0, self.current_size - 1)
+            data_indices.append(data_idx)
 
         # ツリーのインデックスからデータを取得
         data = []
         for data_idx in data_indices:
             data.append(self.data[data_idx])
+
 
         return data, data_indices
     

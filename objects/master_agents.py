@@ -13,6 +13,7 @@ import torch.optim as optim
 import torch.nn as nn
 import pickle
 import math
+import numpy as np
 
 class MasterAgents(Container):
     def __init__(self, network):
@@ -283,8 +284,7 @@ class MasterAgent(Object):
         # バッファーからデータを取得
         batch_data = self.replay_buffer.sample()
         for epoch in range(self.num_epochs):
-            sum_loss = 0.0
-            count = len(batch_data)
+            losses = []
             for data, data_indices in batch_data:
                 # 勾配を初期化
                 self.optimizer.zero_grad()
@@ -355,6 +355,7 @@ class MasterAgent(Object):
                 # 損失を計算
                 loss = self.criterion(q_values, td_targets)
                 sum_loss += loss.item()
+                losses.append(loss.item())
 
                 # 勾配を計算
                 loss.backward()
@@ -370,20 +371,21 @@ class MasterAgent(Object):
                     priorities = torch.abs(q_values - td_targets).detach().numpy()
                     self.replay_buffer.update(data_indices, priorities)
 
-            # 更新回数をインクリメント
-            self.update_count = (self.update_count + 1) % self.update_interval
+                # 更新回数をインクリメント
+                self.update_count = (self.update_count + 1) % self.update_interval
 
-            # ターゲットモデルの更新
-            if self.update_count == 0:
-                self.target_model.load_state_dict(self.model.state_dict())
+                # ターゲットモデルの更新
+                if self.update_count == 0:
+                    self.target_model.load_state_dict(self.model.state_dict())
 
             # 更新情報を表示
-            avg_loss = sum_loss / count
-            self._showUpdateInfo(epoch, avg_loss)
+            self._showUpdateInfo(epoch, losses)
         return
-    def _showUpdateInfo(self, epoch, avg_loss):
+    def _showUpdateInfo(self, epoch, losses):
         # 更新情報を表示
-        print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}] - Average loss: {avg_loss:.3f}")
+        losses = np.array(losses)
+        print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}]")
+        print(f"Average Loss: {np.mean(losses):.2f}, Min Loss: {np.min(losses):.2f}, Max Loss: {np.max(losses):.2f}, Std Loss: {np.std(losses):.2f}")
 
         # 10回ごとに更新情報を表示（それ以外はスキップ）
         if self.update_count % 100 != 0:

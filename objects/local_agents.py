@@ -657,7 +657,7 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.choice([i for i in range(1, 9)])
+            action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
         else:
             with torch.no_grad():
                 self.model.set('requires_grad_flg', False)

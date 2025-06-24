@@ -40,12 +40,16 @@ class Config(Common):
             # Ape-Xに関する情報について
             self.apex_info = data['apex']
 
+            if type(data['apex']['learning_rate']) == str:
+                self.apex_info['learning_rate'] = float(data['apex']['learning_rate'])  # 文字列になってしまうのでfloatに変換
+
             # MPCに関する情報について
             self.mpc_info = data['mpc']
 
             # 行動クローンに関する情報について
             self.bc_info = data['bc']
-            self.bc_info['weight_decay'] = float(self.bc_info['weight_decay'])  # 文字列になってしまうのでfloatに変換
+            if type(self.bc_info['learning_rate']) == str:
+                self.bc_info['weight_decay'] = float(self.bc_info['weight_decay'])  # 文字列になってしまうのでfloatに変換
 
             # 記録する情報について
             self.records_info = data['records']
