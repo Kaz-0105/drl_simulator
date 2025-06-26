@@ -39,17 +39,17 @@ drl:
   reward_id: 2                # 報酬のID
 
 apex:
-  td_steps: 1            # TD法の参照するステップ数
-  update_interval: 3000  # ターゲットネットワークの同期間隔
+  td_steps: 1              # TD法の参照するステップ数
+  update_interval: 200000  # ターゲットネットワークの同期間隔
   buffer:
     size: 10000          # リプレイバッファのサイズ
     batch:
       number: 40         # バッチ数
       size: 64           # バッチサイズ
-  num_epochs: 1          # 更新のエポック数
+  num_epochs: 10         # 更新のエポック数
   gamma: 0.9             # 割引率
   learning_rate: 1e-5    # 学習率
-  epsilon: 0.1           # 探索率（ε-greedy法）
+  epsilon: 0.3           # 探索率（ε-greedy法）
 
 bc:
   learning_flg: false     # 学習を行うかどうか

@@ -354,7 +354,6 @@ class MasterAgent(Object):
 
                 # 損失を計算
                 loss = self.criterion(q_values, td_targets)
-                sum_loss += loss.item()
                 losses.append(loss.item())
 
                 # 勾配を計算
@@ -388,7 +387,7 @@ class MasterAgent(Object):
         print(f"Average Loss: {np.mean(losses):.2f}, Min Loss: {np.min(losses):.2f}, Max Loss: {np.max(losses):.2f}, Std Loss: {np.std(losses):.2f}")
 
         # 10回ごとに更新情報を表示（それ以外はスキップ）
-        if self.update_count % 100 != 0:
+        if self.update_count % 1000 != 0:
             return 
 
         # 勾配消失・爆発の確認
