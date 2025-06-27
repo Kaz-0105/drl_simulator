@@ -118,7 +118,7 @@ class SumTree (Common):
 
             # 差分を計算後に葉ノードの値を更新
             change = new_priority.item() - self.tree[tree_idx].item()
-            self.tree[tree_idx] = new_priority
+            self.tree[tree_idx] = new_priority.item()
 
             # 親ノードの値を順に更新
             self._propagate(tree_idx, change)
