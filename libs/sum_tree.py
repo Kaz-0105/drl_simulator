@@ -60,11 +60,11 @@ class SumTree (Common):
         tree_idx = self.next_data_idx + self.num_leaves - 1
 
         # 差分を計算後に葉ノードの値を更新
-        change = priority - self.tree[tree_idx]
+        change = priority.item() - self.tree[tree_idx].item()
         self.tree[tree_idx] = priority
 
         # 親ノードの値を順に更新
-        self._propagate(tree_idx, change.item())
+        self._propagate(tree_idx, change)
 
         # データを保存
         self.data[self.next_data_idx] = tmp_data
@@ -117,7 +117,7 @@ class SumTree (Common):
             tree_idx = data_idx + self.num_leaves - 1
 
             # 差分を計算後に葉ノードの値を更新
-            change = new_priority - self.tree[tree_idx].item()
+            change = new_priority.item() - self.tree[tree_idx].item()
             self.tree[tree_idx] = new_priority
 
             # 親ノードの値を順に更新
