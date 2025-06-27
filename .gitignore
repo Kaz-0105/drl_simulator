@@ -5,4 +5,5 @@ venv/
 **/network.results/
 buffers/*.npz
 buffers/*.pkl
+buffers/all/*.pkl
 

@@ -225,8 +225,7 @@ class LocalAgent(Object):
             lanes = self.road_lanes_map[road_order_id]
 
             # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
-            if self.features_info['vehicle']['wait_flg']:
-                direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+            direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
 
             # 信号付近の距離を定義
             v_max = road.get('max_speed')
@@ -252,54 +251,52 @@ class LocalAgent(Object):
                 vehicle_data['position'] = length_info['length'] - vehicle_data['position']
 
                 # near_flgを追加（交差点に近いかどうか）
-                if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
-                    near_flgs = []
-                    for _, row in vehicle_data.iterrows():
-                        if row['position'] <=  near_length:
-                            near_flgs.append(True)
-                        else:
-                            near_flgs.append(False)
-                    
-                    vehicle_data['near_flg'] = near_flgs
+                near_flgs = []
+                for _, row in vehicle_data.iterrows():
+                    if row['position'] <=  near_length:
+                        near_flgs.append(True)
+                    else:
+                        near_flgs.append(False)
+                
+                vehicle_data['near_flg'] = near_flgs
 
                 direction_ids = vehicle_data['direction_id']
 
-                # wait_flgを追加（信号待ちの状況かどうか）
-                if self.features_info['vehicle']['wait_flg']:
-                    # wait_flgを初期化
-                    wait_flgs = []
-                    for idx, row in vehicle_data.iterrows():
-                        # 交差点に近くない自動車はスコープから外す
-                        if not near_flgs[idx]:
-                            wait_flgs.append(False)
-                            continue
+                
+                # wait_flgを初期化
+                wait_flgs = []
+                for idx, row in vehicle_data.iterrows():
+                    # 交差点に近くない自動車はスコープから外す
+                    if not near_flgs[idx]:
+                        wait_flgs.append(False)
+                        continue
 
-                        # 信号が赤の場合は信号待ち
-                        signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
-                        if signal_value == 1:
-                            wait_flgs.append(True)
-                            continue
-                        
-                        # 先頭車の場合
-                        if len(wait_flgs) == 0:
-                            wait_flgs.append(False)
-                            continue
+                    # 信号が赤の場合は信号待ち
+                    signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
+                    if signal_value == 1:
+                        wait_flgs.append(True)
+                        continue
+                    
+                    # 先頭車の場合
+                    if len(wait_flgs) == 0:
+                        wait_flgs.append(False)
+                        continue
 
-                        # 先頭車でない場合は進路が異なる先行車を探す
-                        found_flg = False
-                        for i in range(len(wait_flgs) - 1, - 1, -1):
-                            if direction_ids[i] != row['direction_id']:
-                                wait_flgs.append(True if wait_flgs[i] else False)
-                                found_flg = True
-                                break
-                        
-                        # 先行車が見つからないとき
-                        if not found_flg:
-                            wait_flgs.append(False)
+                    # 先頭車でない場合は進路が異なる先行車を探す
+                    found_flg = False
+                    for i in range(len(wait_flgs) - 1, - 1, -1):
+                        if direction_ids[i] != row['direction_id']:
+                            wait_flgs.append(True if wait_flgs[i] else False)
+                            found_flg = True
+                            break
+                    
+                    # 先行車が見つからないとき
+                    if not found_flg:
+                        wait_flgs.append(False)
                             
                         
-                    # wait_flgsをvehicle_dataに追加
-                    vehicle_data['wait_flg'] = wait_flgs
+                # wait_flgsをvehicle_dataに追加
+                vehicle_data['wait_flg'] = wait_flgs
                 
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
@@ -572,8 +569,7 @@ class LocalAgent(Object):
             lanes = self.road_lanes_map[road_order_id]
 
             # wait_flgが必要な場合，進路ごとの信号現示を取得
-            if self.features_info['vehicle']['wait_flg']:
-                direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+            direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
                 
             for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
                 lane_state = []
@@ -657,7 +653,8 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
+            # action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
+            action = random.choice(list(range(1, 9)))
         else:
             with torch.no_grad():
                 self.model.set('requires_grad_flg', False)

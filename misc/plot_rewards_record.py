@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # みたい結果を選択
 network_id = 1
 roads_str = '2222'
-num_vehicles = 10
+num_vehicles = 5
 
 # ファイル名を指定してデータを読み込む
 session_path = Path(f"results/session_{network_id}_{roads_str}_{num_vehicles}.pkl")

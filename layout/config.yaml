@@ -19,11 +19,11 @@ drl:
   features:                   # 特徴量について
     vehicle:                  # 自動車ごとの特徴量について
       position: true
-      speed: true
-      in_queue: true
+      speed: false
+      in_queue: false
       direction: true
-      wait_flg: true
-      near_flg: true
+      wait_flg: false
+      near_flg: false
     lane:                     # 車線ごとの特徴量について
       metric: 
         num_vehicles: true
@@ -34,25 +34,25 @@ drl:
       metric:
         queue_length: true
         delay: true
-  num_vehicles: 10            # 特徴量として取り出す1車線ごとの自動車台数
-  bc_flg: true                # 行動クローンによる初期化を行うかどうか
+  num_vehicles: 5             # 特徴量として取り出す1車線ごとの自動車台数
+  bc_flg: false               # 行動クローンによる初期化を行うかどうか
   reward_id: 2                # 報酬のID
 
 apex:
   td_steps: 1              # TD法の参照するステップ数
-  update_interval: 200000  # ターゲットネットワークの同期間隔
+  update_interval: 30000   # ターゲットネットワークの同期間隔
   buffer:
     size: 10000          # リプレイバッファのサイズ
     batch:
-      number: 40         # バッチ数
-      size: 64           # バッチサイズ
+      number: 10         # バッチ数
+      size: 128          # バッチサイズ
   num_epochs: 10         # 更新のエポック数
   gamma: 0.9             # 割引率
-  learning_rate: 1e-5    # 学習率
-  epsilon: 0.3           # 探索率（ε-greedy法）
+  learning_rate: 1e-4    # 学習率
+  epsilon: 1.0           # 探索率（ε-greedy法）
 
 bc:
-  learning_flg: false     # 学習を行うかどうか
+  learning_flg: true      # 学習を行うかどうか
   network_id: 1           # 行動クローンを行うネットワーク構造のID
   learning_rate: 0.001    # 学習率
   weight_decay: 1e-5      # 学習時のL2正則化の重み減衰
