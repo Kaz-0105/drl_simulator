@@ -19,8 +19,8 @@ with open(session_path, 'rb') as f:
 # 描画
 plt.plot(total_reward_record, linewidth=2)
 plt.xlabel('Episode', fontsize=14)
-plt.ylabel('Reward', fontsize=14)
-plt.title('Rewards Over Episodes', fontsize=16)
+plt.ylabel('Total Reward', fontsize=14)
+plt.title('Total Rewards over Episodes', fontsize=16)
 plt.grid()
 
 plt.tick_params(axis='both', which='major', labelsize=14)

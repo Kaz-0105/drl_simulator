@@ -46,8 +46,8 @@ apex:
     size: 10000             # リプレイバッファのサイズ
     batch:
       number: 10         # バッチ数
-      size: 32           # バッチサイズ
-  num_epochs: 10         # 更新のエポック数
+      size: 64           # バッチサイズ
+  num_epochs: 3          # 更新のエポック数
   gamma: 0.9             # 割引率
   learning_rate: 1e-4    # 学習率
   weight_decay: 1e-4     # 学習時のL2正則化の重み減衰
