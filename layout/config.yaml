@@ -40,7 +40,7 @@ drl:
 
 apex:
   td_steps: 1              # TD法の参照するステップ数
-  update_interval: 30000   # ターゲットネットワークの同期間隔
+  update_interval: 50000   # ターゲットネットワークの同期間隔
   buffer:
     size: 10000          # リプレイバッファのサイズ
     batch:
