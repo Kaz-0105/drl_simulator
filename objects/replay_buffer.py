@@ -47,7 +47,10 @@ class ReplayBuffer (Common):
             self.sum_tree.set('tree', loaded_data['tree'])
             self.sum_tree.set('next_data_idx', loaded_data['next_data_idx'])
             self.sum_tree.set('current_size', loaded_data['current_size'])
-            self.new_data_count = loaded_data['new_data_count']
+            try:
+                self.new_data_count = loaded_data['new_data_count']
+            except KeyError:
+                self.new_data_count = 0
 
         data = []
         for data_path in self.path_map['data']:
@@ -61,7 +64,6 @@ class ReplayBuffer (Common):
         for tmp_data in learning_data:
             self.sum_tree.add(tmp_data)
             self.new_data_count += 1
-            print(self.new_data_count)
         return
             
     def sample(self):
@@ -123,6 +125,10 @@ class ReplayBuffer (Common):
     
     @property
     def should_learn_flg(self):
-        return self.new_data_count >= self.learning_threshold
+        if self.new_data_count < self.learning_threshold:
+            return False
+
+        self.new_data_count %= self.learning_threshold
+        return True
         
         
