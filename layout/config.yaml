@@ -40,18 +40,18 @@ drl:
 
 apex:
   td_steps: 1              # TD法の参照するステップ数
-  update_interval: 35000   # ターゲットネットワークの同期間隔
+  update_interval: 1000    # ターゲットネットワークの同期間隔
   buffer:
-    learning_threshold: 50 # データが何個たまったら学習を行うか
-    size: 10000          # リプレイバッファのサイズ
+    learning_threshold: 160 # データが何個たまったら学習を行うか
+    size: 10000             # リプレイバッファのサイズ
     batch:
       number: 10         # バッチ数
-      size: 256          # バッチサイズ
+      size: 32           # バッチサイズ
   num_epochs: 10         # 更新のエポック数
   gamma: 0.9             # 割引率
-  learning_rate: 1e-5    # 学習率
-  weight_decay: 1e-5      # 学習時のL2正則化の重み減衰
-  epsilon: 0.4           # 探索率（ε-greedy法）
+  learning_rate: 1e-4    # 学習率
+  weight_decay: 1e-4     # 学習時のL2正則化の重み減衰
+  epsilon: 0.3           # 探索率（ε-greedy法）
 
 bc:
   learning_flg: true      # 学習を行うかどうか

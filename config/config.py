@@ -42,6 +42,9 @@ class Config(Common):
 
             if type(data['apex']['learning_rate']) == str:
                 self.apex_info['learning_rate'] = float(data['apex']['learning_rate'])  # 文字列になってしまうのでfloatに変換
+            
+            if type(data['apex']['weight_decay']) == str:
+                self.apex_info['weight_decay'] = float(data['apex']['weight_decay'])  # 文字列になってしまうのでfloatに変換
 
             # MPCに関する情報について
             self.mpc_info = data['mpc']
