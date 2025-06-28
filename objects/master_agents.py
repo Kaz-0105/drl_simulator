@@ -277,6 +277,9 @@ class MasterAgent(Object):
             # バッファーのサイズが変化していない場合は学習しない
             return
         
+        if not self.replay_buffer.get('should_learn_flg'):
+            return
+        
         # バッファーのサイズが十分でない場合は学習しない
         if self.replay_buffer.get('current_size') < self.replay_buffer.get('batch_size') * self.replay_buffer.get('num_batches'):
             return
