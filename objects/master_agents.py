@@ -137,7 +137,7 @@ class MasterAgent(Object):
 
         # 最適化手法と評価関数を定義
         self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         return
 
@@ -172,6 +172,7 @@ class MasterAgent(Object):
     def _getApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.update_interval = apex_info['update_interval']
+        self.weight_decay = apex_info['weight_decay']
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
         self.num_epochs = apex_info['num_epochs']
