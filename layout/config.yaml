@@ -1,6 +1,6 @@
 simulator :
   network_name: '9-4-1'     # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'drl'      # 制御手法の指定
+  control_method: 'drl'     # 制御手法の指定
   simulation_count: 100     # シミュレーションの回数（エピソード数）
   simulation_time: 200      # シミュレーションを行う時間（秒）
   seed:
@@ -42,7 +42,7 @@ apex:
   td_steps: 1              # TD法の参照するステップ数
   update_interval: 5000    # ターゲットネットワークの同期間隔
   buffer:
-    learning_threshold: 160 # データが何個たまったら学習を行うか
+    learning_threshold: 100 # データが何個たまったら学習を行うか
     size: 10000             # リプレイバッファのサイズ
     batch:
       number: 10         # バッチ数

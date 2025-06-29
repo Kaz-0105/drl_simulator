@@ -3,6 +3,5 @@ venv/
 *.err
 **/__pycache__/
 **/network.results/
-buffers/*.pkl
-buffers/all/
+buffers/
 
