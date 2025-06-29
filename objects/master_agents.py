@@ -12,6 +12,8 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import pickle
+import math
+import numpy as np
 
 class MasterAgents(Container):
     def __init__(self, network):
@@ -135,7 +137,7 @@ class MasterAgent(Object):
 
         # 最適化手法と評価関数を定義
         self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         return
 
@@ -170,8 +172,10 @@ class MasterAgent(Object):
     def _getApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.update_interval = apex_info['update_interval']
+        self.weight_decay = apex_info['weight_decay']
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
+        self.num_epochs = apex_info['num_epochs']
         self.td_steps = apex_info['td_steps']
         return
     
@@ -180,15 +184,18 @@ class MasterAgent(Object):
         lanes_str = ''
         for num_lanes in self.num_lanes_map.values():
             lanes_str += str(num_lanes)
-        
-        # 自動車台数の情報を文字列に変換
-        num_vehs_str = str(self.num_vehicles)
 
         self.path_map = {
-            'model': Path(f"models/q_net_{self.network_id}_{lanes_str}_{num_vehs_str}.pth"),
-            'target_model': Path(f"models/target_q_net_{self.network_id}_{lanes_str}_{num_vehs_str}.pth"),
-            'replay_buffer': Path(f"buffers/replay_buffer_{self.network_id}_{lanes_str}_{num_vehs_str}.pkl"),
-            'session': Path(f"results/session_{self.network_id}_{lanes_str}_{num_vehs_str}.pkl"),
+            'model': Path(f"models/q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth"),
+            'target_model': Path(f"models/target_q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth"),
+            'session': Path(f"results/session_{self.network_id}_{lanes_str}_{self.num_vehicles}.pkl"),
+        }
+
+        # リプレーバッファーについて
+        buffer_size = self.config.get('apex_info')['buffer']['size']
+        self.path_map['replay_buffer'] = {
+            'tree': Path(f"buffers/replay_buffer_tree_{self.network_id}_{lanes_str}_{self.num_vehicles}.pkl"),
+            'data': [Path(f"buffers/replay_buffer_data_{self.network_id}_{lanes_str}_{self.num_vehicles}_{idx + 1}.pkl") for idx in range(math.ceil(buffer_size / 1000))],
         }
 
         if self.bc_flg:
@@ -271,123 +278,127 @@ class MasterAgent(Object):
             # バッファーのサイズが変化していない場合は学習しない
             return
         
+        if not self.replay_buffer.get('should_learn_flg'):
+            return
+        
         # バッファーのサイズが十分でない場合は学習しない
-        if self.replay_buffer.get('current_size') < self.replay_buffer.get('batch_size'):
+        if self.replay_buffer.get('current_size') < self.replay_buffer.get('batch_size') * self.replay_buffer.get('num_batches'):
             return
 
         # バッファーからデータを取得
-        batch_data, batch_data_indices = self.replay_buffer.sample()
+        batch_data = self.replay_buffer.sample()
+        for epoch in range(self.num_epochs):
+            losses = []
+            for data, data_indices in batch_data:
+                # 勾配を初期化
+                self.optimizer.zero_grad()
+                
+                if self.network_id == 1:
+                    # とった行動をテンソルに変換
+                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1)
 
-        # 勾配を初期化
-        self.optimizer.zero_grad()
-        
-        if self.network_id == 1:
-            # とった行動をテンソルに変換
-            actions = torch.tensor([tmp_data[1] - 1 for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
+                    # 状態を配列にする
+                    states = [tmp_data[0] for tmp_data in data]
 
-            # 状態を配列にする
-            states = [tmp_data[0] for tmp_data in batch_data]
+                    # 勾配をトラッキングするように設定
+                    self.model.set('requires_grad', True)
 
-            # 勾配をトラッキングするように設定
-            self.model.set('requires_grad', True)
+                    # Q値を計算し，選ばれた行動のQ値を取得
+                    q_values = self.model(states).gather(1, actions)
 
-            # Q値を計算し，選ばれた行動のQ値を取得
-            q_values = self.model(states).gather(1, actions)
+                    # メインモデルを評価モードに設定
+                    self.model.eval()
 
-            # メインモデルを評価モードに設定
-            self.model.eval()
+                    # TDターゲットを計算するアルゴリズムここから
+                    with torch.no_grad():
+                        # 次の状態を配列にする
+                        states_next = [tmp_data[3] for tmp_data in data]
 
-            # TDターゲットを計算するアルゴリズムここから
-            with torch.no_grad():
-                # 次の状態を配列にする
-                states_next = [tmp_data[3] for tmp_data in batch_data]
+                        # 勾配をトラッキングしないように設定
+                        self.model.set('requires_grad', False)
 
-                # 勾配をトラッキングしないように設定
-                self.model.set('requires_grad', False)
+                        # 次の状態のメインモデルのQ値の最大値を与える行動を取得
+                        max_actions = torch.argmax(self.model(states_next), dim=1).unsqueeze(1)
 
-                # 次の状態のメインモデルのQ値の最大値を与える行動を取得
-                max_actions = torch.argmax(self.model(states_next), dim=1).unsqueeze(1)
+                        # ターゲットモデルのQ値を取得
+                        target_q_values = self.target_model(states_next).gather(1, max_actions)
 
-                # ターゲットモデルのQ値を取得
-                target_q_values = self.target_model(states_next).gather(1, max_actions)
+                        # 累積報酬をテンソルに変換（multi step bootstrap を実装している）
+                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
 
-                # 累積報酬をテンソルに変換（multi step bootstrap を実装している）
-                cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in batch_data], dtype=torch.float32).unsqueeze(1)
+                        # 終了フラグをテンソルに変換
+                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
 
-                # 終了フラグをテンソルに変換
-                dones = torch.tensor([tmp_data[4] for tmp_data in batch_data], dtype=torch.float32).unsqueeze(1)
+                        # TDターゲットを計算
+                        td_targets = cumurative_rewards + (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
 
-                # TDターゲットを計算
-                td_targets = cumurative_rewards + (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
+                    # メインモデルを学習モードに戻す
+                    self.model.train()
 
-            # メインモデルを学習モードに戻す
-            self.model.train()
+                elif self.network_id == 3:
+                    # Q値を計算
+                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1)
+                    states = torch.stack([tmp_data[0] for tmp_data in data]).squeeze(1)
+                    states.requires_grad_(True)
+                    q_values_all = self.model(states)
+                    q_values = q_values_all.gather(1, actions) 
+                    
+                    # TDターゲットを計算（Double DQNの実装）
+                    self.model.eval()
+                    with torch.no_grad():
+                        states_next = torch.stack([tmp_data[3] for tmp_data in data]).squeeze(1)
+                        states_next.requires_grad_(False)
+                        max_actions = torch.argmax(self.model(states_next), dim=1)
+                        target_q_values_all = self.target_model(states_next)
+                        target_q_values = target_q_values_all.gather(1, max_actions.unsqueeze(1))
+                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
+                        td_targets = (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
+                        td_targets += torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1)           
+                    self.model.train()
 
-        elif self.network_id == 3:
-            # Q値を計算
-            actions = torch.tensor([tmp_data[1] - 1 for tmp_data in batch_data], dtype=torch.int64).unsqueeze(1)
-            states = torch.stack([tmp_data[0] for tmp_data in batch_data]).squeeze(1)
-            states.requires_grad_(True)
-            q_values_all = self.model(states)
-            q_values = q_values_all.gather(1, actions) 
-            
-            # TDターゲットを計算（Double DQNの実装）
-            self.model.eval()
-            with torch.no_grad():
-                states_next = torch.stack([tmp_data[3] for tmp_data in batch_data]).squeeze(1)
-                states_next.requires_grad_(False)
-                max_actions = torch.argmax(self.model(states_next), dim=1)
-                target_q_values_all = self.target_model(states_next)
-                target_q_values = target_q_values_all.gather(1, max_actions.unsqueeze(1))
-                dones = torch.tensor([tmp_data[4] for tmp_data in batch_data], dtype=torch.float32).unsqueeze(1)
-                td_targets = (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
-                td_targets += torch.tensor([tmp_data[2] for tmp_data in batch_data], dtype=torch.float32).unsqueeze(1)           
-            self.model.train()
+                # 損失を計算
+                loss = self.criterion(q_values, td_targets)
+                losses.append(loss.item())
 
-        # 損失を計算
-        loss = self.criterion(q_values, td_targets)
+                # 勾配を計算
+                loss.backward()
 
-        # 勾配を計算
-        loss.backward()
+                # 勾配爆発を防ぐために勾配をクリッピング
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
 
-        # 勾配爆発を防ぐために勾配をクリッピング
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+                # パラメータを更新
+                self.optimizer.step()
+                
+                # 優先度を計算しバッファーを更新
+                if epoch == self.num_epochs - 1:
+                    priorities = torch.abs(q_values - td_targets).detach().numpy()
+                    self.replay_buffer.update(data_indices, priorities)
 
-        # パラメータを更新
-        self.optimizer.step()
+                # 更新回数をインクリメント
+                self.update_count = (self.update_count + 1) % self.update_interval
 
-        # 更新回数をインクリメント
-        self.update_count = (self.update_count + 1) % self.update_interval
+                # ターゲットモデルの更新
+                if self.update_count == 0:
+                    self.target_model.load_state_dict(self.model.state_dict())
 
-        # ターゲットモデルの更新
-        if self.update_count == 0:
-            self.target_model.load_state_dict(self.model.state_dict())
-            print('The target model syncronized to the main model.')
-        
-        # 優先度を計算しバッファーを更新
-        priorities = torch.abs(q_values - td_targets).detach().numpy()
-        self.replay_buffer.update(batch_data_indices, priorities)
-
+            # 更新情報を表示
+            self._showUpdateInfo(epoch, losses)
+        return
+    def _showUpdateInfo(self, epoch, losses):
         # 更新情報を表示
-        self._showUpdateInfo(q_values, td_targets, loss)
-    
-    def _showUpdateInfo(self, q_values, td_targets, loss):
-        # 現在の更新回数を表示
-        print(f'Update count: {self.update_count}')
-
-        # Q値が発散していないか確認
-        print(f"Q-values: min = {q_values.min().item():.3f}, max = {q_values.max().item():.3f}")
-        print(f"TD-targets: min = {td_targets.min().item():.3f}, max = {td_targets.max().item():.3f}")
-        print(f"Loss: {loss.item():.3f}")
+        losses = np.array(losses)
+        print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}]")
+        print(f"Average Loss: {np.mean(losses):.2f}, Min Loss: {np.min(losses):.2f}, Max Loss: {np.max(losses):.2f}, Std Loss: {np.std(losses):.2f}")
 
         # 10回ごとに更新情報を表示（それ以外はスキップ）
-        if self.update_count % 10 != 0:
+        if self.update_count % 1000 != 0:
             return 
 
         # 勾配消失・爆発の確認
         for name, param in self.model.named_parameters():
             if param.grad is not None:
-                print(f"{name}: {param.grad.norm().item():.5f}")
+                print(f"{name}: {param.grad.norm().item():.3f}")
+        return
             
     def updateLocalAgents(self):
         drl_info = self.config.get('drl_info')
@@ -436,15 +447,15 @@ class MasterAgent(Object):
         
         print(f"Master Agent {self.id}: Average Total Reward = {self.total_reward_record[-1]:.1f}")
         return
-        
+    
     @property
-    def replay_buffer_path(self):
+    def replay_buffer_path_map(self):
         return self.path_map['replay_buffer']
 
 
 
 
-
+    
 
             
     

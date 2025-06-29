@@ -3,6 +3,6 @@ venv/
 *.err
 **/__pycache__/
 **/network.results/
-buffers/*.npz
 buffers/*.pkl
+buffers/all/
 
