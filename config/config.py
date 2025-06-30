@@ -53,6 +53,9 @@ class Config(Common):
             self.bc_info = data['bc']
             if type(self.bc_info['weight_decay']) == str:
                 self.bc_info['weight_decay'] = float(self.bc_info['weight_decay'])  # 文字列になってしまうのでfloatに変換
+            
+            if type(self.bc_info['learning_rate']) == str:
+                self.bc_info['learning_rate'] = float(self.bc_info['learning_rate'])  # 文字列になってしまうのでfloatに変換
 
             # 記録する情報について
             self.records_info = data['records']

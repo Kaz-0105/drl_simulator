@@ -51,15 +51,15 @@ apex:
   gamma: 0.9             # 割引率
   learning_rate: 1e-4    # 学習率
   weight_decay: 1e-4     # 学習時のL2正則化の重み減衰
-  epsilon: 0.3           # 探索率（ε-greedy法）
+  epsilon: 0.2           # 探索率（ε-greedy法）
 
 bc:
-  learning_flg: true      # 学習を行うかどうか
+  learning_flg: false     # 学習を行うかどうか
   network_id: 1           # 行動クローンを行うネットワーク構造のID
-  learning_rate: 0.001    # 学習率
-  weight_decay: 1e-5      # 学習時のL2正則化の重み減衰
+  learning_rate: 1e-4     # 学習率
+  weight_decay: 1e-4      # 学習時のL2正則化の重み減衰
   batch_size: 128         # バッチサイズ
-  num_epochs: 100         # エポック数  
+  num_epochs: 10          # エポック数  
   
 mpc:
   horizon: 5              # 予測ホライズンの長さ（ステップ数）
