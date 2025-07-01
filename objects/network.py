@@ -164,7 +164,7 @@ class Network(Common):
                             tmp_queue_length_record['queue_length'].to_numpy(),
                         )
                 
-                save_data['max_queue'] = queue_length_record
+                save_data['max_queue'] = queue_length_record.copy()
 
                 road_queue_length_record_map = {}
                 for road_order_id in range(1, input_roads.count() + 1):
@@ -189,7 +189,7 @@ class Network(Common):
                     queue_length_record['queue_length'] += tmp_queue_length_record['queue_length']
 
                 queue_length_record['queue_length'] /= input_roads.count()
-                save_data['average_queue'] = queue_length_record
+                save_data['average_queue'] = queue_length_record.copy()
 
             # 計算時間を記録
             if self.calc_time_flg:
