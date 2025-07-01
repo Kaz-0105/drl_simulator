@@ -246,7 +246,7 @@ class MpcController(Object):
         records_info = self.config.get('records_info')
         self.calc_time_flg = records_info['metric']['calc_time_flg']
         if self.calc_time_flg:
-            self.calc_time_flg = pd.DataFrame(columns=['time', 'calculation_time'])
+            self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
         return
     
     def _makeBcRoadLanesMap(self):
@@ -2420,7 +2420,7 @@ class MpcController(Object):
         # 計算時間の保存
         if self.calc_time_flg:
             calc_time = end_time - start_time
-            self.calc_timer_record.loc[len(self.calc_timer_record)] = [self.current_time, calc_time]
+            self.calc_time_record.loc[len(self.calc_time_record)] = [self.current_time, calc_time]
         return
     
     def showOptimizationResult(self):
