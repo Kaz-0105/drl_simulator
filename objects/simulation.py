@@ -176,7 +176,7 @@ class Simulation(Common):
             bc_agent.saveModel()
 
         # 評価指標の保存
-        self.network.saveData()
+        # self.network.saveData()
         return
 
     def _runSingleStep(self):
