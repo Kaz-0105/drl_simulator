@@ -39,8 +39,8 @@ drl:
   reward_id: 2                # 報酬のID
 
 apex:
-  td_steps: 1              # TD法の参照するステップ数
-  update_interval: 5000    # ターゲットネットワークの同期間隔
+  td_steps: 1               # TD法の参照するステップ数
+  update_interval: 10000    # ターゲットネットワークの同期間隔
   buffer:
     learning_threshold: 100 # データが何個たまったら学習を行うか
     size: 10000             # リプレイバッファのサイズ
