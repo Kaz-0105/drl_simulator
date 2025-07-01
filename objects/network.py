@@ -56,6 +56,7 @@ class Network(Common):
         records_info = self.config.get('records_info')
         self.queue_flg = records_info['metric']['queue_flg']
         self.delay_flg = records_info['metric']['delay_flg']
+        self.calc_time_flg = records_info['metric']['calc_time_flg']
         return
     
     def _makeLowerObjects(self):
@@ -142,6 +143,7 @@ class Network(Common):
                 'average_queue': None,
                 'delay': None,  
                 'phase': None,
+                'calc_time': None,
             }
 
             # キューの最大長と平均長を計算
@@ -189,7 +191,16 @@ class Network(Common):
                 queue_length_record['queue_length'] /= input_roads.count()
                 save_data['average_queue'] = queue_length_record['queue_length']
 
-            
+            # 計算時間を記録
+            if self.calc_time_flg:
+                if intersection.has('local_agent'):
+                    local_agent = intersection.local_agent
+                    calc_time_record = local_agent.get('calc_time_record')
+                    save_data['calc_time'] = calc_time_record
+                elif intersection.has('mpc_controller'):
+                    mpc_controller = intersection.mpc_controller
+                    calc_time_record = mpc_controller.get('calc_time_record')
+
             # データを保存
             save_path = Path(f"{common_save_path_name}_{current_idx}.pkl")
             with save_path.open('wb') as f:

@@ -8,6 +8,8 @@ from neural_networks.q_net_3 import QNet3
 import torch
 import random
 from collections import deque
+import pandas as pd
+import time
 
 class LocalAgents(Container):
     def __init__(self, upper_object):
@@ -102,6 +104,9 @@ class LocalAgent(Object):
         # signal_controllerオブジェクトと紐づける
         self.signal_controller = self.intersection.signal_controller
 
+        # networkオブジェクトと紐づける
+        self.network = self.local_agents.network
+
         # master_agentと紐づける
         self._makeMasterAgentConnections()
 
@@ -110,10 +115,10 @@ class LocalAgent(Object):
         self._makeRoadLanesMap()
 
         # DRL共通のパラメータを設定
-        self._makeDrlParameters()
+        self._initDrlParameters()
 
         # APEXに関するパラメータを設定
-        self._makeApeXParameters()
+        self._initApeXParameters()
 
         # ネットワークを作成してマスターと同期させる
         self._makeModel()
@@ -135,7 +140,12 @@ class LocalAgent(Object):
         self.state_record = deque(maxlen=self.td_steps + 1)
         self.action_record = deque(maxlen=self.td_steps)
         self.reward_record = deque(maxlen=self.td_steps)
-    
+
+        # 計算時間の記録を初期化
+        self._initCalculationTimeRecord()
+
+        return
+            
     def _makeMasterAgentConnections(self):
         self.master_agent = self.intersection.get('master_agent')
         self.master_agent.local_agents.add(self)
@@ -178,7 +188,7 @@ class LocalAgent(Object):
 
         self.road_lanes_map = road_lanes_map
 
-    def _makeDrlParameters(self):
+    def _initDrlParameters(self):
         drl_info = self.config.get('drl_info')
         self.network_id = drl_info['network_id']
         self.features_info = drl_info['features']
@@ -188,11 +198,18 @@ class LocalAgent(Object):
         self.reward_id = drl_info['reward_id']
         return
     
-    def _makeApeXParameters(self):
+    def _initApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.td_steps = apex_info['td_steps']
         self.epsilon = apex_info['epsilon']
         self.gamma = apex_info['gamma']
+        return
+    
+    def _initCalculationTimeRecord(self):
+        records_info = self.config.get('records_info')
+        self.calc_time_flg = records_info['metric']['calc_time_flg']
+        if self.calc_time_flg:
+            self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
         return
     
     def _makeModel(self):
@@ -656,17 +673,31 @@ class LocalAgent(Object):
             # action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
             action = random.choice(list(range(1, 9)))
         else:
+            # 計算時間の測定開始
+            if self.calc_time_flg:
+                start_time = time.time()
+
+            # 推論を行う
             with torch.no_grad():
                 self.model.set('requires_grad_flg', False)
                 action_values = self.model([self.current_state])
                 action = torch.argmax(action_values).item() + 1
-        
+            
+            # 計算時間の測定終了して記録
+            if self.calc_time_flg:
+                end_time = time.time()
+                calc_time = end_time - start_time
+                self.calc_time_record.loc[len(self.calc_time_record)] = [self.current_time, calc_time]
+
         # 行動をインスタンス変数に保存
         self.current_action = action
         self.action_record.append(action)
 
         # 信号機の将来のフェーズに追加
         self.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
+            
+
+        return
     
     def getReward(self):
         # 報酬を計算するタイミングかどうかを確認
@@ -759,3 +790,7 @@ class LocalAgent(Object):
     @property
     def evaluate_flg(self):
         return self.infer_flg
+
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
