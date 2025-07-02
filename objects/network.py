@@ -196,10 +196,12 @@ class Network(Common):
                 if intersection.has('local_agent'):
                     local_agent = intersection.local_agent
                     calc_time_record = local_agent.get('calc_time_record')
-                    save_data['calc_time'] = calc_time_record
+        
                 elif intersection.has('mpc_controller'):
                     mpc_controller = intersection.mpc_controller
                     calc_time_record = mpc_controller.get('calc_time_record')
+                
+                save_data['calc_time'] = calc_time_record
 
             # データを保存
             save_path = Path(f"{common_save_path_name}_{current_idx}.pkl")

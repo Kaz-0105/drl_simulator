@@ -33,8 +33,6 @@ for row_idx, row_simulation_list in enumerate(simulation_list):
                 average_queue_record = saved_data['average_queue']
                 tmp_average_queue_list.append(average_queue_record['queue_length'].mean())
             
-            if simulation_id == 10:
-                print('test')
             if saved_data['calc_time'] is not None:
                 calc_time_record = saved_data['calc_time']
                 tmp_calc_time_list.append(calc_time_record['calculation_time'].mean())
@@ -59,9 +57,9 @@ for row_idx, row_max_queue_list in enumerate(max_queue_list):
 
 ax_max_queue.set_xticks(x + 0.1)
 ax_max_queue.set_xticklabels(column_names, fontsize=14)
-ax_max_queue.set_title('Average Max Queue Length', fontsize=16)
+ax_max_queue.set_title('Max Queue Length', fontsize=16)
 ax_max_queue.set_xlabel('Simulation Configuration', fontsize=14)
-ax_max_queue.set_ylabel('Average Max Queue Length (m)', fontsize=14)
+ax_max_queue.set_ylabel('Max Queue Length (m)', fontsize=14)
 ax_max_queue.legend(fontsize=14)
 
 # 平均キュー長について
@@ -78,6 +76,15 @@ ax_average_queue.set_title('Average Queue Length', fontsize=16)
 ax_average_queue.set_xlabel('Simulation Configuration', fontsize=14)
 ax_average_queue.set_ylabel('Average Queue Length (m)', fontsize=14)
 ax_average_queue.legend(fontsize=14)
+
+# キューの最大値と平均値のy軸のスケールをそろえる
+max_y_value = max(
+    max(max(row) for row in max_queue_list),
+    max(max(row) for row in average_queue_list)
+)
+y_limit = (0, max_y_value * 1.1)  # 10%の余裕を持たせる
+ax_max_queue.set_ylim(y_limit)
+ax_average_queue.set_ylim(y_limit)
 
 # 計算時間について
 for row_idx, row_calc_time_list in enumerate(calc_time_list):

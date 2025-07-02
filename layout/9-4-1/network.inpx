@@ -36,8 +36,32 @@
 		<cameraPosition extentY="330.22655938192963" fov="45" graphicsMode="2D" name="Camera position 2D" no="1" pedNo="0" pitchAngle="0" rollAngle="0" vehNo="0" yawAngle="0">
 			<coord x="234.89218724652795" y="-22.370203266451824" z="0"/>
 		</cameraPosition>
-		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D" no="2" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141047">
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 1" no="2" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141047">
 			<coord x="285.12042137858725" y="-120.53408933447052" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 2" no="3" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="740.4421803653737" y="-114.35799914948805" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 3" no="4" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="1183.5896403878787" y="-108.37543925878036" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 4" no="5" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="278.68272666899679" y="-566.80225257492123" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 5" no="6" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="736.62914110745339" y="-568.4140249584118" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 6" no="7" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="1183.4498259428992" y="-569.5224050359526" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 7" no="8" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="275.9130556759153" y="-1031.9182715551381" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 8" no="9" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="734.42609323699344" y="-1029.4809441017189" z="64.076167980262795"/>
+		</cameraPosition>
+		<cameraPosition extentY="10" fov="45" graphicsMode="3D" name="Camera position 3D 9" no="10" pedNo="0" pitchAngle="25.828726945347732" rollAngle="0" vehNo="0" yawAngle="118.07493196141046">
+			<coord x="1191.7088752940199" y="-1036.4466327560563" z="64.076167980262795"/>
 		</cameraPosition>
 	</cameraPositions>
 	<colorDistributions>
@@ -7639,14 +7663,49 @@
 	</signalHeads>
 	<simulation comment="" numCores="1" numRuns="1" randSeed="1" randSeedIncr="1" retroSync="false" simMode="MICRO" simPeriod="1000" simRes="10" simSpeed="10" startTm="0" useAllCores="true" useMaxSimSpeed="true" volumeIncrDynAssign="0"/>
 	<storyboards>
-		<storyboard filename="" framerate="10" name="" netLayout="" no="1" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
+		<storyboard filename="" framerate="10" name="" netLayout="" no="1" prevZoomFact="1" recAVI="true" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
 			<keyframes>
-				<keyframe camPos="1" dwellTime="200" name="Camera position 2D" netLayout="" startTime="200" transType="SMOOTH"/>
+				<keyframe camPos="2" dwellTime="200" name="Camera position 3D 1" netLayout="" startTime="0" transType="SMOOTH"/>
 			</keyframes>
 		</storyboard>
-		<storyboard filename="" framerate="10" name="" netLayout="" no="2" prevZoomFact="1" recAVI="true" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
+		<storyboard filename="" framerate="10" name="" netLayout="" no="2" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
 			<keyframes>
-				<keyframe camPos="2" dwellTime="200" name="Camera position 3D" netLayout="" startTime="200" transType="SMOOTH"/>
+				<keyframe camPos="3" dwellTime="200" name="Camera position 3D 2" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="3" prevZoomFact="1" recAVI="true" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
+			<keyframes>
+				<keyframe camPos="4" dwellTime="200" name="Camera position 3D 3" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="4" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="5" dwellTime="200" name="Camera position 3D 4" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="5" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="6" dwellTime="200" name="Camera position 3D 5" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="6" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="7" dwellTime="200" name="Camera position 3D 6" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="7" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="8" dwellTime="200" name="Camera position 3D 7" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="8" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="9" dwellTime="200" name="Camera position 3D 8" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="9" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="10" dwellTime="200" name="Camera position 3D 9" netLayout="" startTime="0" transType="SMOOTH"/>
 			</keyframes>
 		</storyboard>
 	</storyboards>
