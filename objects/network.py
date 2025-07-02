@@ -54,6 +54,7 @@ class Network(Common):
 
     def _getSaveParams(self):
         records_info = self.config.get('records_info')
+        self.record_flg = records_info['record_flg']
         self.queue_flg = records_info['metric']['queue_flg']
         self.delay_flg = records_info['metric']['delay_flg']
         self.calc_time_flg = records_info['metric']['calc_time_flg']
@@ -74,7 +75,6 @@ class Network(Common):
         self.data_collection_points = DataCollectionPoints(self)
         self.data_collection_measurements = DataCollectionMeasurements(self)
 
-        
         if self.control_method == 'drl':
             # マスターエージェントとローカルエージェントを初期化
             self.master_agents = MasterAgents(self)
@@ -121,6 +121,10 @@ class Network(Common):
         return
 
     def saveData(self):
+        # データを保存するフラグが立っていない場合は何もしない
+        if not self.record_flg:
+            return
+        
         # save_dataの開始インデックスを取得
         common_save_path_name = 'results/metrics/metric'
 

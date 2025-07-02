@@ -424,10 +424,10 @@
 			</gParSet>
 		</networkEditorLayout>
 		<networkEditorLayout name="" no="3" synchronization="NONE">
-			<camera coord2DX="-2633.7943963796552" coord2DY="-1602.3893286831847" coord3DX="1490.6531427709133" coord3DY="-1366.4943689067086" coord3DZ="210.42870093038184" foV="45" pitchAngle="0.4507963267948954" rollAngle="0" yawAngle="2.0607963267948985" zoom2D="16.270773531138833"/>
+			<camera coord2DX="-2633.7943963796552" coord2DY="-1511.9848432507945" coord3DX="1490.6531427709133" coord3DY="-1366.4943689067086" coord3DZ="210.42870093038184" foV="45" pitchAngle="0.4507963267948954" rollAngle="0" yawAngle="2.0607963267948985" zoom2D="16.270773531138833"/>
 			<gParSet>
 				<backgroundGPars borderColor="ff000000" borderLineStyle="NOLINE" labelAttribute="NO" labelBackgrColor="00000000" labelColor="ff000000" labelDecimals="3" labelFontSize="3" labelVisibility="false" legdInclLabColor="false" objectVisibility="true" useLabelColorScheme="false"/>
-				<baseGPars autoLvlTransp="true" backgroundColor="ffc0c0c0" compassPos="BOTTOMRIGHT" legdOffset="10 10" legdPos="BOTTOMRIGHT" legdScale="1" logoFilename="" logoOffset="20 20" logoPos="TOPLEFT" mapGrayScale="false" mapIntensity="100" mapType="DEFAULTMAPPROVIDER" mode3D="true" rubberbandColor="fff0f000" selectionColor="fff0f000" showCompass="false" showGrid="true" showLegd="false" showLogo="false" showMap="false" showScale="true" showSimTmLabel="false" simTmLabelColor="ff000000" simTmLabelFontSize="20" simTmLabelOffset="15 30" simTmLabelPos="BOTTOMLEFT" wireframeMode="false">
+				<baseGPars autoLvlTransp="true" backgroundColor="ffc0c0c0" compassPos="BOTTOMRIGHT" legdOffset="10 10" legdPos="BOTTOMRIGHT" legdScale="1" logoFilename="" logoOffset="20 20" logoPos="TOPLEFT" mapGrayScale="false" mapIntensity="100" mapType="DEFAULTMAPPROVIDER" mode3D="false" rubberbandColor="fff0f000" selectionColor="fff0f000" showCompass="false" showGrid="true" showLegd="false" showLogo="false" showMap="false" showScale="true" showSimTmLabel="false" simTmLabelColor="ff000000" simTmLabelFontSize="20" simTmLabelOffset="15 30" simTmLabelPos="BOTTOMLEFT" wireframeMode="false">
 					<compassOffsetInternal x="0" y="0"/>
 					<legendOffsetInternal x="10" y="10"/>
 					<logoOffsetInternal x="20" y="20"/>

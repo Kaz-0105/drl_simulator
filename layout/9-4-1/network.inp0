@@ -7663,14 +7663,49 @@
 	</signalHeads>
 	<simulation comment="" numCores="1" numRuns="1" randSeed="1" randSeedIncr="1" retroSync="false" simMode="MICRO" simPeriod="1000" simRes="10" simSpeed="10" startTm="0" useAllCores="true" useMaxSimSpeed="true" volumeIncrDynAssign="0"/>
 	<storyboards>
-		<storyboard filename="" framerate="10" name="" netLayout="" no="1" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
+		<storyboard filename="" framerate="10" name="" netLayout="" no="1" prevZoomFact="1" recAVI="true" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
 			<keyframes>
-				<keyframe camPos="1" dwellTime="200" name="Camera position 2D" netLayout="" startTime="200" transType="SMOOTH"/>
+				<keyframe camPos="2" dwellTime="200" name="Camera position 3D 1" netLayout="" startTime="0" transType="SMOOTH"/>
 			</keyframes>
 		</storyboard>
-		<storyboard filename="" framerate="10" name="" netLayout="" no="2" prevZoomFact="1" recAVI="true" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
+		<storyboard filename="" framerate="10" name="" netLayout="" no="2" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
 			<keyframes>
-				<keyframe camPos="2" dwellTime="200" name="Camera position 3D 1" netLayout="" startTime="200" transType="SMOOTH"/>
+				<keyframe camPos="3" dwellTime="200" name="Camera position 3D 2" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="3" prevZoomFact="1" recAVI="true" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="true">
+			<keyframes>
+				<keyframe camPos="4" dwellTime="200" name="Camera position 3D 3" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="4" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="5" dwellTime="200" name="Camera position 3D 4" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="5" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="6" dwellTime="200" name="Camera position 3D 5" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="6" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="7" dwellTime="200" name="Camera position 3D 6" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="7" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="8" dwellTime="200" name="Camera position 3D 7" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="8" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="9" dwellTime="200" name="Camera position 3D 8" netLayout="" startTime="0" transType="SMOOTH"/>
+			</keyframes>
+		</storyboard>
+		<storyboard filename="" framerate="10" name="" netLayout="" no="9" prevZoomFact="1" recAVI="false" recScope="EVERYRUN" resX="1920" resY="1080" resolution="1920X1080" showPrev="false">
+			<keyframes>
+				<keyframe camPos="10" dwellTime="200" name="Camera position 3D 9" netLayout="" startTime="0" transType="SMOOTH"/>
 			</keyframes>
 		</storyboard>
 	</storyboards>
