@@ -4,8 +4,6 @@ from objects.replay_buffer import ReplayBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
 from neural_networks.q_net_1 import QNet1
-from neural_networks.q_net_2 import QNet2
-from neural_networks.q_net_3 import QNet3
 
 from pathlib import Path
 import torch
@@ -207,19 +205,11 @@ class MasterAgent(Object):
         # モデルを初期化（学習用にセット）
         if self.network_id == 1:
             self.model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
-        elif self.network_id == 2:
-            self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
-        elif self.network_id == 3:
-            self.model = QNet3(self.config, self.num_lanes_map)
         self.model.train()
 
         # ターゲットモデルを初期化（学習用と同期，推論用にセット）
         if self.network_id == 1:
             self.target_model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
-        elif self.network_id == 2:
-            self.target_model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
-        elif self.network_id == 3:
-            self.target_model = QNet3(self.config, self.num_lanes_map)
         self.target_model.eval()
         return
 

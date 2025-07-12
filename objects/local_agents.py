@@ -2,8 +2,6 @@ from libs.container import Container
 from libs.object import Object
 from objects.links import Lanes
 from neural_networks.q_net_1 import QNet1
-from neural_networks.q_net_2 import QNet2
-from neural_networks.q_net_3 import QNet3
 
 import torch
 import random
@@ -40,15 +38,11 @@ class LocalAgents(Container):
         # 非同期で状態量を取得
         for agent in self.getAll():
             network_id = agent.get('network_id')
-            if network_id == 1:
-                self.executor.submit(agent.getState)
-            elif network_id == 2:
-                self.executor.submit(agent.getState2)
-            elif network_id == 3:
-                self.executor.submit(agent.getState3)
-        
+            self.executor.submit(agent.getState, network_id)
+            
         # 全ての状態量取得が終わるまで待機
         self.executor.wait()
+        return
     
     def getAction(self):
         # 非同期で行動を取得
@@ -57,6 +51,7 @@ class LocalAgents(Container):
 
         # 全ての行動取得が終わるまで待機
         self.executor.wait()
+        return
     
     def getReward(self):
         # 非同期で報酬を取得
@@ -216,10 +211,6 @@ class LocalAgent(Object):
         # モデルを初期化
         if (self.network_id == 1):
             self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-        elif (self.network_id == 2):
-            self.model = QNet2(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
-        elif (self.network_id == 3):
-            self.model = QNet3(self.config, self.master_agent.num_lanes_map)
         self.model.eval()
         return
         
@@ -318,351 +309,149 @@ class LocalAgent(Object):
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
-    def getState(self):
+    def getState(self, network_id):
         # 状態量を取得するタイミングかどうかを確認
         if not self.infer_flg:
             return
         
-        # 自動車に関する情報を更新
-        self._updateVehicleData()
-        
-        # 状態量を初期化
-        state = {}
+        if network_id == 1:
+            # 自動車に関する情報を更新
+            self._updateVehicleData()
 
-        # 道路群の状態量を初期化
-        roads_state = {}
+            # 状態量を初期化
+            state = {}
 
-        # 道路を走査
-        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            # roadオブジェクトを取得
-            road = self.roads[road_order_id]
+            # 道路群の状態量を初期化
+            roads_state = {}
 
-            # 道路の状態量を初期化
-            road_state = {}
-            
-            # 車線群の状態量を初期化
-            lanes_state = {}
+            # 道路を走査
+            for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+                # roadオブジェクトを取得
+                road = self.roads[road_order_id]
 
-            # lanesオブジェクトを取得
-            lanes = self.road_lanes_map[road_order_id]
-
-            # 車線を走査
-            for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
-                # laneオブジェクトを取得
-                lane = lanes[lane_order_id]
-
-                # 車線の状態量を初期化
-                lane_state = {}
-
-                # 自動車のデータを取得
-                vehicle_data = self.lane_str_vehicle_data_map.get(f"{road_order_id}-{lane_order_id}")
+                # 道路の状態量を初期化
+                road_state = {}
                 
-                # 車両に関する状態を取得
-                vehicles_state = {}
-                for index in range(self.num_vehicles):
-                    if index < vehicle_data.shape[0]:
-                        # レコードを取得
-                        vehicle = vehicle_data.iloc[index]
+                # 車線群の状態量を初期化
+                lanes_state = {}
 
-                        # 車両の状態量を初期化
-                        vehicle_state = []
+                # lanesオブジェクトを取得
+                lanes = self.road_lanes_map[road_order_id]
 
-                        # 特徴量を走査
-                        for feature_name, feature_flg in self.features_info['vehicle'].items():
-                            # 使わない状態量はスキップ
-                            if feature_flg == False:
-                                continue
+                # 車線を走査
+                for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                    # laneオブジェクトを取得
+                    lane = lanes[lane_order_id]
 
-                            # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
-                            if feature_name == 'direction':
-                                direction_vector = [0] * (self.intersection.get('num_roads'))
-                                direction_vector[int(vehicle['direction_id'])] = 1
-                                vehicle_state.extend(direction_vector)
-                            else: 
-                                vehicle_state.append(float(vehicle[feature_name]))
-                        
-                        # 自動車が存在するかどうかのフラグの状態量を追加
-                        vehicle_state.append(1) 
+                    # 車線の状態量を初期化
+                    lane_state = {}
 
-                        # テンソルに変換してからvehicles_stateに追加  
-                        vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state).float()                    
-                    else:
-                        # 車両の状態量を初期化
-                        vehicle_state = []
+                    # 自動車のデータを取得
+                    vehicle_data = self.lane_str_vehicle_data_map.get(f"{road_order_id}-{lane_order_id}")
+                    
+                    # 車両に関する状態を取得
+                    vehicles_state = {}
+                    for index in range(self.num_vehicles):
+                        if index < vehicle_data.shape[0]:
+                            # レコードを取得
+                            vehicle = vehicle_data.iloc[index]
 
-                        # 特徴量を走査
-                        for feature_name, feature_flg in self.features_info['vehicle'].items():
-                            # 使わない状態量はスキップ
-                            if feature_flg == False:
-                                continue
+                            # 車両の状態量を初期化
+                            vehicle_state = []
+
+                            # 特徴量を走査
+                            for feature_name, feature_flg in self.features_info['vehicle'].items():
+                                # 使わない状態量はスキップ
+                                if feature_flg == False:
+                                    continue
+
+                                # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
+                                if feature_name == 'direction':
+                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    direction_vector[int(vehicle['direction_id'])] = 1
+                                    vehicle_state.extend(direction_vector)
+                                else: 
+                                    vehicle_state.append(float(vehicle[feature_name]))
                             
-                            # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
-                            if feature_name == 'direction':
-                                direction_vector = [0] * (self.intersection.get('num_roads'))
-                                vehicle_state.extend(direction_vector)
-                            else: 
-                                vehicle_state.append(0.0)
-                        
-                        # 自動車が存在するかどうかのフラグの状態量を追加
-                        vehicle_state.append(0)
+                            # 自動車が存在するかどうかのフラグの状態量を追加
+                            vehicle_state.append(1) 
 
-                        # テンソルに変換してからvehicles_stateに追加
-                        vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state, dtype=torch.float32)
-                
-                # 車線の状態量に追加
-                lane_state['vehicles'] = dict(sorted(vehicles_state.items()))
-
-                # 評価指標に関する状態量を取得
-                lane_state['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
-
-                # 道路の情報を取得
-                length_info = lane.get('length_info')
-                
-                # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
-                if lane.link.get('type') == 'main':
-                    lane_state['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
-                elif lane.link.get('type') == 'right' or lane.link.get('type') == 'left':
-                    lane_state['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
-
-                # lanes_stateにlane_stateを追加
-                lanes_state[lane_order_id] = lane_state
-            
-            # road_stateに車線の状態量を追加
-            road_state['lanes'] = dict(sorted(lanes_state.items()))
-
-            # 評価指標の状態量について
-            metric_state = []
-            metric_state.append(int(road.get('max_queue_length')))
-            metric_state.append(int(road.get('average_delay')))
-
-            # road_stateに評価指標の状態量を追加
-            road_state['metric'] = torch.tensor(metric_state, dtype=torch.float32)
-
-            # roads_stateにroad_stateを追加
-            roads_state[road_order_id] = road_state
-        
-        # statesに道路の状態量を追加
-        state['roads'] = dict(sorted(roads_state.items()))
-
-        # フェーズに関する状態量を取得
-        current_phase_id = self.intersection.get('current_phase_id')
-        phase_state = [0] * (self.intersection.get('num_phases'))
-        if current_phase_id is not None:
-            phase_state[current_phase_id - 1] = 1
-        else:
-            phase_state[0] = 1
-
-        # statesに交差点の状態量を追加
-        state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
-
-        # 状態量をインスタンス変数に保存
-        self.current_state = state
-        self.state_record.append(state)
-
-    def getState2(self):
-        # 状態量を取得するタイミングかどうかを確認
-        if not self.infer_flg:
-            return
-        
-        # 状態量を初期化
-        state = []
-
-        # 自動車に関する状態量を取得
-        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            road = self.roads[road_order_id]
-            lanes = self.road_lanes_map[road_order_id]
-
-            # wait_flgが必要な場合，進路ごとの信号現示を取得
-            if self.features_info['vehicle']['wait_flg']:
-                direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
-                
-            for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
-                lane = lanes[lane_order_id]
-                
-                # 自動車情報を整形
-                vehicle_data = lane.get('vehicle_data').copy()
-                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                vehicle_data.reset_index(drop=True, inplace=True)
-                vehicle_data = vehicle_data.head(self.num_vehicles).copy()
-                length_info = lane.get('length_info')
-                vehicle_data['position'] = length_info['length'] - vehicle_data['position']
-
-                # near_flgを追加（交差点に近いかどうか）
-                if self.features_info['vehicle']['near_flg'] or self.features_info['vehicle']['wait_flg']:
-                    near_flgs = []
-                    for index, row in vehicle_data.iterrows():
-                        if row['position'] <= 100:
-                            near_flgs.append(True)
+                            # テンソルに変換してからvehicles_stateに追加  
+                            vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state).float()                    
                         else:
-                            near_flgs.append(False)
+                            # 車両の状態量を初期化
+                            vehicle_state = []
+
+                            # 特徴量を走査
+                            for feature_name, feature_flg in self.features_info['vehicle'].items():
+                                # 使わない状態量はスキップ
+                                if feature_flg == False:
+                                    continue
+                                
+                                # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
+                                if feature_name == 'direction':
+                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    vehicle_state.extend(direction_vector)
+                                else: 
+                                    vehicle_state.append(0.0)
+                            
+                            # 自動車が存在するかどうかのフラグの状態量を追加
+                            vehicle_state.append(0)
+
+                            # テンソルに変換してからvehicles_stateに追加
+                            vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state, dtype=torch.float32)
                     
-                    vehicle_data['near_flg'] = near_flgs
+                    # 車線の状態量に追加
+                    lane_state['vehicles'] = dict(sorted(vehicles_state.items()))
 
-                # wait_flgを追加（信号待ちの状況かどうか）
-                if self.features_info['vehicle']['wait_flg']:
-                    wait_flgs = []
-                    for index, row in vehicle_data.iterrows():
-                        # 交差点に近くない自動車はスコープから外す
-                        if row['position'] > 100:
-                            wait_flgs.append(False)
-                            continue
+                    # 評価指標に関する状態量を取得
+                    lane_state['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
 
-                        # 信号が赤の場合は信号待ち
-                        signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
-                        if signal_value == 1:
-                            wait_flgs.append(True)
-                            continue
-                        
-                        # 先行車が信号待ちしている場合は信号待ち
-                        if len(wait_flgs) > 0 and wait_flgs[-1] == True:
-                            wait_flgs.append(True)
-                            continue
+                    # 道路の情報を取得
+                    length_info = lane.get('length_info')
+                    
+                    # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
+                    if lane.link.get('type') == 'main':
+                        lane_state['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
+                    elif lane.link.get('type') == 'right' or lane.link.get('type') == 'left':
+                        lane_state['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
 
-                        # それ以外は信号待ちではない
-                        wait_flgs.append(False)
-                        
-                    # wait_flgsをvehicle_dataに追加
-                    vehicle_data['wait_flg'] = wait_flgs
+                    # lanes_stateにlane_stateを追加
+                    lanes_state[lane_order_id] = lane_state
                 
-                for idx in range(self.num_vehicles):
-                    vehicle_state = []
-                    if idx < vehicle_data.shape[0]:
-                        vehicle = vehicle_data.iloc[idx]
-                        for feature_name, feature_flg in self.features_info['vehicle'].items():
-                            if feature_flg == False:
-                                continue
-                            
-                            if feature_name == 'direction':
-                                direction_vector = [0] * (self.intersection.get('num_roads'))
-                                direction_vector[int(vehicle['direction_id'])] = 1
-                                vehicle_state.extend(direction_vector)
-                            else:
-                                vehicle_state.append(float(vehicle[feature_name]))
+                # road_stateに車線の状態量を追加
+                road_state['lanes'] = dict(sorted(lanes_state.items()))
 
-                        vehicle_state.append(1.0)  # 自動車が存在するかどうかのフラグ
-                    
-                    else:
-                        for feature_name, feature_flg in self.features_info['vehicle'].items():
-                            if feature_flg == False:
-                                continue
-                            
-                            if feature_name == 'direction':
-                                direction_vector = [0] * (self.intersection.get('num_roads'))
-                                vehicle_state.extend(direction_vector)
-                            else:
-                                vehicle_state.append(0.0)
-                        
-                        vehicle_state.append(0.0)  # 自動車が存在するかどうかのフラグ
-                    
-                    state.extend(vehicle_state)
+                # 評価指標の状態量について
+                metric_state = []
+                metric_state.append(int(road.get('max_queue_length')))
+                metric_state.append(int(road.get('average_delay')))
+
+                # road_stateに評価指標の状態量を追加
+                road_state['metric'] = torch.tensor(metric_state, dtype=torch.float32)
+
+                # roads_stateにroad_stateを追加
+                roads_state[road_order_id] = road_state
             
-        
-        # フェーズに関する状態量を取得
-        current_phase_id = self.intersection.get('current_phase_id')
-        phase_state = [0] * (self.intersection.get('num_phases'))
-        if current_phase_id is not None:
-            phase_state[current_phase_id - 1] = 1
-        else:
-            phase_state[0] = 1
-        state.extend(phase_state)
+            # statesに道路の状態量を追加
+            state['roads'] = dict(sorted(roads_state.items()))
 
-        # テンソルに変換
-        state = torch.tensor(state, dtype=torch.float32)
+            # フェーズに関する状態量を取得
+            current_phase_id = self.intersection.get('current_phase_id')
+            phase_state = [0] * (self.intersection.get('num_phases'))
+            if current_phase_id is not None:
+                phase_state[current_phase_id - 1] = 1
+            else:
+                phase_state[0] = 1
 
-        # 状態量をインスタンス変数に保存
-        self.current_state = state
-        self.state_record.append(state)
-
-    def getState3(self):
-        # 状態量を取得するタイミングかどうかを確認
-        if not self.infer_flg:
-            return
-        
-        # 状態量を初期化
-        state = []
-
-        # 自動車に関する状態量を取得
-        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            lanes = self.road_lanes_map[road_order_id]
-
-            # wait_flgが必要な場合，進路ごとの信号現示を取得
-            direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
-                
-            for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
-                lane_state = []
-                lane = lanes[lane_order_id]
-                
-                # 自動車情報を整形
-                vehicle_data = lane.get('vehicle_data').copy()
-                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                vehicle_data.reset_index(drop=True, inplace=True)
-                length_info = lane.get('length_info')
-                vehicle_data['position'] = length_info['length'] - vehicle_data['position']
-
-                # near_flgを追加（交差点に近いかどうか）
-                near_flgs = []
-                for index, row in vehicle_data.iterrows():
-                    if row['position'] <= 100:
-                        near_flgs.append(True)
-                    else:
-                        near_flgs.append(False)
-                
-                vehicle_data['near_flg'] = near_flgs
-
-                # wait_flgを追加（信号待ちの状況かどうか）
-                wait_flgs = []
-                for index, row in vehicle_data.iterrows():
-                    # 交差点に近くない自動車はスコープから外す
-                    if row['position'] > 100:
-                        wait_flgs.append(False)
-                        continue
-
-                    # 信号が赤の場合は信号待ち
-                    signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
-                    if signal_value == 1:
-                        wait_flgs.append(True)
-                        continue
-                    
-                    # 先行車が信号待ちしている場合は信号待ち
-                    if len(wait_flgs) > 0 and wait_flgs[-1] == True:
-                        wait_flgs.append(True)
-                        continue
-
-                    # それ以外は信号待ちではない
-                    wait_flgs.append(False)
-                    
-                # wait_flgsをvehicle_dataに追加
-                vehicle_data['wait_flg'] = wait_flgs
-
-                # 信号待ちの自動車台数を状態量に追加
-                lane_state.append(vehicle_data[vehicle_data['wait_flg']].shape[0])
-
-                # どの進路の自動車がいるかの状態量を追加
-                direction_vector = [0] * (self.intersection.get('num_roads'))
-                for index, row in vehicle_data.iterrows():
-                    if direction_vector[int(row['direction_id'])] == 0:
-                        direction_vector[int(row['direction_id'])] = 1
-                lane_state.extend(direction_vector)
-
-                # 全体の状態量に追加
-                state.extend(lane_state)
-
-        # フェーズに関する状態量を取得
-        current_phase_id = self.intersection.get('current_phase_id')
-        phase_state = [0] * (self.intersection.get('num_phases'))
-        if current_phase_id is not None:
-            phase_state[current_phase_id - 1] = 1
-        
-        state.extend(phase_state)
-
-        # テンソルに変換
-        state = torch.tensor(state, dtype=torch.float32)
-        state = torch.reshape(state, (1, -1))
+            # statesに交差点の状態量を追加
+            state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
 
         # 状態量をインスタンス変数に保存
         self.current_state = state
         self.state_record.append(state)
-
+        return
+    
     def getAction(self):
         # 推論の必要がないときはスキップ
         if not self.infer_flg:
@@ -670,8 +459,8 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            # action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
-            action = random.choice(list(range(1, 9)))
+            action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
+            # action = random.choice(list(range(1, 9)))
         else:
             # 計算時間の測定開始
             if self.calc_time_flg:
