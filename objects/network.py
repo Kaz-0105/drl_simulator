@@ -145,7 +145,8 @@ class Network(Common):
             save_data = {
                 'max_queue': None,
                 'average_queue': None,
-                'delay': None,  
+                'max_delay': None,  
+                'average_delay': None,
                 'phase': None,
                 'calc_time': None,
             }
@@ -194,6 +195,51 @@ class Network(Common):
 
                 queue_length_record['queue_length'] /= input_roads.count()
                 save_data['average_queue'] = queue_length_record.copy()
+
+            # 遅延を計算
+            if self.delay_flg:
+                delay_record = None
+                for road_order_id in range(1, input_roads.count() + 1):
+                    road = input_roads[road_order_id]
+
+                    for delay_measurement in road.delay_measurements.getAll():
+                        tmp_delay_record = delay_measurement.get('delay_record')
+                        
+                        if delay_record is None:
+                            delay_record = tmp_delay_record
+                            continue
+
+                        delay_record['delay'] = np.maximum(
+                            delay_record['delay'].to_numpy(),
+                            tmp_delay_record['delay'].to_numpy(),
+                        )
+                
+                save_data['max_delay'] = delay_record.copy()
+
+                road_delay_record_map = {}
+                for road_order_id in range(1, input_roads.count() + 1):
+                    road = input_roads[road_order_id]
+                    delay_record = None
+                    for delay_measurement in road.delay_measurements.getAll():
+                        tmp_delay_record = delay_measurement.get('delay_record')
+                        if delay_record is None:
+                            delay_record = tmp_delay_record
+                            continue
+                        delay_record['delay'] += tmp_delay_record['delay']
+                    
+                    delay_record['delay'] /= road.delay_measurements.count()
+                    road_delay_record_map[road_order_id] = delay_record
+                
+                delay_record = None
+                for road_order_id in range(1, input_roads.count() + 1):
+                    tmp_delay_record = road_delay_record_map[road_order_id]
+                    if delay_record is None:
+                        delay_record = tmp_delay_record
+                        continue
+                    delay_record['delay'] += tmp_delay_record['delay']
+
+                delay_record['delay'] /= input_roads.count()
+                save_data['average_delay'] = delay_record.copy()
 
             # 計算時間を記録
             if self.calc_time_flg:

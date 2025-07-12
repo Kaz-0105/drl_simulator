@@ -38,6 +38,12 @@ class DelayMeasurements(Container):
         elif upper_object.__class__.__name__ == 'Link':
             # 上位の紐づくオブジェクトを取得
             self.link = upper_object
+        
+        elif upper_object.__class__.__name__ == 'Road':
+            # 上位の紐づくオブジェクトを取得
+            self.road = upper_object
+
+        return
     
     def makeElements(self):
         for delay_measurement_com in self.com.GetAll():
@@ -83,6 +89,12 @@ class DelayMeasurements(Container):
             # linkオブジェクトにdelay_measurementオブジェクトを紐づける
             start_link.delay_measurements.add(delay_measurement)
             end_link.delay_measurements.add(delay_measurement)
+
+            # start_link側のみ紐づくroadオブジェクトとも紐づける（end_linkはconnectorなのでroadは存在しない）
+            road = start_link.road
+            road.delay_measurements.add(delay_measurement)
+            delay_measurement.set('road', road)
+        return
     
     def makeVehicleRouteConnections(self):
         for delay_measurement in self.getAll():
@@ -136,7 +148,7 @@ class DelayMeasurement(Object):
         self.current_delay = 0
 
         # delays（時系列データ）を初期化
-        self.delays = pd.DataFrame(columns=['time', 'delay'])
+        self.delay_record = pd.DataFrame(columns=['time', 'delay'])
         return
     
     @property
@@ -160,7 +172,7 @@ class DelayMeasurement(Object):
         self.current_delay = self.current_delay if delay is None else round(delay, 1)
 
         # delaysを更新
-        self.delays.loc[len(self.delays)] = [self.current_time, self.current_delay]
+        self.delay_record.loc[len(self.delay_record)] = [self.current_time, self.current_delay]
 
         return
 
