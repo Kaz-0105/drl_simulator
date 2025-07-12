@@ -80,7 +80,7 @@ mpc:
       type: '10-phase'    # 10-phaseのみ
 
 records:
-  record_flg: true        # 記録を行うかどうか
+  record_flg: false        # 記録を行うかどうか
   metric:
     queue_flg: true
     delay_flg: true
