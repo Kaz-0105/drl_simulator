@@ -479,7 +479,8 @@ class LocalAgent(Object):
             action = random.choices(
                 list(self.random_phase_probs.keys()),
                 weights=list(self.random_phase_probs.values()),
-            )
+                k=1
+            )[0]
         else:
             # 計算時間の測定開始
             if self.calc_time_flg:

@@ -115,7 +115,7 @@ class Simulation(Common):
             self.network.updateData()
 
             # トータルの報酬を更新
-            master_agents.updateTotalRewardRecord()
+            master_agents.updateSessionData()
 
             # 各データを保存
             master_agents.saveModel()

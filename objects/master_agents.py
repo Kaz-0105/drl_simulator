@@ -64,10 +64,10 @@ class MasterAgents(Container):
         
         self.executor.wait()
     
-    def updateTotalRewardRecord(self):
+    def updateSessionData(self):
         # トータルの報酬のレコードを更新
         for master_agent in self.getAll():
-            self.executor.submit(master_agent.updateTotalRewardRecord)
+            self.executor.submit(master_agent.updateSessionData)
         self.executor.wait()
 
         # 結果を表示
@@ -169,12 +169,14 @@ class MasterAgent(Object):
     
     def _getApeXParameters(self):
         apex_info = self.config.get('apex_info')
+        self.td_steps = apex_info['td_steps']
         self.update_interval = apex_info['update_interval']
         self.weight_decay = apex_info['weight_decay']
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
         self.num_epochs = apex_info['num_epochs']
-        self.td_steps = apex_info['td_steps']
+        self.epsilon = apex_info['epsilon']
+        
         return
     
     def _makePaths(self):
@@ -220,11 +222,29 @@ class MasterAgent(Object):
         # update_countとtotal_reward_recordを取得
         self.update_count = 0
         self.total_reward_record = []
+        self.update_interval_record = []
+        self.num_data_for_learning_record = []
+        self.batch_record = {
+            'number': [],
+            'size': [],
+        }
+        self.num_epochs_record = []
+        self.learning_rate_record = []
+        self.weight_decay_record = []
+        self.epsilon_record = []
+
         if self.path_map['session'].exists():
             with self.path_map['session'].open('rb') as f:
                 loaded_data = pickle.load(f)
                 self.update_count = loaded_data['update_count'] 
                 self.total_reward_record = loaded_data['total_reward_record']
+                self.update_interval_record = loaded_data['update_interval_record']
+                self.num_data_for_learning_record = loaded_data['num_data_for_learning_record']
+                self.batch_record = loaded_data['batch_record']
+                self.num_epochs_record = loaded_data['num_epochs_record']
+                self.learning_rate_record = loaded_data['learning_rate_record']
+                self.weight_decay_record = loaded_data['weight_decay_record']
+                self.epsilon_record = loaded_data['epsilon_record']
         return
 
     def _loadModel(self):
@@ -415,7 +435,14 @@ class MasterAgent(Object):
         with self.path_map['session'].open('wb') as f:
             session_data = {
                 'update_count': self.update_count,
-                'total_reward_record': self.total_reward_record
+                'total_reward_record': self.total_reward_record,
+                'update_interval_record': self.update_interval_record,
+                'num_data_for_learning_record': self.num_data_for_learning_record,
+                'batch_record': self.batch_record,
+                'num_epochs_record': self.num_epochs_record,
+                'learning_rate_record': self.learning_rate_record,
+                'weight_decay_record': self.weight_decay_record,
+                'epsilon_record': self.epsilon_record,
             }
             pickle.dump(session_data, f)
         
@@ -423,7 +450,8 @@ class MasterAgent(Object):
         print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")
         return
 
-    def updateTotalRewardRecord(self):
+    def updateSessionData(self):
+        # トータルの報酬を更新
         sum_total_reward = 0
         for local_agent in self.local_agents.getAll():
             total_reward = local_agent.get('total_reward')
@@ -431,6 +459,29 @@ class MasterAgent(Object):
         
         avg_total_reward = sum_total_reward / self.local_agents.count()
         self.total_reward_record.append(avg_total_reward)
+
+        # update_intervalの更新
+        self.update_interval_record.append(self.update_interval)
+
+        # num_data_for_learningの更新
+        self.num_data_for_learning_record.append(self.replay_buffer.get('num_data_for_learning'))
+
+        # batchの更新
+        self.batch_record['number'].append(self.replay_buffer.get('num_batches'))
+        self.batch_record['size'].append(self.replay_buffer.get('batch_size'))
+
+        # num_epochsの更新
+        self.num_epochs_record.append(self.num_epochs)
+
+        # learning_rateの更新
+        self.learning_rate_record.append(self.learning_rate)
+
+        # weight_decayの更新
+        self.weight_decay_record.append(self.weight_decay)
+
+        # epsilonの更新
+        self.epsilon_record.append(self.epsilon)
+
         return
     
     def showTotalReward(self):
