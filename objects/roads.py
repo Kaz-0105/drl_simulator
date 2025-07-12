@@ -3,6 +3,7 @@ from libs.object import Object
 from objects.links import Links
 from objects.signal_controllers import SignalGroups
 from objects.queue_counters import QueueCounters
+from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints
 
 from pandas import DataFrame
@@ -92,6 +93,9 @@ class Road(Object):
         # queue_countersオブジェクトを初期化
         self.queue_counters = QueueCounters(self)
 
+        # delay_measurementsオブジェクトを初期化
+        self.delay_measurements = DelayMeasurements(self)
+
         # signal_groupsオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
 
@@ -155,10 +159,8 @@ class Road(Object):
     @property
     def average_delay(self):
         delays = []
-        for link in self.links.getAll():
-            if link.has('delay_measurements'):
-                for delay_measurement in link.delay_measurements.getAll(): 
-                    delays.append(delay_measurement.get('current_delay'))
+        for delay_measurement in self.delay_measurements.getAll():
+            delays.append(delay_measurement.get('current_delay'))
         
         return sum(delays) / len(delays) if len(delays) > 0 else 0
 

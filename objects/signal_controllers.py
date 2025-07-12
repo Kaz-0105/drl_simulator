@@ -116,7 +116,7 @@ class SignalController(Object):
     
     def _initPhaseRecord(self):
         records_info = self.config.get('records_info')
-        if records_info['metric']['phase'] == True:
+        if records_info['metric']['phase_flg'] == True:
             self.phase_record = []
         else:
             self.phase_record = deque(maxlen=records_info['max_len'])
@@ -264,7 +264,7 @@ class SignalGroup(Object):
     
     def initValueRecord(self):
         records_info = self.config.get('records_info')
-        if records_info['metric']['phase'] == True:
+        if records_info['metric']['phase_flg'] == True:
             self.value_record = []
         else:
             self.value_record = deque(maxlen=records_info['max_len'])

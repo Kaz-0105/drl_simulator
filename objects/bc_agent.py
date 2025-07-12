@@ -1,8 +1,6 @@
 from libs.common import Common
 from objects.links import Lanes
 from neural_networks.q_net_1 import QNet1
-from neural_networks.q_net_2 import QNet2
-from neural_networks.q_net_3 import QNet3
 
 from pathlib import Path
 import pickle
@@ -168,10 +166,6 @@ class BcAgent(Common):
     def _makeModel(self):
         if self.network_id == 1:
             self.model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
-        elif self.network_id == 2:
-            self.model = QNet2(self.config, self.num_vehicles, self.num_lanes_map)
-        elif self.network_id == 3:
-            self.model = QNet3(self.config, self.num_lanes_map)
         self.model.train()
 
         if self.model_path.exists():

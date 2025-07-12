@@ -42,6 +42,24 @@ class Simulation(Common):
         self.com.SetAttValue('RandSeed', self.random_seed)
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
+        # Queueの測定とDelayの測定とDataCollectionの測定の設定
+        evaluation_com = self.vissim.com.Evaluation
+        evaluation_com.SetAttValue('DelaysCollectData', True)
+        evaluation_com.SetAttValue('DelaysFromTime', 0)
+        evaluation_com.SetAttValue('DelaysToTime', self.end_time + 1)
+        evaluation_com.SetAttValue('DelaysInterval', self.time_step)
+
+        evaluation_com.SetAttValue('QueuesCollectData', True)
+        evaluation_com.SetAttValue('QueuesFromTime', 0)
+        evaluation_com.SetAttValue('QueuesToTime', self.end_time + 1)
+        evaluation_com.SetAttValue('QueuesInterval', self.time_step)
+
+        evaluation_com.SetAttValue('DataCollCollectData', True)
+        evaluation_com.SetAttValue('DataCollFromTime', 0)
+        evaluation_com.SetAttValue('DataCollToTime', self.end_time + 1)
+        evaluation_com.SetAttValue('DataCollInterval', self.time_step)
+        return
+
     def run(self):
         # デバックフラグが立っているとき30秒進める
         if self.debug_flg:
@@ -156,6 +174,9 @@ class Simulation(Common):
 
             # モデルを保存
             bc_agent.saveModel()
+
+        # 評価指標の保存
+        self.network.saveData()
         return
 
     def _runSingleStep(self):

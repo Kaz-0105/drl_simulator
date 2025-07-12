@@ -8,6 +8,7 @@ import pandas as pd
 from collections import deque
 from scipy.optimize import milp, LinearConstraint, Bounds
 import torch
+import time
 
 class MpcControllers(Container):
     def __init__(self, upper_object):
@@ -61,6 +62,7 @@ class MpcController(Object):
 
         # 上位の紐づくオブジェクトを取得
         self.mpc_controllers = mpc_controllers
+        self.network = mpc_controllers.network
 
         # intersectionオブジェクトと紐づける
         self.intersection = intersection
@@ -91,6 +93,9 @@ class MpcController(Object):
 
         # 道路パラメータを取得
         self._initRoadParameters()
+
+        # 計算時間の記録を初期化
+        self._initCalcTimeRecord()
 
         # 過去の信号機変化の有無を保存するリストを初期化
         self.phi_record = deque([np.float64(0)] * self.min_successive_steps, maxlen=self.min_successive_steps)
@@ -237,6 +242,13 @@ class MpcController(Object):
         
         self.road_combination_params_map = road_combination_params_map
 
+    def _initCalcTimeRecord(self):
+        records_info = self.config.get('records_info')
+        self.calc_time_flg = records_info['metric']['calc_time_flg']
+        if self.calc_time_flg:
+            self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
+        return
+    
     def _makeBcRoadLanesMap(self):
         # 行動クローンのデータ集めをしない場合はスキップ
         if not self.bc_flg:
@@ -2387,8 +2399,16 @@ class MpcController(Object):
             'mip_rel_gap': 0.01,
         }
 
+        # 計算時間の測定開始
+        if self.calc_time_flg:
+            start_time = time.time()
+
         # 問題を解く（インスタンスとして保持）
         self.response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints, options=options)
+        
+        # 計算時間の測定終了
+        if self.calc_time_flg:
+            end_time = time.time()
 
         # 失敗したときのデバッグ用
         if not self.response.success:
@@ -2397,6 +2417,10 @@ class MpcController(Object):
             constraints = [constraints_ineq, constraints_eq]
             response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
         
+        # 計算時間の保存
+        if self.calc_time_flg:
+            calc_time = end_time - start_time
+            self.calc_time_record.loc[len(self.calc_time_record)] = [self.current_time, calc_time]
         return
     
     def showOptimizationResult(self):
@@ -2738,5 +2762,9 @@ class MpcController(Object):
         # 行動クローン用のアクションを初期化
         self.bc_action = self.signal_controller.get('next_phase_id')
         return
+    
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
 
         

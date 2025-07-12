@@ -17,7 +17,7 @@ with open(session_path, 'rb') as f:
     total_reward_record = session_data['total_reward_record']
 
 # 描画
-plt.plot(total_reward_record, linewidth=2)
+plt.plot(total_reward_record[1:], linewidth=2)
 plt.xlabel('Episode', fontsize=14)
 plt.ylabel('Total Reward', fontsize=14)
 plt.title('Total Rewards over Episodes', fontsize=16)
