@@ -853,6 +853,486 @@
 				<intObjectRef key="12"/>
 			</vehTravTmMeas>
 		</delayMeasurement>
+		<delayMeasurement name="" no="13">
+			<vehTravTmMeas>
+				<intObjectRef key="13"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="14">
+			<vehTravTmMeas>
+				<intObjectRef key="14"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="15">
+			<vehTravTmMeas>
+				<intObjectRef key="15"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="16">
+			<vehTravTmMeas>
+				<intObjectRef key="16"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="17">
+			<vehTravTmMeas>
+				<intObjectRef key="17"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="18">
+			<vehTravTmMeas>
+				<intObjectRef key="18"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="19">
+			<vehTravTmMeas>
+				<intObjectRef key="19"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="20">
+			<vehTravTmMeas>
+				<intObjectRef key="20"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="21">
+			<vehTravTmMeas>
+				<intObjectRef key="21"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="22">
+			<vehTravTmMeas>
+				<intObjectRef key="22"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="23">
+			<vehTravTmMeas>
+				<intObjectRef key="23"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="24">
+			<vehTravTmMeas>
+				<intObjectRef key="24"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="25">
+			<vehTravTmMeas>
+				<intObjectRef key="25"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="26">
+			<vehTravTmMeas>
+				<intObjectRef key="26"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="27">
+			<vehTravTmMeas>
+				<intObjectRef key="27"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="28">
+			<vehTravTmMeas>
+				<intObjectRef key="28"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="29">
+			<vehTravTmMeas>
+				<intObjectRef key="29"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="30">
+			<vehTravTmMeas>
+				<intObjectRef key="30"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="31">
+			<vehTravTmMeas>
+				<intObjectRef key="31"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="32">
+			<vehTravTmMeas>
+				<intObjectRef key="32"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="33">
+			<vehTravTmMeas>
+				<intObjectRef key="33"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="34">
+			<vehTravTmMeas>
+				<intObjectRef key="34"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="35">
+			<vehTravTmMeas>
+				<intObjectRef key="35"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="36">
+			<vehTravTmMeas>
+				<intObjectRef key="36"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="37">
+			<vehTravTmMeas>
+				<intObjectRef key="37"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="38">
+			<vehTravTmMeas>
+				<intObjectRef key="38"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="39">
+			<vehTravTmMeas>
+				<intObjectRef key="39"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="40">
+			<vehTravTmMeas>
+				<intObjectRef key="40"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="41">
+			<vehTravTmMeas>
+				<intObjectRef key="41"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="42">
+			<vehTravTmMeas>
+				<intObjectRef key="42"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="43">
+			<vehTravTmMeas>
+				<intObjectRef key="43"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="44">
+			<vehTravTmMeas>
+				<intObjectRef key="44"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="45">
+			<vehTravTmMeas>
+				<intObjectRef key="45"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="46">
+			<vehTravTmMeas>
+				<intObjectRef key="46"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="47">
+			<vehTravTmMeas>
+				<intObjectRef key="47"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="48">
+			<vehTravTmMeas>
+				<intObjectRef key="48"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="49">
+			<vehTravTmMeas>
+				<intObjectRef key="49"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="50">
+			<vehTravTmMeas>
+				<intObjectRef key="50"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="51">
+			<vehTravTmMeas>
+				<intObjectRef key="51"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="52">
+			<vehTravTmMeas>
+				<intObjectRef key="52"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="53">
+			<vehTravTmMeas>
+				<intObjectRef key="53"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="54">
+			<vehTravTmMeas>
+				<intObjectRef key="54"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="55">
+			<vehTravTmMeas>
+				<intObjectRef key="55"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="56">
+			<vehTravTmMeas>
+				<intObjectRef key="56"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="57">
+			<vehTravTmMeas>
+				<intObjectRef key="57"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="58">
+			<vehTravTmMeas>
+				<intObjectRef key="58"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="59">
+			<vehTravTmMeas>
+				<intObjectRef key="59"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="60">
+			<vehTravTmMeas>
+				<intObjectRef key="60"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="61">
+			<vehTravTmMeas>
+				<intObjectRef key="61"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="62">
+			<vehTravTmMeas>
+				<intObjectRef key="62"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="63">
+			<vehTravTmMeas>
+				<intObjectRef key="63"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="64">
+			<vehTravTmMeas>
+				<intObjectRef key="64"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="65">
+			<vehTravTmMeas>
+				<intObjectRef key="65"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="66">
+			<vehTravTmMeas>
+				<intObjectRef key="66"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="67">
+			<vehTravTmMeas>
+				<intObjectRef key="67"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="68">
+			<vehTravTmMeas>
+				<intObjectRef key="68"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="69">
+			<vehTravTmMeas>
+				<intObjectRef key="69"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="70">
+			<vehTravTmMeas>
+				<intObjectRef key="70"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="71">
+			<vehTravTmMeas>
+				<intObjectRef key="71"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="72">
+			<vehTravTmMeas>
+				<intObjectRef key="72"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="73">
+			<vehTravTmMeas>
+				<intObjectRef key="73"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="74">
+			<vehTravTmMeas>
+				<intObjectRef key="74"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="75">
+			<vehTravTmMeas>
+				<intObjectRef key="75"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="76">
+			<vehTravTmMeas>
+				<intObjectRef key="76"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="77">
+			<vehTravTmMeas>
+				<intObjectRef key="77"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="78">
+			<vehTravTmMeas>
+				<intObjectRef key="78"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="79">
+			<vehTravTmMeas>
+				<intObjectRef key="79"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="80">
+			<vehTravTmMeas>
+				<intObjectRef key="80"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="81">
+			<vehTravTmMeas>
+				<intObjectRef key="81"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="82">
+			<vehTravTmMeas>
+				<intObjectRef key="82"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="83">
+			<vehTravTmMeas>
+				<intObjectRef key="83"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="84">
+			<vehTravTmMeas>
+				<intObjectRef key="84"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="85">
+			<vehTravTmMeas>
+				<intObjectRef key="85"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="86">
+			<vehTravTmMeas>
+				<intObjectRef key="86"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="87">
+			<vehTravTmMeas>
+				<intObjectRef key="87"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="88">
+			<vehTravTmMeas>
+				<intObjectRef key="88"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="89">
+			<vehTravTmMeas>
+				<intObjectRef key="89"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="90">
+			<vehTravTmMeas>
+				<intObjectRef key="90"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="91">
+			<vehTravTmMeas>
+				<intObjectRef key="91"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="92">
+			<vehTravTmMeas>
+				<intObjectRef key="92"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="93">
+			<vehTravTmMeas>
+				<intObjectRef key="93"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="94">
+			<vehTravTmMeas>
+				<intObjectRef key="94"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="95">
+			<vehTravTmMeas>
+				<intObjectRef key="95"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="96">
+			<vehTravTmMeas>
+				<intObjectRef key="96"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="97">
+			<vehTravTmMeas>
+				<intObjectRef key="97"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="98">
+			<vehTravTmMeas>
+				<intObjectRef key="98"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="99">
+			<vehTravTmMeas>
+				<intObjectRef key="99"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="100">
+			<vehTravTmMeas>
+				<intObjectRef key="100"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="101">
+			<vehTravTmMeas>
+				<intObjectRef key="101"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="102">
+			<vehTravTmMeas>
+				<intObjectRef key="102"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="103">
+			<vehTravTmMeas>
+				<intObjectRef key="103"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="104">
+			<vehTravTmMeas>
+				<intObjectRef key="104"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="105">
+			<vehTravTmMeas>
+				<intObjectRef key="105"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="106">
+			<vehTravTmMeas>
+				<intObjectRef key="106"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="107">
+			<vehTravTmMeas>
+				<intObjectRef key="107"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
+		<delayMeasurement name="" no="108">
+			<vehTravTmMeas>
+				<intObjectRef key="108"/>
+			</vehTravTmMeas>
+		</delayMeasurement>
 	</delayMeasurements>
 	<desAccelerationFunctions>
 		<desAccelerationFunction name="Car" no="1">
