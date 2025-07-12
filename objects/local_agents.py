@@ -37,8 +37,7 @@ class LocalAgents(Container):
     def getState(self):
         # 非同期で状態量を取得
         for agent in self.getAll():
-            network_id = agent.get('network_id')
-            self.executor.submit(agent.getState, network_id)
+            self.executor.submit(agent.getState)
             
         # 全ての状態量取得が終わるまで待機
         self.executor.wait()
@@ -111,6 +110,9 @@ class LocalAgent(Object):
 
         # DRL共通のパラメータを設定
         self._initDrlParameters()
+
+        # ε-greedyで選ばれる行動の確率を設定
+        self._makeRandomPhaseProbs()
 
         # APEXに関するパラメータを設定
         self._initApeXParameters()
@@ -191,6 +193,21 @@ class LocalAgent(Object):
         self.num_vehicles = drl_info['num_vehicles']
         self.num_lanes_map = self.master_agent.num_lanes_map
         self.reward_id = drl_info['reward_id']
+        return
+    
+    def _makeRandomPhaseProbs(self):
+        num_roads_phases_map = self.config.get('num_roads_phases_map')
+        phases = num_roads_phases_map[self.intersection.get('num_roads')]
+        self.random_phase_probs = {}
+    
+        for _, row in phases.iterrows():
+            self.random_phase_probs[int(row['id'])] = float(row['random_prob'])
+        
+        # 確率の合計が1になるように正規化
+        total_prob = sum(self.random_phase_probs.values())
+        for phase_id in self.random_phase_probs:
+            self.random_phase_probs[phase_id] /= total_prob
+
         return
     
     def _initApeXParameters(self):
@@ -309,12 +326,12 @@ class LocalAgent(Object):
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
-    def getState(self, network_id):
+    def getState(self):
         # 状態量を取得するタイミングかどうかを確認
         if not self.infer_flg:
             return
         
-        if network_id == 1:
+        if self.network_id == 1:
             # 自動車に関する情報を更新
             self._updateVehicleData()
 
@@ -459,8 +476,10 @@ class LocalAgent(Object):
         
         # ε-greedy法に従って行動を選択
         if random.random() < self.epsilon:
-            action = random.choice([idx + 1 for idx in range(self.intersection.get('num_phases'))])
-            # action = random.choice(list(range(1, 9)))
+            action = random.choices(
+                list(self.random_phase_probs.keys()),
+                weights=list(self.random_phase_probs.values()),
+            )
         else:
             # 計算時間の測定開始
             if self.calc_time_flg:

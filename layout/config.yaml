@@ -4,7 +4,7 @@ simulator :
   simulation_count: 1         # シミュレーションの回数（エピソード数）
   simulation_time: 200        # シミュレーションを行う時間（秒）
   seed:
-    is_random: false          # シード値をランダムにするかどうか
+    is_random: true           # シード値をランダムにするかどうか
     value: 1                  # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
   time_step: 2                # シミュレーションの更新の時間幅（秒）
   red_steps: 1                # 全赤のステップ数
@@ -40,7 +40,7 @@ drl:
 
 apex:
   td_steps: 1               # TD法の参照するステップ数
-  update_interval: 3000     # ターゲットネットワークの同期間隔
+  update_interval: 2000     # ターゲットネットワークの同期間隔
   buffer:
     learning_threshold: 50  # データが何個たまったら学習を行うか
     size: 10000             # リプレイバッファのサイズ
@@ -51,7 +51,7 @@ apex:
   gamma: 0.9             # 割引率
   learning_rate: 1e-4    # 学習率
   weight_decay: 1e-4     # 学習時のL2正則化の重み減衰
-  epsilon: 0.0           # 探索率（ε-greedy法）
+  epsilon: 0.3           # 探索率（ε-greedy法）
 
 bc:
   learning_flg: false     # 学習を行うかどうか
