@@ -31,7 +31,7 @@ class ReplayBuffer (Common):
     
     def _getBufferInfo(self):
         apex_info = self.config.get('apex_info')
-        self.learning_threshold = apex_info['buffer']['learning_threshold']
+        self.num_data_for_learning = apex_info['buffer']['num_data_for_learning']
         self.max_size = apex_info['buffer']['size']
         self.num_batches = apex_info['buffer']['batch']['number']
         self.batch_size = apex_info['buffer']['batch']['size']
@@ -125,10 +125,10 @@ class ReplayBuffer (Common):
     
     @property
     def should_learn_flg(self):
-        if self.new_data_count < self.learning_threshold:
+        if self.new_data_count < self.num_data_for_learning:
             return False
 
-        self.new_data_count %= self.learning_threshold
+        self.new_data_count %= self.num_data_for_learning
         return True
         
         
