@@ -418,6 +418,9 @@ class MasterAgent(Object):
                 'total_reward_record': self.total_reward_record
             }
             pickle.dump(session_data, f)
+        
+        # 何回目のエピソードかを表示
+        print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")
         return
 
     def updateTotalRewardRecord(self):
