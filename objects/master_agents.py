@@ -345,27 +345,6 @@ class MasterAgent(Object):
                     # メインモデルを学習モードに戻す
                     self.model.train()
 
-                elif self.network_id == 3:
-                    # Q値を計算
-                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1)
-                    states = torch.stack([tmp_data[0] for tmp_data in data]).squeeze(1)
-                    states.requires_grad_(True)
-                    q_values_all = self.model(states)
-                    q_values = q_values_all.gather(1, actions) 
-                    
-                    # TDターゲットを計算（Double DQNの実装）
-                    self.model.eval()
-                    with torch.no_grad():
-                        states_next = torch.stack([tmp_data[3] for tmp_data in data]).squeeze(1)
-                        states_next.requires_grad_(False)
-                        max_actions = torch.argmax(self.model(states_next), dim=1)
-                        target_q_values_all = self.target_model(states_next)
-                        target_q_values = target_q_values_all.gather(1, max_actions.unsqueeze(1))
-                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
-                        td_targets = (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
-                        td_targets += torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1)           
-                    self.model.train()
-
                 # 損失を計算
                 loss = self.criterion(q_values, td_targets)
                 losses.append(loss.item())
@@ -384,12 +363,11 @@ class MasterAgent(Object):
                     priorities = torch.abs(q_values - td_targets).detach().numpy()
                     self.replay_buffer.update(data_indices, priorities)
 
-                # 更新回数をインクリメント
-                self.update_count = (self.update_count + 1) % self.update_interval
-
-                # ターゲットモデルの更新
-                if self.update_count == 0:
+                # 更新カウントを増やす（更新のインターバルを超えたらターゲットモデルを更新，10回ごとに更新回数を表示）
+                self.update_count += 1
+                if self.update_count >= self.update_interval:
                     self.target_model.load_state_dict(self.model.state_dict())
+                    self.update_count = 0
 
             # 更新情報を表示
             self._showUpdateInfo(epoch, losses)

@@ -27,7 +27,7 @@ class ReplayBuffer (Common):
         self.path_map = self.master_agent.get('replay_buffer_path_map')
         self._load()
 
-        self.new_data_count = 0
+        return
     
     def _getBufferInfo(self):
         apex_info = self.config.get('apex_info')
@@ -47,10 +47,7 @@ class ReplayBuffer (Common):
             self.sum_tree.set('tree', loaded_data['tree'])
             self.sum_tree.set('next_data_idx', loaded_data['next_data_idx'])
             self.sum_tree.set('current_size', loaded_data['current_size'])
-            try:
-                self.new_data_count = loaded_data['new_data_count']
-            except KeyError:
-                self.new_data_count = 0
+            self.new_data_count = loaded_data['new_data_count']
 
         data = []
         for data_path in self.path_map['data']:
@@ -100,7 +97,7 @@ class ReplayBuffer (Common):
                 'tree': self.sum_tree.get('tree'),
                 'next_data_idx': self.sum_tree.get('next_data_idx'),
                 'current_size': self.sum_tree.get('current_size'),
-                'new_data_count': self.new_data_count
+                'new_data_count': self.new_data_count,
             }
             pickle.dump(saved_data, f)
 
@@ -125,10 +122,13 @@ class ReplayBuffer (Common):
     
     @property
     def should_learn_flg(self):
-        if self.new_data_count < self.num_data_for_learning:
-            return False
+        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_data_for_learning}]")
 
-        self.new_data_count %= self.num_data_for_learning
-        return True
+        # 新しいデータが十分に溜まったら学習を行う
+        if self.new_data_count >= self.num_data_for_learning:
+            self.new_data_count %= self.num_data_for_learning
+            return True
+        else:
+            return False
         
         
