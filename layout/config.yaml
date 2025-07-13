@@ -40,9 +40,9 @@ drl:
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
-  update_interval: 2000        # ターゲットネットワークの同期間隔
+  update_interval: 4000        # ターゲットネットワークの同期間隔
   buffer:
-    num_data_for_learning: 30  # データが何個たまったら学習を行うか
+    num_data_for_learning: 20  # データが何個たまったら学習を行うか
     size: 10000                # リプレイバッファのサイズ
     batch:
       number: 10           # バッチ数

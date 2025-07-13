@@ -43,6 +43,7 @@ class Vissim(Common):
     
     def exit(self):
         self.com.Exit()
+        self.config_change_handler.stop()
         return
     
 
@@ -80,7 +81,12 @@ class ConfigChangeHandler(FileSystemEventHandler):
             phases = pd.read_csv(event.src_path)
             random_phase_probs = {}
             for _, row in phases.iterrows():
-                random_phase_probs[row['id']] = row['random_prob']
+                random_phase_probs[int(row['id'])] = float(row['random_prob'])
+            
+            # 確率の合計を1に正規化
+            sum_probs = sum(random_phase_probs.values())
+            for key in random_phase_probs.keys():
+                random_phase_probs[key] /= sum_probs
             
             network = self.vissim.network
             for local_agent in network.local_agents.getAll():
@@ -90,11 +96,24 @@ class ConfigChangeHandler(FileSystemEventHandler):
 
                 # local_agentのrandom_phase_probsを更新
                 local_agent.set('random_phase_probs', random_phase_probs)
+            
+            # configオブジェクトの更新
+            num_roads_phases_map = self.config.get('num_roads_phases_map')
+            num_roads_phases_map[4] = phases
 
         elif event.src_path.endswith('phases5.csv'):
             # 実装したときに修正する
             pass
+            
+        elif event.src_path.endswith('config.yaml'):
+            # 設定ファイルが変更された場合、設定を再読み込み
+            self.config.readConfigFile()
         
+        return
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
         return
 
         

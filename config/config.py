@@ -81,8 +81,6 @@ class Config(Common):
         
         if self.intersections.shape[0] != 1:
             raise ValueError('The simulation of behavior cloning is only available for a single intersection environment. \n Please check the network configuration in config.yaml.')
-        
-            
 
 
-
+    
