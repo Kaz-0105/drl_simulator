@@ -23,6 +23,7 @@ class LocalAgents(Container):
             # 上位の紐づくオブジェクトを取得
             self.network = upper_object
 
+            # 要素オブジェクトを作成
             self._makeElements()
 
         elif upper_object.__class__.__name__ == 'MasterAgent':
@@ -197,7 +198,7 @@ class LocalAgent(Object):
     
     def _makeRandomPhaseProbs(self):
         num_roads_phases_map = self.config.get('num_roads_phases_map')
-        phases = num_roads_phases_map[self.intersection.get('num_roads')]
+        phases = num_roads_phases_map[self.num_roads]
         self.random_phase_probs = {}
     
         for _, row in phases.iterrows():
@@ -384,7 +385,7 @@ class LocalAgent(Object):
 
                                 # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
                                 if feature_name == 'direction':
-                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    direction_vector = [0] * (self.num_roads)
                                     direction_vector[int(vehicle['direction_id'])] = 1
                                     vehicle_state.extend(direction_vector)
                                 else: 
@@ -407,7 +408,7 @@ class LocalAgent(Object):
                                 
                                 # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
                                 if feature_name == 'direction':
-                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    direction_vector = [0] * (self.num_roads)
                                     vehicle_state.extend(direction_vector)
                                 else: 
                                     vehicle_state.append(0.0)
@@ -603,3 +604,9 @@ class LocalAgent(Object):
     @property
     def current_time(self):
         return self.network.simulation.get('current_time')
+
+    @property
+    def num_roads(self):
+        return self.intersection.get('num_roads')
+    
+

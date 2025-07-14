@@ -1,6 +1,7 @@
 from libs.common import Common
 
 import random
+
 class Simulation(Common):
     def __init__(self, vissim):
         # 継承
