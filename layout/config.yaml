@@ -42,8 +42,8 @@ apex:
   td_steps: 1                  # TD法の参照するステップ数
   update_interval: 7000        # ターゲットネットワークの同期間隔
   buffer:
-    num_data_for_learning: 20   # データが何個たまったら学習を行うか
-    size: 300000                # リプレイバッファのサイズ
+    num_data_for_learning: 100   # データが何個たまったら学習を行うか
+    size: 300000                 # リプレイバッファのサイズ
     batch:
       number: 10               # バッチ数
       size: 64                 # バッチサイズ

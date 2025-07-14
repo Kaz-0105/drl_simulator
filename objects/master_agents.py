@@ -21,6 +21,7 @@ class MasterAgents(Container):
         # 設定オブジェクトと非同期処理の実行オブジェクトを取得
         self.config = network.config
         self.executor = network.executor
+        self.shared_resources = network.shared_resources
 
         # 上位の紐づくオブジェクトを取得
         self.network = network
@@ -98,11 +99,10 @@ class MasterAgent(Object):
         # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = master_agents.config
         self.executor = master_agents.executor
+        self.shared_resources = master_agents.shared_resources
 
         # 上位オブジェクトを取得
         self.master_agents = master_agents
-
-        # networkオブジェクトと紐づける
         self.network = master_agents.network
 
         # IDを設定

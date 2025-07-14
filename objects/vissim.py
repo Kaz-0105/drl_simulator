@@ -9,15 +9,17 @@ from watchdog.events import FileSystemEventHandler
 import pandas as pd
 
 class Vissim(Common):
-    def __init__(self, config, executor):
+    def __init__(self, config, executor, shared_resources, simulation_count):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトを取得
+        # 設定オブジェクトと非同期オブジェクトを設定
         self.config = config
-        
-        # 非同期処理オブジェクトを初期化
         self.executor = executor
+        self.shared_resources = shared_resources
+
+        # シミュレーションのカウントを設定
+        self.simulation_count = simulation_count
 
         # VissimのCOMオブジェクトを取得
         self._getVissimCom()

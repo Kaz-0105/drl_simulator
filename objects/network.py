@@ -28,6 +28,7 @@ class Network(Common):
         # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = vissim.config
         self.executor = vissim.executor
+        self.shared_resources = vissim.shared_resources
 
         # 上位の紐づくオブジェクトを取得
         self.vissim = vissim
