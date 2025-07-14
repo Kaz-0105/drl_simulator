@@ -7,6 +7,9 @@ import os
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import pandas as pd
+from datetime import datetime
+import shutil
+from pathlib import Path
 
 class Vissim(Common):
     def __init__(self, config, executor, shared_resources, simulation_count):
@@ -48,6 +51,46 @@ class Vissim(Common):
         self.config_change_handler.stop()
         return
     
+    def backup(self):
+        # バックアップする必要がないときはスキップ
+        if not self.backup_flg:
+            return
+        
+        src_dirs = [Path('buffers'), Path('models')]
+        backup_root = Path('backup')
+
+        for src_dir in src_dirs:
+            # バックアップ先ディレクトリに日時付きのフォルダを作る
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = backup_root / f"{src_dir.name}_{timestamp}"
+            backup_dir.mkdir(parents=True, exist_ok=False)
+
+            # ファイルをコピー
+            for item in src_dir.iterdir():
+                if item.is_file():
+                    shutil.copy2(item, backup_dir / item.name)
+
+            # 5個以上のバックアップがある場合は古いものを削除
+            backup_dirs = sorted(backup_root.glob(f"{src_dir.name}_*"), key=lambda x: x.name)
+            if len(backup_dirs) > 5:
+                for old_backup in backup_dirs[:-5]:
+                    shutil.rmtree(old_backup)
+
+            print(f"Backup of {src_dir} completed to {backup_dir}")
+    
+    @property
+    def backup_flg(self):
+        simulator_info = self.config.get('simulator_info')
+        if not simulator_info['backup']['flg']:
+            return False
+        
+        if self.simulation_count % simulator_info['backup']['interval'] != 0:
+            return False
+        
+        if simulator_info['control_method'] != 'drl':
+            return False
+        
+        return True
 
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, vissim):

@@ -43,6 +43,9 @@ class Simulation(Common):
         self.com.SetAttValue('RandSeed', self.random_seed)
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
+        self.com.SetAttValue('UseAllCores', True)
+        self.com.SetAttValue('UseMaxSimSpeed', True)
+
         # Queueの測定とDelayの測定とDataCollectionの測定の設定
         evaluation_com = self.vissim.com.Evaluation
         evaluation_com.SetAttValue('DelaysCollectData', True)

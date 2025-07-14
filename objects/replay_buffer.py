@@ -108,8 +108,10 @@ class ReplayBuffer (Common):
         return
 
     def save(self):
+        # pklファイルを更新
         simulator_info = self.config.get('simulator_info')
-        if self.simulation_count == simulator_info['simulation_count'] or self.simulation_count % 10 == 0:
+        drl_info = self.config.get('drl_info')
+        if self.simulation_count == simulator_info['simulation_count'] or self.simulation_count % drl_info['buffer_save_interval'] == 0:
             with self.path_map['tree'].open('wb') as f:
                 saved_data = {
                     'tree': self.sum_tree.get('tree'),
@@ -132,10 +134,10 @@ class ReplayBuffer (Common):
                             'data': data[1000 * idx: 1000 * (idx + 1)]
                         }
                     pickle.dump(saved_data, f)
-        else:
-            # shared_resourcesオブジェクトに保存
-            self.shared_resources.set('sum_tree', self.sum_tree)
-            self.shared_resources.set('new_data_count', self.new_data_count)
+        
+        # shared_resourcesオブジェクトに保存
+        self.shared_resources.set('sum_tree', self.sum_tree)
+        self.shared_resources.set('new_data_count', self.new_data_count)
             
         return 
 
@@ -145,7 +147,7 @@ class ReplayBuffer (Common):
     
     @property
     def should_learn_flg(self):
-        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_data_for_learning}]")
+        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_data_for_learning}], Data size[{self.current_size}/{self.max_size}]")
 
         # 新しいデータが十分に溜まったら学習を行う
         if self.new_data_count >= self.num_data_for_learning:

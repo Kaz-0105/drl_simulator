@@ -22,4 +22,4 @@ for src_dir in src_dirs:
         for old_backup in backup_dirs[:-5]:
             shutil.rmtree(old_backup)
 
-    print(f"バックアップ完了: {backup_dir}")
+    print(f"Backup of {src_dir} completed to {backup_dir}")
