@@ -23,6 +23,9 @@ class ReplayBuffer (Common):
         # データのコンテナを初期化
         self.sum_tree = SumTree(self.max_size)
 
+        # カウンタを初期化
+        self.new_data_count = 0
+
         # バッファのパスを取得
         self.path_map = self.master_agent.get('replay_buffer_path_map')
         self._load()
