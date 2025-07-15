@@ -40,7 +40,7 @@ drl:
   num_vehicles: 5              # 特徴量として取り出す1車線ごとの自動車台数
   bc_flg: false                # 行動クローンによる初期化を行うかどうか
   reward_id: 2                 # 報酬のID
-  buffer_save_interval: 1      # リプレイバッファの保存間隔（エピソード数）
+  buffer_save_interval: 10     # リプレイバッファの保存間隔（エピソード数）
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
@@ -55,7 +55,7 @@ apex:
   gamma: 0.9                   # 割引率
   learning_rate: 1e-4          # 学習率
   weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
-  epsilon: 0.8                 # 探索率（ε-greedy法）
+  epsilon: 0.7                 # 探索率（ε-greedy法）
 
 bc:
   learning_flg: false          # 学習を行うかどうか
