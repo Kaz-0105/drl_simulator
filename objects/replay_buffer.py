@@ -8,9 +8,12 @@ class ReplayBuffer (Common):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理の実行オブジェクトと上位の紐づくオブジェクトを取得
+        # 設定オブジェクトと非同期処理の実行オブジェクトを取得
         self.config = master_agent.config
         self.executor = master_agent.executor
+        self.shared_resources = master_agent.shared_resources
+
+        # 上位の紐づくオブジェクトを取得
         self.master_agent = master_agent
 
         # ネットワークと紐づける
@@ -20,16 +23,11 @@ class ReplayBuffer (Common):
         # バッファのサイズとバッチサイズを取得
         self._getBufferInfo()
 
-        # データのコンテナを初期化
-        self.sum_tree = SumTree(self.max_size)
-
-        # カウンタを初期化
-        self.new_data_count = 0
-
         # バッファのパスを取得
         self.path_map = self.master_agent.get('replay_buffer_path_map')
-        self._load()
 
+        # バッファのデータをロード
+        self._loadData()
         return
     
     def _getBufferInfo(self):
@@ -40,30 +38,45 @@ class ReplayBuffer (Common):
         self.batch_size = apex_info['buffer']['batch']['size']
         return
 
-    def _load(self):
-        # バッファーのファイルが存在する場合は読み込む
-        if not self.path_map['tree'].exists():
-            return
-        
-        with self.path_map['tree'].open('rb') as f:
-            loaded_data = pickle.load(f)
-            self.sum_tree.set('tree', loaded_data['tree'])
-            self.sum_tree.set('next_data_idx', loaded_data['next_data_idx'])
-            self.sum_tree.set('current_size', loaded_data['current_size'])
-            self.new_data_count = loaded_data['new_data_count']
+    def _loadData(self):
+        # 最初のエピソードかどうかで分岐
+        if self.simulation_count == 1:
+            # データのコンテナを初期化
+            self.sum_tree = SumTree(self.max_size)
 
-        data = []
-        for data_path in self.path_map['data']:
-            with data_path.open('rb') as f:
+            # カウンタを初期化
+            self.new_data_count = 0
+
+            # バッファが保存されていない場合はロードは必要ない
+            if not self.path_map['tree'].exists():
+                return
+            
+            with self.path_map['tree'].open('rb') as f:
                 loaded_data = pickle.load(f)
-                data.extend(loaded_data['data'])
-        self.sum_tree.set('data', data)
-        return 
+                self.sum_tree.set('tree', loaded_data['tree'])
+                self.sum_tree.set('next_data_idx', loaded_data['next_data_idx'])
+                self.sum_tree.set('current_size', loaded_data['current_size'])
+                self.new_data_count = loaded_data['new_data_count']
+
+            data = []
+            for data_path in self.path_map['data']:
+                with data_path.open('rb') as f:
+                    loaded_data = pickle.load(f)
+                    data.extend(loaded_data['data'])
+            self.sum_tree.set('data', data)
+
+        else:
+            # shared_resourcesオブジェクトからデータを取得
+            self.sum_tree = self.shared_resources.get('sum_tree')
+            self.new_data_count = self.shared_resources.get('new_data_count')
+
+        return
 
     def push(self, learning_data):
         for tmp_data in learning_data:
             self.sum_tree.add(tmp_data)
             self.new_data_count += 1
+
         return
             
     def sample(self):
@@ -95,28 +108,37 @@ class ReplayBuffer (Common):
         return
 
     def save(self):
-        with self.path_map['tree'].open('wb') as f:
-            saved_data = {
-                'tree': self.sum_tree.get('tree'),
-                'next_data_idx': self.sum_tree.get('next_data_idx'),
-                'current_size': self.sum_tree.get('current_size'),
-                'new_data_count': self.new_data_count,
-            }
-            pickle.dump(saved_data, f)
-
-        data = self.sum_tree.get('data')
-        for idx in range(len(self.path_map['data'])):
-            data_path = self.path_map['data'][idx]
-            with data_path.open('wb') as f:
-                if idx == len(self.path_map['data']) - 1:
-                    saved_data = {
-                        'data': data[1000 * idx:]
-                    }
-                else:
-                    saved_data = {
-                        'data': data[1000 * idx: 1000 * (idx + 1)]
-                    }
+        # pklファイルを更新
+        simulator_info = self.config.get('simulator_info')
+        drl_info = self.config.get('drl_info')
+        if self.simulation_count == simulator_info['simulation_count'] or self.simulation_count % drl_info['buffer_save_interval'] == 0:
+            with self.path_map['tree'].open('wb') as f:
+                saved_data = {
+                    'tree': self.sum_tree.get('tree'),
+                    'next_data_idx': self.sum_tree.get('next_data_idx'),
+                    'current_size': self.sum_tree.get('current_size'),
+                    'new_data_count': self.new_data_count,
+                }
                 pickle.dump(saved_data, f)
+
+            data = self.sum_tree.get('data')
+            for idx in range(len(self.path_map['data'])):
+                data_path = self.path_map['data'][idx]
+                with data_path.open('wb') as f:
+                    if idx == len(self.path_map['data']) - 1:
+                        saved_data = {
+                            'data': data[1000 * idx:]
+                        }
+                    else:
+                        saved_data = {
+                            'data': data[1000 * idx: 1000 * (idx + 1)]
+                        }
+                    pickle.dump(saved_data, f)
+        
+        # shared_resourcesオブジェクトに保存
+        self.shared_resources.set('sum_tree', self.sum_tree)
+        self.shared_resources.set('new_data_count', self.new_data_count)
+            
         return 
 
     @property
@@ -125,7 +147,7 @@ class ReplayBuffer (Common):
     
     @property
     def should_learn_flg(self):
-        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_data_for_learning}]")
+        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_data_for_learning}], Data size[{self.current_size}/{self.max_size}]")
 
         # 新しいデータが十分に溜まったら学習を行う
         if self.new_data_count >= self.num_data_for_learning:
@@ -133,5 +155,14 @@ class ReplayBuffer (Common):
             return True
         else:
             return False
+        
+    @property
+    def simulation_count(self):
+        # vissimオブジェクトを取得
+        master_agent = self.master_agent
+        network = master_agent.network
+        vissim = network.vissim
+
+        return vissim.get('simulation_count')
         
         
