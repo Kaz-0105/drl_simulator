@@ -59,12 +59,6 @@ class MasterAgents(Container):
         
         self.executor.wait()
     
-    def updateLocalAgents(self):
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.updateLocalAgents)
-        
-        self.executor.wait()
-    
     def updateSessionData(self):
         # トータルの報酬のレコードを更新
         for master_agent in self.getAll():
@@ -388,16 +382,7 @@ class MasterAgent(Object):
                 print(f"{name}: {param.grad.norm().item():.3f}")
         return
             
-    def updateLocalAgents(self):
-        drl_info = self.config.get('drl_info')
-        if drl_info['method'] == 'apex':
-            # 同期のタイミングではないときはスキップ
-            if self.update_count != 0:
-                return
-            
-            # ローカルエージェントを走査
-            for local_agent in self.local_agents.getAll():
-                local_agent.model.load_state_dict(self.model.state_dict())
+    
 
     def saveModel(self):
         # モデルを保存

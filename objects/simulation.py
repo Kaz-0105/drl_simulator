@@ -108,9 +108,6 @@ class Simulation(Common):
                 # 学習を行う
                 master_agents.train()
 
-                # ローカルエージェントと同期する
-                master_agents.updateLocalAgents()
-
                 # 終了フラグが立っていた場合終了
                 if local_agents.done_flg:
                     break
