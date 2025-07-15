@@ -16,8 +16,18 @@ with open(session_path, 'rb') as f:
     session_data = pickle.load(f)
     total_reward_record = session_data['total_reward_record']
 
+# EMAの設定
+alpha = 0.05
+
+# EMAを計算
+ema_rewards = []
+ema = 0
+for idx, total_reward in enumerate(total_reward_record):
+    ema = alpha * total_reward + (1 - alpha) * ema if idx > 0 else total_reward
+    ema_rewards.append(ema)
+
 # 描画
-plt.plot(total_reward_record[1:], linewidth=2)
+plt.plot(ema_rewards, linewidth=2)
 plt.xlabel('Episode', fontsize=14)
 plt.ylabel('Total Reward', fontsize=14)
 plt.title('Total Rewards over Episodes', fontsize=16)
