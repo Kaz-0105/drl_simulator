@@ -17,7 +17,7 @@ with open(session_path, 'rb') as f:
     total_reward_record = session_data['total_reward_record']
 
 # EMAの設定
-alpha = 0.05
+alpha = 0.5
 
 # EMAを計算
 ema_rewards = []
