@@ -115,7 +115,11 @@ class LocalAgent(Object):
         self.network = self.local_agents.network
 
         # master_agentと紐づける
-        self._makeMasterAgentConnections()
+        self.master_agent = self.intersection.get('master_agent')
+        self.master_agent.local_agents.add(self)
+
+        # 探索率を設定
+        self.epsilon = self.master_agent.get('epsilon')
 
         # roadオブジェクトおよびlaneオブジェクトと紐づける（一方通行）
         self.roads = self.intersection.input_roads
@@ -154,11 +158,6 @@ class LocalAgent(Object):
         # 計算時間の記録を初期化
         self._initCalculationTimeRecord()
 
-        return
-            
-    def _makeMasterAgentConnections(self):
-        self.master_agent = self.intersection.get('master_agent')
-        self.master_agent.local_agents.add(self)
         return
     
     def _makeRoadLanesMap(self):
@@ -226,8 +225,8 @@ class LocalAgent(Object):
     def _initApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.td_steps = apex_info['td_steps']
-        self.epsilon = apex_info['epsilon']
         self.gamma = apex_info['gamma']
+        self.epsilon = self.master_agent.get('epsilon')
         return
     
     def _initCalculationTimeRecord(self):

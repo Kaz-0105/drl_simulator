@@ -133,6 +133,9 @@ class MasterAgent(Object):
         # 前回までのセッションを読み込む
         self._loadSession()
         self._loadModel()
+
+        # epsilonの初期化
+        self._makeEpsilon()
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
@@ -179,10 +182,8 @@ class MasterAgent(Object):
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
         self.num_epochs = apex_info['num_epochs']
-        self.epsilon = apex_info['epsilon']
-        
         return
-    
+
     def _makePaths(self):
         # 車線情報を文字列に変換
         lanes_str = ''
@@ -251,7 +252,11 @@ class MasterAgent(Object):
                 self.learning_rate_record = loaded_data['learning_rate_record']
                 self.weight_decay_record = loaded_data['weight_decay_record']
                 self.epsilon_record = loaded_data['epsilon_record']
+
+        self.episode_id = len(self.total_reward_record) + 1
         return
+    
+
 
     def _loadModel(self):
         # メインのモデルを読み込む
@@ -265,6 +270,21 @@ class MasterAgent(Object):
             self.target_model.load_state_dict(self.model.state_dict())
         else:
             self.target_model.load_state_dict(torch.load(self.path_map['target_model']))
+        return
+    
+    def _makeEpsilon(self):
+        apex_info = self.config.get('apex_info')
+        self.epsilon_schedule_flg = apex_info['epsilon']['schedule_flg']
+
+        if not self.epsilon_schedule_flg:
+            self.epsilon = apex_info['epsilon']['value']
+            return
+        
+        # epsilonのスケジュールを取得
+        epsilon_schedule = self.config.get('epsilon_schedule')
+        schedule_interval = len(epsilon_schedule) 
+
+        self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode_id - 1) % schedule_interval]
         return
     
     def saveLearningData(self):
