@@ -56,7 +56,7 @@ class Vissim(Common):
         if not self.backup_flg:
             return
         
-        src_dirs = [Path('buffers'), Path('models')]
+        src_dirs = [Path('buffers'), Path('models'), Path('results')]
         backup_root = Path('backup')
 
         for src_dir in src_dirs:

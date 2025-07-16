@@ -2,6 +2,7 @@ from libs.common import Common
 from libs.sum_tree import SumTree
 
 import pickle
+from tqdm import tqdm
 
 class ReplayBuffer (Common):
     def __init__(self, master_agent):
@@ -59,7 +60,7 @@ class ReplayBuffer (Common):
                 self.new_data_count = loaded_data['new_data_count']
 
             data = []
-            for data_path in self.path_map['data']:
+            for data_path in tqdm(self.path_map['data']):
                 with data_path.open('rb') as f:
                     loaded_data = pickle.load(f)
                     data.extend(loaded_data['data'])
@@ -122,7 +123,7 @@ class ReplayBuffer (Common):
                 pickle.dump(saved_data, f)
 
             data = self.sum_tree.get('data')
-            for idx in range(len(self.path_map['data'])):
+            for idx in tqdm(range(len(self.path_map['data']))):
                 data_path = self.path_map['data'][idx]
                 with data_path.open('wb') as f:
                     if idx == len(self.path_map['data']) - 1:

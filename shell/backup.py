@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-src_dirs = [Path('buffers'), Path('models')]
+src_dirs = [Path('buffers'), Path('models'), Path('results')]
 backup_root = Path('backup')
 
 for src_dir in src_dirs:
