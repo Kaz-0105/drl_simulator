@@ -43,6 +43,7 @@ class Simulation(Common):
         self.com.SetAttValue('RandSeed', self.random_seed)
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
+        # シミュレーションの速度について
         self.com.SetAttValue('UseAllCores', True)
         self.com.SetAttValue('UseMaxSimSpeed', True)
 

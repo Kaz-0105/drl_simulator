@@ -14,14 +14,19 @@ import math
 import numpy as np
 
 class MasterAgents(Container):
-    def __init__(self, network):
+    def __init__(self, network, device):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理の実行オブジェクトを取得
+        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = network.config
         self.executor = network.executor
+
+        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = network.shared_resources
+
+        # デバイスを設定
+        self.device = device
 
         # 上位の紐づくオブジェクトを取得
         self.network = network
@@ -93,7 +98,12 @@ class MasterAgent(Object):
         # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = master_agents.config
         self.executor = master_agents.executor
+
+        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = master_agents.shared_resources
+
+        # デバイスを設定
+        self.device = master_agents.device
 
         # 上位オブジェクトを取得
         self.master_agents = master_agents
@@ -200,13 +210,15 @@ class MasterAgent(Object):
     def _makeModel(self):
         # モデルを初期化（学習用にセット）
         if self.network_id == 1:
-            self.model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
         self.model.train()
+        self.model.to(self.device)
 
         # ターゲットモデルを初期化（学習用と同期，推論用にセット）
         if self.network_id == 1:
-            self.target_model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+            self.target_model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
         self.target_model.eval()
+        self.target_model.to(self.device)
         return
 
     def _loadSession(self):
@@ -299,7 +311,7 @@ class MasterAgent(Object):
                 
                 if self.network_id == 1:
                     # とった行動をテンソルに変換
-                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1)
+                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1).to(self.device)
 
                     # 状態を配列にする
                     states = [tmp_data[0] for tmp_data in data]
@@ -328,10 +340,10 @@ class MasterAgent(Object):
                         target_q_values = self.target_model(states_next).gather(1, max_actions)
 
                         # 累積報酬をテンソルに変換（multi step bootstrap を実装している）
-                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
+                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
 
                         # 終了フラグをテンソルに変換
-                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
+                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
 
                         # TDターゲットを計算
                         td_targets = cumurative_rewards + (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
@@ -354,7 +366,7 @@ class MasterAgent(Object):
                 
                 # 優先度を計算しバッファーを更新
                 if epoch == self.num_epochs - 1:
-                    priorities = torch.abs(q_values - td_targets).detach().numpy()
+                    priorities = torch.abs(q_values - td_targets).detach().cpu().numpy()
                     self.replay_buffer.update(data_indices, priorities)
 
                 # 更新カウントを増やす（更新のインターバルを超えたらターゲットモデルを更新，10回ごとに更新回数を表示）

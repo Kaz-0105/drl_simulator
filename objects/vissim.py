@@ -41,6 +41,10 @@ class Vissim(Common):
         
         self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')
         self.com.LoadLayout(os.getcwd() + '\\layout\\' + network_name + '\\network.layx')
+
+        # クイックモードについて
+        self.com.Graphics.SetAttValue('QuickMode', True)
+        
         return
     
     def run(self):

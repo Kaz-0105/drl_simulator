@@ -10,7 +10,7 @@ import pandas as pd
 import time
 
 class LocalAgents(Container):
-    def __init__(self, upper_object):
+    def __init__(self, upper_object, device=None):
         # 継承
         super().__init__()
 
@@ -18,8 +18,14 @@ class LocalAgents(Container):
         self.config = upper_object.config
         self.executor = upper_object.executor
 
+        # 引継ぎデータ格納用のオブジェクトを取得
+        self.shared_resources = upper_object.shared_resources
+
         # 上位オブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
+            # デバイスを設定
+            self.device = device
+
             # 上位の紐づくオブジェクトを取得
             self.network = upper_object
 
@@ -85,6 +91,12 @@ class LocalAgent(Object):
         # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = local_agents.config
         self.executor = local_agents.executor
+
+        # 引継ぎデータ格納用のオブジェクトを取得
+        self.shared_resources = local_agents.shared_resources
+
+        # デバイスを設定
+        self.device = local_agents.device
 
         # 上位オブジェクトを取得
         self.local_agents = local_agents
@@ -228,8 +240,10 @@ class LocalAgent(Object):
     def _makeModel(self):
         # モデルを初期化
         if (self.network_id == 1):
-            self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+            self.model = QNet1(self.config, self.device, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+
         self.model.eval()
+        self.model.to(self.device)
         return
         
     def _syncModel(self):

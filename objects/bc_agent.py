@@ -18,6 +18,9 @@ class BcAgent(Common):
         self.config = network.config
         self.executor = network.executor
 
+        # デバイスを設定
+        self.device = network.device
+
         # 上位の紐づくオブジェクトを取得
         self.network = network
 
@@ -165,7 +168,7 @@ class BcAgent(Common):
 
     def _makeModel(self):
         if self.network_id == 1:
-            self.model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
         self.model.train()
 
         if self.model_path.exists():

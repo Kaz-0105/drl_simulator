@@ -4,12 +4,15 @@ import torch
 import torch.nn as nn
 
 class QNet1(NeuralNetwork):
-    def __init__(self, config, num_vehicles, num_lanes_map):
+    def __init__(self, config, device, num_vehicles, num_lanes_map):
         # 継承
         super().__init__()
 
         # 設定オブジェクトを取得
         self.config = config
+
+        # デバイスを設定
+        self.device = device
 
         # ネットワーク関連のハイパーパラメータを取得
         self.num_vehicles = num_vehicles
@@ -273,6 +276,7 @@ class QNet1(NeuralNetwork):
         
         vehicle_inputs = torch.stack(vehicle_inputs)
         vehicle_inputs.requires_grad_(self.requires_grad)
+        vehicle_inputs = vehicle_inputs.to(self.device)
 
         return vehicle_inputs
 
@@ -288,7 +292,8 @@ class QNet1(NeuralNetwork):
                 lane_shape_inputs.extend([lane['shape'] for lane in lanes.values()])
         
         lane_shape_inputs = torch.stack(lane_shape_inputs)
-        lane_shape_inputs.requires_grad_(self.requires_grad)  
+        lane_shape_inputs.requires_grad_(self.requires_grad) 
+        lane_shape_inputs = lane_shape_inputs.to(self.device) 
 
         return lane_shape_inputs
 
@@ -302,6 +307,7 @@ class QNet1(NeuralNetwork):
         
         lane_metric_inputs = torch.stack(lane_metric_inputs)
         lane_metric_inputs.requires_grad_(self.requires_grad)
+        lane_metric_inputs = lane_metric_inputs.to(self.device)
 
         return lane_metric_inputs
 
@@ -319,7 +325,9 @@ class QNet1(NeuralNetwork):
             start_col = end_col + 1
             end_col += num_lanes * lane_output_size
 
-            road_lanes_inputs_map[road_order_id] = lane_outputs[:, start_col:end_col + 1]
+            lanes_inputs = lane_outputs[:, start_col:end_col + 1]
+            lanes_inputs = lanes_inputs.to(self.device)
+            road_lanes_inputs_map[road_order_id] = lanes_inputs
         
         return road_lanes_inputs_map
 
@@ -331,6 +339,7 @@ class QNet1(NeuralNetwork):
             
         road_metric_inputs = torch.stack(road_metric_inputs)
         road_metric_inputs.requires_grad_(self.requires_grad)
+        road_metric_inputs = road_metric_inputs.to(self.device)
 
         return road_metric_inputs
     
@@ -366,7 +375,9 @@ class QNet1(NeuralNetwork):
             road_metric_outputs = road_metric_outputs_map[road_order_id]
 
             # 車線と道路の評価指標の特徴量を結合
-            road_inputs_map[road_order_id] = torch.cat((lane_outputs, road_metric_outputs), dim=1)
+            road_inputs = torch.cat((lane_outputs, road_metric_outputs), dim=1)
+            road_inputs = road_inputs.to(self.device)
+            road_inputs_map[road_order_id] = road_inputs
         
         return road_inputs_map
     
@@ -387,6 +398,7 @@ class QNet1(NeuralNetwork):
 
         phase_inputs = torch.stack(phase_inputs)
         phase_inputs.requires_grad_(self.requires_grad)
+        phase_inputs = phase_inputs.to(self.device)
 
         return phase_inputs
 
