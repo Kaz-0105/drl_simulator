@@ -8,7 +8,7 @@ roads_str = '2222'
 num_vehicles = 5
 
 # 指数移動平均のパラメータ設定
-alpha = 1
+alpha = 0.1
 
 # ファイル名を指定してデータを読み込む
 session_path = Path(f"results/session_{network_id}_{roads_str}_{num_vehicles}.pkl")
@@ -43,6 +43,5 @@ ax_epsilon.set_ylabel('Epsilon', fontsize=14)
 ax_epsilon.set_title('Epsilon over Episodes', fontsize=16)
 ax_epsilon.tick_params(axis='both', which='major', labelsize=14)
 ax_epsilon.tick_params(axis='both', which='minor', labelsize=14)
-
 
 plt.show()
