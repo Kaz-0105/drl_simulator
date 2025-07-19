@@ -7,6 +7,7 @@ import os
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import pandas as pd
+import time
 from datetime import datetime
 import shutil
 from pathlib import Path
@@ -37,7 +38,13 @@ class Vissim(Common):
     def _getVissimCom(self):
         simulator_info = self.config.get('simulator_info')
         network_name = simulator_info['network_name']
-        self.com = win32com.client.Dispatch('Vissim.Vissim')
+        while True:
+            try:
+                self.com = win32com.client.Dispatch('Vissim.Vissim')
+                break
+            except Exception as e:
+                print('failed to connect to Vissim COM server. Retrying...')
+                time.sleep(1)
         
         self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')
         self.com.LoadLayout(os.getcwd() + '\\layout\\' + network_name + '\\network.layx')
