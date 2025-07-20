@@ -4,7 +4,7 @@ import random
 import math
 
 class SumTree (Common):
-    def __init__(self, capacity):
+    def __init__(self, capacity, initial_priority):
         # 継承
         super().__init__()
         
@@ -18,14 +18,14 @@ class SumTree (Common):
         # 経験データ自体を格納する配列を定義
         self.data = [None] * self.capacity
 
+        # 初期優先度を初期化
+        self.initial_priority = initial_priority
+
         # 現在のデータ数を初期化
         self.current_size = 0
 
         # 次に経験を格納する位置
         self.next_data_idx = 0
-
-        # 初期優先度で参照する過去のデータの数
-        self.initial_priority_data_count = 20
         return
 
     def _propagate(self, tree_idx, change):
@@ -46,10 +46,6 @@ class SumTree (Common):
             return self._retrieve(left_child, random_value)
         else:
             return self._retrieve(right_child, random_value - self.tree[left_child])
-        
-    @property
-    def total_priority(self):
-        return self.tree[0]
     
     def add(self, tmp_data, priority = None):
         # 優先度が指定されていない場合は直近のデータの平均をつかう
@@ -122,23 +118,20 @@ class SumTree (Common):
 
             # 親ノードの値を順に更新
             self._propagate(tree_idx, change)
-        
-    @property
-    def initial_priority(self):
-        # 最新の20個のデータの優先度を平均して初期優先度とする
-        if self.current_size == 0:
-            return 1
-        
-        if self.current_size < self.initial_priority_data_count:
-            return np.mean(self.tree[self.num_leaves - 1: self.num_leaves - 1 + self.current_size])
-        else:
-            data_indices = []
-            for idx in range(1, self.initial_priority_data_count + 1):
-                data_indices.append((self.next_data_idx - idx) % self.capacity)
-            
-            tree_indices = np.array(data_indices) + self.num_leaves - 1
 
-            return np.mean(self.tree[tree_indices])
+    def resetPriority(self):
+        for data_idx in range(self.current_size):
+            tree_idx = data_idx + self.num_leaves - 1
+            change = self.initial_priority - self.tree[tree_idx]
+            self.tree[tree_idx] = self.initial_priority
+
+            self._propagate(tree_idx, change.item())
+        
+        return
+    
+    @property
+    def total_priority(self):
+        return self.tree[0]
 
 
 

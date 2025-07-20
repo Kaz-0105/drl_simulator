@@ -394,10 +394,14 @@ class MasterAgent(Object):
                 if self.update_count >= self.update_interval:
                     self.target_model.load_state_dict(self.model.state_dict())
                     self.update_count = 0
+            
+            # lossの最大値をsum_treeの初期優先度に設定
+            self.replay_buffer.updateInitialPriority(np.array(losses))
 
             # 更新情報を表示
             self._showUpdateInfo(epoch, losses)
         return
+    
     def _showUpdateInfo(self, epoch, losses):
         # 更新情報を表示
         losses = np.array(losses)

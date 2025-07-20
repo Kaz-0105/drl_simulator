@@ -3,6 +3,7 @@ from libs.sum_tree import SumTree
 
 import pickle
 from tqdm import tqdm
+import numpy as np
 
 class ReplayBuffer (Common):
     def __init__(self, master_agent):
@@ -37,13 +38,15 @@ class ReplayBuffer (Common):
         self.max_size = apex_info['buffer']['size']
         self.num_batches = apex_info['buffer']['batch']['number']
         self.batch_size = apex_info['buffer']['batch']['size']
+        self.initial_priority = apex_info['buffer']['initial_priority']
+        self.priority_reset_flg = apex_info['buffer']['priority_reset_flg']
         return
 
     def _loadData(self):
         # 最初のエピソードかどうかで分岐
         if self.simulation_count == 1:
             # データのコンテナを初期化
-            self.sum_tree = SumTree(self.max_size)
+            self.sum_tree = SumTree(self.max_size, self.initial_priority)
 
             # カウンタを初期化
             self.new_data_count = 0
@@ -70,6 +73,10 @@ class ReplayBuffer (Common):
             # shared_resourcesオブジェクトからデータを取得
             self.sum_tree = self.shared_resources.get('sum_tree')
             self.new_data_count = self.shared_resources.get('new_data_count')
+
+        # 優先度のリセットを行う（フラグが立っている場合）
+        if self.priority_reset_flg:
+            self.sum_tree.resetPriority()
 
         return
 
@@ -141,6 +148,11 @@ class ReplayBuffer (Common):
         self.shared_resources.set('new_data_count', self.new_data_count)
             
         return 
+    
+    def updateInitialPriority(self, losses):
+        max_loss = np.max(losses)
+        self.sum_tree.set('initial_priority', max_loss * 10)
+        return
 
     @property
     def current_size(self):

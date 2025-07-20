@@ -19,6 +19,7 @@ with open(session_path, 'rb') as f:
     session_data = pickle.load(f)
     total_reward_record = session_data['total_reward_record']
     epsilon_record = session_data['epsilon_record']
+    num_epochs_record = session_data['num_epochs_record']
 
 # episodeごとのtotal_rewardの推移を描画
 fig_total_reward, ax_total_reward = plt.subplots()
@@ -44,4 +45,14 @@ ax_epsilon.set_title('Epsilon over Episodes', fontsize=16)
 ax_epsilon.tick_params(axis='both', which='major', labelsize=14)
 ax_epsilon.tick_params(axis='both', which='minor', labelsize=14)
 
+# num_epochsの推移を描画
+fig_num_epochs, ax_num_epochs = plt.subplots()
+ax_num_epochs.plot(num_epochs_record, linewidth=2)
+ax_num_epochs.set_xlabel('Episode', fontsize=14)
+ax_num_epochs.set_ylabel('Num Epochs', fontsize=14)
+ax_num_epochs.set_title('Num Epochs over Episodes', fontsize=16)
+ax_num_epochs.tick_params(axis='both', which='major', labelsize=14)
+ax_num_epochs.tick_params(axis='both', which='minor', labelsize=14)
+
+# グラフを表示
 plt.show()
