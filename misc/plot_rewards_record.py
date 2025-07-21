@@ -8,7 +8,7 @@ roads_str = '2222'
 num_vehicles = 5
 
 # 指数移動平均のパラメータ設定
-alpha = 0.1
+alpha = 0.9
 
 # ファイル名を指定してデータを読み込む
 session_path = Path(f"results/session_{network_id}_{roads_str}_{num_vehicles}.pkl")

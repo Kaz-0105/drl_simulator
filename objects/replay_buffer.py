@@ -151,7 +151,7 @@ class ReplayBuffer (Common):
     
     def updateInitialPriority(self, losses):
         max_loss = np.max(losses)
-        self.sum_tree.set('initial_priority', max_loss * 10)
+        self.sum_tree.set('initial_priority', max_loss * 1.1)
         return
 
     @property

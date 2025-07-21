@@ -165,6 +165,10 @@ class ConfigChangeHandler(FileSystemEventHandler):
             # 設定ファイルが変更された場合、設定を再読み込み
             self.config.readConfigFile()
         
+        elif event.src_path.endswith('epsilon_schedule.csv'):
+            epsilon_schedule = pd.read_csv(event.src_path)
+            self.config.set('epsilon_schedule', epsilon_schedule)
+        
         return
 
     def stop(self):
