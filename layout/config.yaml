@@ -40,7 +40,7 @@ drl:
   num_vehicles: 5              # 特徴量として取り出す1車線ごとの自動車台数
   bc_flg: false                # 行動クローンによる初期化を行うかどうか
   reward_id: 2                 # 報酬のID
-  buffer_save_interval: 40     # リプレイバッファの保存間隔（エピソード数）
+  buffer_save_interval: 20     # リプレイバッファの保存間隔（エピソード数）
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
