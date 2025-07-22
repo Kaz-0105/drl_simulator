@@ -9,3 +9,4 @@ id,ratio1,ratio2,ratio3,description
 8,1,0,0,Only left turn.
 9,0,1,0,Only straight.
 10,0,0,1,Only right turn.
+11,1,1,2,
