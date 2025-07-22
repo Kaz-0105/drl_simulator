@@ -19,13 +19,18 @@ class Config(Common):
         self.intersection_turn_ratio_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_turn_ratio_tags.csv')
 
         # 旋回率のテンプレートを取得する
-        self.getNumRoadTurnRatioMap()
+        self._getNumRoadTurnRatioMap()
 
         # フェーズの一覧を取得する
-        self.getNumRoadPhasesMap()
+        self._getNumRoadPhasesMap()
 
         # 行動クローンのときは1交差点系限定とする
         self._validateBcEnvironment()
+
+        # epsilonのスケジューリングを取得
+        self._getEpsilonSchedule()
+
+        return
     
     def readConfigFile(self):
         with open('layout/config.yaml', 'r', encoding='utf-8') as file:
@@ -60,12 +65,12 @@ class Config(Common):
             # 記録する情報について
             self.records_info = data['records']
 
-    def getNumRoadTurnRatioMap(self):
+    def _getNumRoadTurnRatioMap(self):
         self.num_roads_turn_ratio_map = {}
         for num_roads in [3, 4, 5]:
             self.num_roads_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv')
-    
-    def getNumRoadPhasesMap(self):
+
+    def _getNumRoadPhasesMap(self):
         self.num_roads_phases_map = {}
         for num_roads in [3, 4, 5]:
 
@@ -82,5 +87,11 @@ class Config(Common):
         if self.intersections.shape[0] != 1:
             raise ValueError('The simulation of behavior cloning is only available for a single intersection environment. \n Please check the network configuration in config.yaml.')
 
+    def _getEpsilonSchedule(self):
+        if not self.apex_info['epsilon']['schedule_flg']:
+            return
+        
+        self.epsilon_schedule = pd.read_csv('layout/epsilon_schedule.csv')
+        return
 
     

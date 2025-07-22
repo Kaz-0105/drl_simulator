@@ -43,6 +43,7 @@ class Simulation(Common):
         self.com.SetAttValue('RandSeed', self.random_seed)
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
+        # シミュレーションの速度について
         self.com.SetAttValue('UseAllCores', True)
         self.com.SetAttValue('UseMaxSimSpeed', True)
 
@@ -107,9 +108,6 @@ class Simulation(Common):
 
                 # 学習を行う
                 master_agents.train()
-
-                # ローカルエージェントと同期する
-                master_agents.updateLocalAgents()
 
                 # 終了フラグが立っていた場合終了
                 if local_agents.done_flg:

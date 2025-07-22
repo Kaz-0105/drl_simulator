@@ -10,7 +10,7 @@ import pandas as pd
 import time
 
 class LocalAgents(Container):
-    def __init__(self, upper_object):
+    def __init__(self, upper_object, device=None):
         # 継承
         super().__init__()
 
@@ -18,8 +18,14 @@ class LocalAgents(Container):
         self.config = upper_object.config
         self.executor = upper_object.executor
 
+        # 引継ぎデータ格納用のオブジェクトを取得
+        self.shared_resources = upper_object.shared_resources
+
         # 上位オブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
+            # デバイスを設定
+            self.device = device
+
             # 上位の紐づくオブジェクトを取得
             self.network = upper_object
 
@@ -86,6 +92,12 @@ class LocalAgent(Object):
         self.config = local_agents.config
         self.executor = local_agents.executor
 
+        # 引継ぎデータ格納用のオブジェクトを取得
+        self.shared_resources = local_agents.shared_resources
+
+        # デバイスを設定
+        self.device = local_agents.device
+
         # 上位オブジェクトを取得
         self.local_agents = local_agents
 
@@ -103,7 +115,11 @@ class LocalAgent(Object):
         self.network = self.local_agents.network
 
         # master_agentと紐づける
-        self._makeMasterAgentConnections()
+        self.master_agent = self.intersection.get('master_agent')
+        self.master_agent.local_agents.add(self)
+
+        # 探索率を設定
+        self.epsilon = self.master_agent.get('epsilon')
 
         # roadオブジェクトおよびlaneオブジェクトと紐づける（一方通行）
         self.roads = self.intersection.input_roads
@@ -142,11 +158,6 @@ class LocalAgent(Object):
         # 計算時間の記録を初期化
         self._initCalculationTimeRecord()
 
-        return
-            
-    def _makeMasterAgentConnections(self):
-        self.master_agent = self.intersection.get('master_agent')
-        self.master_agent.local_agents.add(self)
         return
     
     def _makeRoadLanesMap(self):
@@ -214,8 +225,8 @@ class LocalAgent(Object):
     def _initApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.td_steps = apex_info['td_steps']
-        self.epsilon = apex_info['epsilon']
         self.gamma = apex_info['gamma']
+        self.epsilon = self.master_agent.get('epsilon')
         return
     
     def _initCalculationTimeRecord(self):
@@ -228,8 +239,10 @@ class LocalAgent(Object):
     def _makeModel(self):
         # モデルを初期化
         if (self.network_id == 1):
-            self.model = QNet1(self.config, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+            self.model = QNet1(self.config, self.device, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+
         self.model.eval()
+        self.model.to(self.device)
         return
         
     def _syncModel(self):

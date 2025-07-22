@@ -7,6 +7,7 @@ import os
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import pandas as pd
+import time
 from datetime import datetime
 import shutil
 from pathlib import Path
@@ -37,10 +38,20 @@ class Vissim(Common):
     def _getVissimCom(self):
         simulator_info = self.config.get('simulator_info')
         network_name = simulator_info['network_name']
-        self.com = win32com.client.Dispatch('Vissim.Vissim')
+        while True:
+            try:
+                self.com = win32com.client.Dispatch('Vissim.Vissim')
+                break
+            except Exception as e:
+                print('failed to connect to Vissim COM server. Retrying...')
+                time.sleep(1)
         
         self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')
         self.com.LoadLayout(os.getcwd() + '\\layout\\' + network_name + '\\network.layx')
+
+        # クイックモードについて
+        self.com.Graphics.SetAttValue('QuickMode', True)
+        
         return
     
     def run(self):
@@ -56,7 +67,7 @@ class Vissim(Common):
         if not self.backup_flg:
             return
         
-        src_dirs = [Path('buffers'), Path('models')]
+        src_dirs = [Path('buffers'), Path('models'), Path('results')]
         backup_root = Path('backup')
 
         for src_dir in src_dirs:
@@ -153,6 +164,10 @@ class ConfigChangeHandler(FileSystemEventHandler):
         elif event.src_path.endswith('config.yaml'):
             # 設定ファイルが変更された場合、設定を再読み込み
             self.config.readConfigFile()
+        
+        elif event.src_path.endswith('epsilon_schedule.csv'):
+            epsilon_schedule = pd.read_csv(event.src_path)
+            self.config.set('epsilon_schedule', epsilon_schedule)
         
         return
 

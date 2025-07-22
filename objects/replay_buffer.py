@@ -2,6 +2,8 @@ from libs.common import Common
 from libs.sum_tree import SumTree
 
 import pickle
+from tqdm import tqdm
+import numpy as np
 
 class ReplayBuffer (Common):
     def __init__(self, master_agent):
@@ -36,13 +38,15 @@ class ReplayBuffer (Common):
         self.max_size = apex_info['buffer']['size']
         self.num_batches = apex_info['buffer']['batch']['number']
         self.batch_size = apex_info['buffer']['batch']['size']
+        self.initial_priority = apex_info['buffer']['initial_priority']
+        self.priority_reset_flg = apex_info['buffer']['priority_reset_flg']
         return
 
     def _loadData(self):
         # 最初のエピソードかどうかで分岐
         if self.simulation_count == 1:
             # データのコンテナを初期化
-            self.sum_tree = SumTree(self.max_size)
+            self.sum_tree = SumTree(self.max_size, self.initial_priority)
 
             # カウンタを初期化
             self.new_data_count = 0
@@ -59,7 +63,7 @@ class ReplayBuffer (Common):
                 self.new_data_count = loaded_data['new_data_count']
 
             data = []
-            for data_path in self.path_map['data']:
+            for data_path in tqdm(self.path_map['data']):
                 with data_path.open('rb') as f:
                     loaded_data = pickle.load(f)
                     data.extend(loaded_data['data'])
@@ -69,6 +73,10 @@ class ReplayBuffer (Common):
             # shared_resourcesオブジェクトからデータを取得
             self.sum_tree = self.shared_resources.get('sum_tree')
             self.new_data_count = self.shared_resources.get('new_data_count')
+
+        # 優先度のリセットを行う（フラグが立っている場合）
+        if self.priority_reset_flg:
+            self.sum_tree.resetPriority()
 
         return
 
@@ -122,7 +130,7 @@ class ReplayBuffer (Common):
                 pickle.dump(saved_data, f)
 
             data = self.sum_tree.get('data')
-            for idx in range(len(self.path_map['data'])):
+            for idx in tqdm(range(len(self.path_map['data']))):
                 data_path = self.path_map['data'][idx]
                 with data_path.open('wb') as f:
                     if idx == len(self.path_map['data']) - 1:
@@ -140,6 +148,11 @@ class ReplayBuffer (Common):
         self.shared_resources.set('new_data_count', self.new_data_count)
             
         return 
+    
+    def updateInitialPriority(self, losses):
+        max_loss = np.max(losses)
+        self.sum_tree.set('initial_priority', max_loss * 1.1)
+        return
 
     @property
     def current_size(self):

@@ -19,6 +19,7 @@ from objects.bc_agent import BcAgent
 import numpy as np
 from pathlib import Path
 import pickle
+import torch
 
 class Network(Common):
     def __init__(self, vissim):
@@ -77,10 +78,13 @@ class Network(Common):
         self.data_collection_measurements = DataCollectionMeasurements(self)
 
         if self.control_method == 'drl':
-            # マスターエージェントとローカルエージェントを初期化
-            self.master_agents = MasterAgents(self)
-            self.local_agents = LocalAgents(self)
+            # PyTorchのデバイスを設定
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+            # マスターエージェントとローカルエージェントを初期化
+            self.master_agents = MasterAgents(self, device)
+            self.local_agents = LocalAgents(self, device)
+            
         elif self.control_method == 'mpc':
             # MPCコントローラを初期化
             self.mpc_controllers = MpcControllers(self)
@@ -93,7 +97,10 @@ class Network(Common):
                 self.bc_buffers = BcBuffers(self)
         
         elif self.control_method == 'bc':
-            self.bc_agent = BcAgent(self)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+            # 行動クローンエージェントを初期化
+            self.bc_agent = BcAgent(self, device)
         
         return
     

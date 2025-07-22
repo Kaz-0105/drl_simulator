@@ -14,14 +14,19 @@ import math
 import numpy as np
 
 class MasterAgents(Container):
-    def __init__(self, network):
+    def __init__(self, network, device):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理の実行オブジェクトを取得
+        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = network.config
         self.executor = network.executor
+
+        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = network.shared_resources
+
+        # デバイスを設定
+        self.device = device
 
         # 上位の紐づくオブジェクトを取得
         self.network = network
@@ -59,12 +64,6 @@ class MasterAgents(Container):
         
         self.executor.wait()
     
-    def updateLocalAgents(self):
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.updateLocalAgents)
-        
-        self.executor.wait()
-    
     def updateSessionData(self):
         # トータルの報酬のレコードを更新
         for master_agent in self.getAll():
@@ -99,7 +98,12 @@ class MasterAgent(Object):
         # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = master_agents.config
         self.executor = master_agents.executor
+
+        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = master_agents.shared_resources
+
+        # デバイスを設定
+        self.device = master_agents.device
 
         # 上位オブジェクトを取得
         self.master_agents = master_agents
@@ -129,6 +133,9 @@ class MasterAgent(Object):
         # 前回までのセッションを読み込む
         self._loadSession()
         self._loadModel()
+
+        # epsilonの初期化
+        self._makeEpsilon()
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
@@ -175,10 +182,8 @@ class MasterAgent(Object):
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
         self.num_epochs = apex_info['num_epochs']
-        self.epsilon = apex_info['epsilon']
-        
         return
-    
+
     def _makePaths(self):
         # 車線情報を文字列に変換
         lanes_str = ''
@@ -206,13 +211,15 @@ class MasterAgent(Object):
     def _makeModel(self):
         # モデルを初期化（学習用にセット）
         if self.network_id == 1:
-            self.model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
         self.model.train()
+        self.model.to(self.device)
 
         # ターゲットモデルを初期化（学習用と同期，推論用にセット）
         if self.network_id == 1:
-            self.target_model = QNet1(self.config, self.num_vehicles, self.num_lanes_map)
+            self.target_model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
         self.target_model.eval()
+        self.target_model.to(self.device)
         return
 
     def _loadSession(self):
@@ -245,7 +252,11 @@ class MasterAgent(Object):
                 self.learning_rate_record = loaded_data['learning_rate_record']
                 self.weight_decay_record = loaded_data['weight_decay_record']
                 self.epsilon_record = loaded_data['epsilon_record']
+
+        self.episode_id = len(self.total_reward_record) + 1
         return
+    
+
 
     def _loadModel(self):
         # メインのモデルを読み込む
@@ -259,6 +270,21 @@ class MasterAgent(Object):
             self.target_model.load_state_dict(self.model.state_dict())
         else:
             self.target_model.load_state_dict(torch.load(self.path_map['target_model']))
+        return
+    
+    def _makeEpsilon(self):
+        apex_info = self.config.get('apex_info')
+        self.epsilon_schedule_flg = apex_info['epsilon']['schedule_flg']
+
+        if not self.epsilon_schedule_flg:
+            self.epsilon = apex_info['epsilon']['value']
+            return
+        
+        # epsilonのスケジュールを取得
+        epsilon_schedule = self.config.get('epsilon_schedule')
+        schedule_interval = len(epsilon_schedule) 
+
+        self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode_id - 1) % schedule_interval]
         return
     
     def saveLearningData(self):
@@ -305,7 +331,7 @@ class MasterAgent(Object):
                 
                 if self.network_id == 1:
                     # とった行動をテンソルに変換
-                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1)
+                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1).to(self.device)
 
                     # 状態を配列にする
                     states = [tmp_data[0] for tmp_data in data]
@@ -334,10 +360,10 @@ class MasterAgent(Object):
                         target_q_values = self.target_model(states_next).gather(1, max_actions)
 
                         # 累積報酬をテンソルに変換（multi step bootstrap を実装している）
-                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
+                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
 
                         # 終了フラグをテンソルに変換
-                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1)
+                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
 
                         # TDターゲットを計算
                         td_targets = cumurative_rewards + (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
@@ -360,7 +386,7 @@ class MasterAgent(Object):
                 
                 # 優先度を計算しバッファーを更新
                 if epoch == self.num_epochs - 1:
-                    priorities = torch.abs(q_values - td_targets).detach().numpy()
+                    priorities = torch.abs(q_values - td_targets).detach().cpu().numpy()
                     self.replay_buffer.update(data_indices, priorities)
 
                 # 更新カウントを増やす（更新のインターバルを超えたらターゲットモデルを更新，10回ごとに更新回数を表示）
@@ -368,10 +394,14 @@ class MasterAgent(Object):
                 if self.update_count >= self.update_interval:
                     self.target_model.load_state_dict(self.model.state_dict())
                     self.update_count = 0
+            
+            # lossの最大値をsum_treeの初期優先度に設定
+            self.replay_buffer.updateInitialPriority(np.array(losses))
 
             # 更新情報を表示
             self._showUpdateInfo(epoch, losses)
         return
+    
     def _showUpdateInfo(self, epoch, losses):
         # 更新情報を表示
         losses = np.array(losses)
@@ -388,16 +418,7 @@ class MasterAgent(Object):
                 print(f"{name}: {param.grad.norm().item():.3f}")
         return
             
-    def updateLocalAgents(self):
-        drl_info = self.config.get('drl_info')
-        if drl_info['method'] == 'apex':
-            # 同期のタイミングではないときはスキップ
-            if self.update_count != 0:
-                return
-            
-            # ローカルエージェントを走査
-            for local_agent in self.local_agents.getAll():
-                local_agent.model.load_state_dict(self.model.state_dict())
+    
 
     def saveModel(self):
         # モデルを保存
