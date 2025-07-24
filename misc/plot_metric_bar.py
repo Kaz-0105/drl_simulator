@@ -4,13 +4,14 @@ import pickle
 import numpy as np
 
 simulation_list = [
-    ['drl_balanced_6'],
-    ['drl_main_6'],
+    ['mpc_balanced_10_1'],
+    ['drl_balanced_10_1'],
 ]
 num_bars = 7
 column_names = ['1-1-1', '3-1-1', '1-3-1', '1-1-3', '1-3-3', '3-1-3', '3-3-1']
 row_names = ['mpc', 'drl']
 
+# MPC及びDRLのデータ取得
 max_queue_list = []
 average_queue_list = []
 max_delay_list = []
