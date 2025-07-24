@@ -172,6 +172,7 @@ class MasterAgent(Object):
         self.num_vehicles = drl_info['num_vehicles']
         self.network_id = drl_info['network_id']
         self.bc_flg = drl_info['bc_flg']
+        self.learning_flg = drl_info['learning_flg']
         return
     
     def _getApeXParameters(self):
@@ -288,8 +289,10 @@ class MasterAgent(Object):
         return
     
     def saveLearningData(self):
-        # ローカルエージェントを走査
+        # バッファーのサイズが変化したかどうかをフラグで管理
         self.buffer_change_flg = False
+        
+        # ローカルエージェントを走査
         for local_agent in self.local_agents.getAll():
             # 学習データを取得
             learning_data = local_agent.get('learning_data')
@@ -312,6 +315,10 @@ class MasterAgent(Object):
     def train(self):
         if not self.buffer_change_flg:
             # バッファーのサイズが変化していない場合は学習しない
+            return
+        
+        # 学習フラグが立っていないときはスキップ
+        if not self.learning_flg:
             return
         
         if not self.replay_buffer.get('should_learn_flg'):
@@ -418,8 +425,6 @@ class MasterAgent(Object):
                 print(f"{name}: {param.grad.norm().item():.3f}")
         return
             
-    
-
     def saveModel(self):
         # モデルを保存
         torch.save(self.model.state_dict(), self.path_map['model'])
@@ -450,6 +455,10 @@ class MasterAgent(Object):
         return
 
     def updateSessionData(self):
+        # 学習フラグが立っていないときはスキップ
+        if not self.learning_flg:
+            return
+        
         # トータルの報酬を更新
         sum_total_reward = 0
         for local_agent in self.local_agents.getAll():

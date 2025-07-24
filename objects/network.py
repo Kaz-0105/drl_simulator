@@ -60,6 +60,7 @@ class Network(Common):
         self.queue_flg = records_info['metric']['queue_flg']
         self.delay_flg = records_info['metric']['delay_flg']
         self.calc_time_flg = records_info['metric']['calc_time_flg']
+        self.old_definition_flg = records_info['old_definition_flg']
         return
     
     def _makeLowerObjects(self):
@@ -190,7 +191,10 @@ class Network(Common):
                             continue
                         queue_length_record['queue_length'] += tmp_queue_length_record['queue_length']
                     
-                    queue_length_record['queue_length'] /= road.queue_counters.count()
+                    # 古い定義では，各道路ごとでは平均化しない（現在の定義では平均化する）
+                    if not self.old_definition_flg:
+                        queue_length_record['queue_length'] /= road.queue_counters.count()
+
                     road_queue_length_record_map[road_order_id] = queue_length_record
                 
                 queue_length_record = None

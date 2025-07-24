@@ -5,11 +5,11 @@ import numpy as np
 
 simulation_list = [
     [1, 2, 3, 4, 5, 6, 7],
-    # [10, 11, 12, 13, 14, 15, 16],
+    [10, 11, 12, 13, 14, 15, 16],
 ]
 column_names = ['1-1-1', '3-1-1', '1-3-1', '1-1-3', '1-3-3', '3-1-3', '3-3-1']
-# row_names = ['drl', 'mpc']
-row_names = ['drl']
+row_names = ['drl', 'mpc']
+# row_names = ['drl']
 
 max_queue_list = []
 average_queue_list = []
