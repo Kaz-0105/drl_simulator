@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 simulation_list = [
-    ['mpc_balanced_10_1'],
+    ['mpc_balanced_10_1_17'],
     ['drl_balanced_10_1'],
 ]
 num_bars = 7
