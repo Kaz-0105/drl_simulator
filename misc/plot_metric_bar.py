@@ -34,7 +34,7 @@ for row_idx, row_simulation_list in enumerate(simulation_list):
                 saved_data = pickle.load(f)
                 if saved_data['max_queue'] is not None:
                     max_queue_record = saved_data['max_queue']
-                    tmp_max_queue_list.append(max_queue_record['queue_length'].mean())
+                    tmp_max_queue_list.append(max_queue_record['queue_length'].max())
                 
                 if saved_data['average_queue'] is not None:
                     average_queue_record = saved_data['average_queue']
