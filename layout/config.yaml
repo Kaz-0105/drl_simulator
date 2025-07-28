@@ -1,7 +1,7 @@
 simulator :
-  network_name: '9-4-1'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  network_name: '9-4-2'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
   control_method: 'drl'       # 制御手法の指定
-  simulation_count: 100       # シミュレーションの回数（エピソード数）
+  simulation_count: 10000     # シミュレーションの回数（エピソード数）
   simulation_time: 200        # シミュレーションを行う時間（秒）
   seed:
     is_random: true           # シード値をランダムにするかどうか
@@ -44,18 +44,18 @@ drl:
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
-  update_interval: 1000         # ターゲットネットワークの同期間隔
+  update_interval: 4000          # ターゲットネットワークの同期間隔
   buffer:
-    num_data_for_learning: 100   # データが何個たまったら学習を行うか
+    num_data_for_learning: 25    # データが何個たまったら学習を行うか
     size: 300000                 # リプレイバッファのサイズ
     batch:
       number: 10               # バッチ数
       size: 128                # バッチサイズ
     initial_priority: 1000     # 初期優先度
-    priority_reset_flg: false  # 優先度のリセットを行うかどうか
+    priority_reset_flg: false   # 優先度のリセットを行うかどうか
   num_epochs: 2                # 更新のエポック数
   gamma: 0.9                   # 割引率
-  learning_rate: 1e-4          # 学習率
+  learning_rate: 1e-5          # 学習率
   weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
   epsilon:                     # ε-greedy法のパラメータ
     schedule_flg: true         # ε-greedy法のεをスケジューリングを行うかどうか
@@ -64,7 +64,7 @@ apex:
 bc:
   learning_flg: false          # 学習を行うかどうか
   network_id: 1                # 行動クローンを行うネットワーク構造のID
-  learning_rate: 1e-4          # 学習率
+  learning_rate: 1e-5          # 学習率
   weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
   batch_size: 128              # バッチサイズ
   num_epochs: 10               # エポック数  

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # 見たい結果を選択
 network_id = 1
-roads_str = '2222'
+roads_str = '3333'
 num_vehicles = 5
 
 # 指数移動平均のパラメータ設定
