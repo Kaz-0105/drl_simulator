@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # 見たい結果を選択
 network_id = 1
-roads_str = '2222'
+roads_str = '3333'
 num_vehicles = 5
 
 # 指数移動平均のパラメータ設定
@@ -29,30 +29,30 @@ for idx, total_reward in enumerate(total_reward_record):
     ema = alpha * total_reward + (1 - alpha) * ema if idx > 0 else total_reward
     ema_rewards.append(ema)
 
-ax_total_reward.plot(ema_rewards, linewidth=2)
-ax_total_reward.set_xlabel('Episode', fontsize=14)
-ax_total_reward.set_ylabel('Total Reward', fontsize=14)
-ax_total_reward.set_title('Total Reward over Episodes (EMA)' if alpha != 1 else 'Total Reward over Episodes', fontsize=16)
-ax_total_reward.tick_params(axis='both', which='major', labelsize=14)
-ax_total_reward.tick_params(axis='both', which='minor', labelsize=14)
+ax_total_reward.plot(ema_rewards, linewidth=4)
+ax_total_reward.set_xlabel('Episode', fontsize=20)
+ax_total_reward.set_ylabel('Total Reward', fontsize=20)
+ax_total_reward.set_title('Total Reward over Episodes (EMA)' if alpha != 1 else 'Total Reward over Episodes', fontsize=24)
+ax_total_reward.tick_params(axis='both', which='major', labelsize=20)
+ax_total_reward.tick_params(axis='both', which='minor', labelsize=20)
 
 # epsilonの推移を描画
 fig_epsilon, ax_epsilon = plt.subplots()
-ax_epsilon.plot(epsilon_record, linewidth=2)
-ax_epsilon.set_xlabel('Episode', fontsize=14)
-ax_epsilon.set_ylabel('Epsilon', fontsize=14)
-ax_epsilon.set_title('Epsilon over Episodes', fontsize=16)
-ax_epsilon.tick_params(axis='both', which='major', labelsize=14)
-ax_epsilon.tick_params(axis='both', which='minor', labelsize=14)
+ax_epsilon.plot(epsilon_record, linewidth=4)
+ax_epsilon.set_xlabel('Episode', fontsize=20)
+ax_epsilon.set_ylabel('Epsilon', fontsize=20)
+ax_epsilon.set_title('Epsilon over Episodes', fontsize=24)
+ax_epsilon.tick_params(axis='both', which='major', labelsize=20)
+ax_epsilon.tick_params(axis='both', which='minor', labelsize=20)
 
 # num_epochsの推移を描画
 fig_num_epochs, ax_num_epochs = plt.subplots()
-ax_num_epochs.plot(num_epochs_record, linewidth=2)
-ax_num_epochs.set_xlabel('Episode', fontsize=14)
-ax_num_epochs.set_ylabel('Num Epochs', fontsize=14)
-ax_num_epochs.set_title('Num Epochs over Episodes', fontsize=16)
-ax_num_epochs.tick_params(axis='both', which='major', labelsize=14)
-ax_num_epochs.tick_params(axis='both', which='minor', labelsize=14)
+ax_num_epochs.plot(num_epochs_record, linewidth=4)
+ax_num_epochs.set_xlabel('Episode', fontsize=20)
+ax_num_epochs.set_ylabel('Num Epochs', fontsize=20)
+ax_num_epochs.set_title('Num Epochs over Episodes', fontsize=24)
+ax_num_epochs.tick_params(axis='both', which='major', labelsize=20)
+ax_num_epochs.tick_params(axis='both', which='minor', labelsize=20)
 
 # グラフを表示
 plt.show()

@@ -55,6 +55,10 @@ class ReplayBuffer (Common):
             if not self.path_map['tree'].exists():
                 return
             
+            # 学習を行わない場合はロードしない
+            if not self.master_agent.get('learning_flg'):
+                return
+            
             with self.path_map['tree'].open('rb') as f:
                 loaded_data = pickle.load(f)
                 self.sum_tree.set('tree', loaded_data['tree'])
@@ -116,6 +120,10 @@ class ReplayBuffer (Common):
         return
 
     def save(self):
+        # 学習を行わない場合は保存しない
+        if not self.master_agent.get('learning_flg'):
+            return
+        
         # pklファイルを更新
         simulator_info = self.config.get('simulator_info')
         drl_info = self.config.get('drl_info')
