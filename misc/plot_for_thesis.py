@@ -6,7 +6,7 @@ from collections import defaultdict
 import pandas as pd
 
 # scoot，mpc，drlの比較
-plot_name = 'main'   # 'main' or 'unbalanced'
+plot_name = 'balanced'   # 'main' or 'unbalanced'
 
 simulation_list = [
     [

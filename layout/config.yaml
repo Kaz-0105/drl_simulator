@@ -12,7 +12,7 @@ simulator :
   debug_flg: false            # デバッグモードのフラグ
   backup:
     flg: true                 # バックアップを行うかどうか
-    interval: 20              # バックアップを行う頻度
+    interval: 10              # バックアップを行う頻度
   
 drl:
   method: 'apex'              # DRLの手法の指定（apex）
@@ -40,7 +40,7 @@ drl:
   num_vehicles: 5              # 特徴量として取り出す1車線ごとの自動車台数
   bc_flg: false                # 行動クローンによる初期化を行うかどうか
   reward_id: 2                 # 報酬のID
-  buffer_save_interval: 20     # リプレイバッファの保存間隔（エピソード数）
+  buffer_save_interval: 10     # リプレイバッファの保存間隔（エピソード数）
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
@@ -52,10 +52,10 @@ apex:
       number: 10               # バッチ数
       size: 128                # バッチサイズ
     initial_priority: 1000     # 初期優先度
-    priority_reset_flg: false   # 優先度のリセットを行うかどうか
+    priority_reset_flg: true   # 優先度のリセットを行うかどうか
   num_epochs: 2                # 更新のエポック数
   gamma: 0.9                   # 割引率
-  learning_rate: 1e-5          # 学習率
+  learning_rate: 1e-4          # 学習率
   weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
   epsilon:                     # ε-greedy法のパラメータ
     schedule_flg: true         # ε-greedy法のεをスケジューリングを行うかどうか
