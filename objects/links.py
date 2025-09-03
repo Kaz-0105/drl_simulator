@@ -100,6 +100,8 @@ class Links(Container):
                 road.addLink(link, 'connector')
                 link.set('type', 'connector')
                 link.set('road', from_link.road)
+
+        return
     
     def updateData(self):
         # 要素オブジェクトの更新

@@ -88,7 +88,46 @@ class SignalController(Object):
         # red_stepsを初期化
         simulation_info = self.config.get('simulator_info')
         self.red_steps = simulation_info['red_steps']
+    
+    def _initPhaseRecord(self):
+        records_info = self.config.get('records_info')
+        if records_info['metric']['phase_flg'] == True:
+            self.phase_record = []
+        else:
+            self.phase_record = deque(maxlen=records_info['max_len'])
+    
+    def _initFuturePhaseIds(self):
+        simulator_info = self.config.get('simulator_info')
+        if simulator_info['control_method'] == 'drl' or simulator_info['control_method'] == 'bc':
+            drl_info = self.config.get('drl_info')
+            self.future_phase_ids = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
+        elif simulator_info['control_method'] == 'mpc':
+            mpc_info = self.config.get('mpc_info')
+            self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps']) 
+        elif simulator_info['control_method'] == 'scoot':
+            scoot_info = self.config.get('scoot_info')
+            self.future_phase_ids = deque(maxlen=scoot_info['max_split'] + 2)
+        return
+        
+    def setNextPhases(self, phase_ids):
+        # フェーズをセット
+        self.future_phase_ids.extend(phase_ids)
 
+        # signal_groupにフェーズをセット
+        self.signal_groups.setNextPhases(phase_ids)
+        return
+    
+    def setNextPhaseToVissim(self):
+        # Vissimにフェーズをセット
+        self.signal_groups.setNextPhaseToVissim()
+
+        # phase_recordに追加して、future_phase_idsから削除
+        self.phase_record.append(self.future_phase_ids.popleft())
+    
+    @property
+    def next_phase_id(self):
+        return self.future_phase_ids[0] if self.future_phase_ids else None
+    
     @property
     def num_phases(self):
         return len(self.phases)
@@ -111,40 +150,8 @@ class SignalController(Object):
         return True
     
     @property
-    def next_phase_id(self):
-        return self.future_phase_ids[0] if self.future_phase_ids else None
-    
-    def _initPhaseRecord(self):
-        records_info = self.config.get('records_info')
-        if records_info['metric']['phase_flg'] == True:
-            self.phase_record = []
-        else:
-            self.phase_record = deque(maxlen=records_info['max_len'])
-    
-    def _initFuturePhaseIds(self):
-        simulator_info = self.config.get('simulator_info')
-        if simulator_info['control_method'] == 'drl' or simulator_info['control_method'] == 'bc':
-            drl_info = self.config.get('drl_info')
-            self.future_phase_ids = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
-        elif simulator_info['control_method'] == 'mpc':
-            mpc_info = self.config.get('mpc_info')
-            self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps']) 
-        
-        return
-        
-    def setNextPhases(self, phase_ids):
-        # フェーズをセット
-        self.future_phase_ids.extend(phase_ids)
-
-        # signal_groupにフェーズをセット
-        self.signal_groups.setNextPhases(phase_ids)
-    
-    def setNextPhaseToVissim(self):
-        # Vissimにフェーズをセット
-        self.signal_groups.setNextPhaseToVissim()
-
-        # phase_recordに追加して、future_phase_idsから削除
-        self.phase_record.append(self.future_phase_ids.popleft())
+    def remaining_steps(self):
+        return len(self.future_phase_ids)
 
 class SignalGroups(Container):
     def __init__(self, upper_object):
@@ -277,6 +284,10 @@ class SignalGroup(Object):
         elif simulator_info['control_method'] == 'mpc':
             mpc_info = self.config.get('mpc_info')
             self.future_values = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
+        elif simulator_info['control_method'] == 'scoot':
+            scoot_info = self.config.get('scoot_info')
+            self.future_values = deque(maxlen=scoot_info['max_split'] + 2)
+        return
 
     @property
     def direction_id(self):

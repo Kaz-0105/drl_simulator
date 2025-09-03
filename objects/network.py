@@ -15,6 +15,7 @@ from objects.local_agents import LocalAgents
 from objects.mpc_controllers import MpcControllers
 from objects.bc_buffers import BcBuffers
 from objects.bc_agent import BcAgent
+from objects.scoot_controllers import ScootControllers
 
 import numpy as np
 from pathlib import Path
@@ -102,6 +103,9 @@ class Network(Common):
 
             # 行動クローンエージェントを初期化
             self.bc_agent = BcAgent(self, device)
+        
+        elif self.control_method == 'scoot':
+            self.scoot_controllers = ScootControllers(self)
         
         return
     

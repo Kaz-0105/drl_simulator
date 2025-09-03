@@ -1,6 +1,6 @@
 simulator :
   network_name: '9-4-2'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'drl'       # 制御手法の指定
+  control_method: 'scoot'     # 制御手法の指定
   simulation_count: 10000     # シミュレーションの回数（エピソード数）
   simulation_time: 200        # シミュレーションを行う時間（秒）
   seed:
@@ -86,6 +86,16 @@ mpc:
       type: '4-phase'         # 4-phase, 8-phase, 17-phaseから選択
     - num_roads: 5
       type: '10-phase'         # 10-phaseのみ
+
+scoot:
+  initial_parameters:
+    cycle: 40
+    split: [10, 10, 10, 10]
+  increments:
+    cycle: 2
+    split: 2
+  max_split: 30
+
 
 records:
   record_flg: false             # 記録を行うかどうか

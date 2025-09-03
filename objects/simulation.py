@@ -116,10 +116,8 @@ class Simulation(Common):
             # 最後のネットワーク更新
             self.network.updateData()
 
-            # トータルの報酬を更新
+            # トータルの報酬を更新し，データを保存
             master_agents.updateSessionData()
-
-            # 各データを保存
             master_agents.saveModel()
             master_agents.saveSession()
             
@@ -171,11 +169,19 @@ class Simulation(Common):
             # 最後のネットワーク更新
             self.network.updateData()
 
-            # トータルの報酬を表示
+            # トータルの報酬を表示し、モデルを保存
             bc_agent.showTotalReward()
-
-            # モデルを保存
             bc_agent.saveModel()
+        
+        elif self.control_method == 'scoot':
+            scoot_controllers = self.network.scoot_controllers
+
+            while self.current_time < self.end_time:
+                self.network.updateData()
+                scoot_controllers.updateParameters()
+                self._runSingleStep()
+            
+            self.network.updateData()
 
         # 評価指標の保存
         self.network.saveData()
