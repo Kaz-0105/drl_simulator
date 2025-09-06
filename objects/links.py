@@ -162,6 +162,8 @@ class Link(Object):
 
         # 非同期処理で車両データを整形
         self.executor.submit(self._makeFormattedVehicleData)
+
+        return
     
     def _getVehicleDataFromVissim(self):
         # Vissimから車両データを取得
@@ -173,6 +175,7 @@ class Link(Object):
         self.vehicle_data['lane_id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Lane')]
         self.vehicle_data['vehicle_route'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('VehRoutSta')]
         self.vehicle_data['next_link_id'] = [int(tmp_data[1]) if tmp_data[1] != None else None for tmp_data in self.com.Vehs.GetMultiAttValues('NextLink')]
+        return
     
     def _makeFormattedVehicleData(self):
         # 車両が存在しない場合は空のDataFrameを返す

@@ -137,6 +137,10 @@ class Road(Object):
         return
 
     def initEffectiveStorageLengths(self):
+        # 流出道路は考える必要なし
+        if not self.has('output_intersection'):
+            return
+        
         self.effective_storage_lengths = {'left': 0.0, 'straight': 0.0, 'right': 0.0}
 
         # 左折・直進・右折の割合を取得
@@ -178,7 +182,7 @@ class Road(Object):
             after_branch_length = self.main_link.get('length') - before_branch_length
             self.effective_storage_lengths['straight'] += ((turn_ratios[2] / 2) / (turn_ratios[3] + (turn_ratios[2] / 2))) * before_branch_length + after_branch_length
             self.effective_storage_lengths['right'] += (turn_ratios[3] / (turn_ratios[3] + (turn_ratios[2] / 2))) * before_branch_length
-            
+
             # 右車線について
             branch_length = 0.0
             branch_length += self.right_link.get('length')
@@ -223,6 +227,21 @@ class Road(Object):
         # 1台も車両がいないときNoneになるので、DataFrameを初期化
         if self.vehicle_data is None:
             self.vehicle_data = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg'])
+
+        # 流出道路のときはここで終了    
+        if not self.has('output_intersection'):
+            return
+        
+        # route_num_vehs_mapを作成
+        self.route_num_vehs_map = {}
+        for direction_id in range(self.output_intersection.get('num_roads')):
+            self.route_num_vehs_map[direction_id] = 0        
+
+        for _, tmp_vehicle_data in self.vehicle_data.iterrows():
+            direction_id = tmp_vehicle_data['direction_id']
+            self.route_num_vehs_map[int(direction_id)] += 1
+        
+        return
     
     @property
     def main_link(self):
@@ -245,7 +264,6 @@ class Road(Object):
                 return link
         return None
                 
-    
     @property
     def max_queue_length(self):
         return self.queue_counters.get('max_queue_length')
@@ -278,18 +296,6 @@ class Road(Object):
             direction_signal_value_map[direction_id] = signal_group.get('current_value')
         
         return direction_signal_value_map
-    
-    @property
-    def saturation_info(self):
-        saturation_info = {}
-
-        if self.type == 1:
-            pass
-        elif self.type == 2:
-            pass
-        else:
-            raise NotImplementedError(f"Road type {self.type} is not implemented for saturation info.")
-        return None
     
     @property
     def vehicle_routing_decision(self):

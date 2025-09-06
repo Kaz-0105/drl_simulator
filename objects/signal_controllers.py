@@ -11,6 +11,7 @@ class SignalControllers(Container):
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = network.config
         self.network = network
+        self.executor = network.executor
         
         # comオブジェクトを取得
         self.com = self.network.com.SignalControllers
@@ -71,6 +72,7 @@ class SignalController(Object):
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = signal_controllers.config
         self.signal_controllers = signal_controllers
+        self.executor = signal_controllers.executor
 
         # comオブジェクトを取得
         self.com = com
@@ -106,7 +108,7 @@ class SignalController(Object):
             self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps']) 
         elif simulator_info['control_method'] == 'scoot':
             scoot_info = self.config.get('scoot_info')
-            self.future_phase_ids = deque(maxlen=scoot_info['max_split'] + 2)
+            self.future_phase_ids = deque(maxlen=scoot_info['max_cycle'] - 3 * scoot_info['min_split'])
         return
         
     def setNextPhases(self, phase_ids):
@@ -115,6 +117,19 @@ class SignalController(Object):
 
         # signal_groupにフェーズをセット
         self.signal_groups.setNextPhases(phase_ids)
+        return
+    
+    def deletePhases(self, type, steps):
+        # typeによって分岐
+        if type == 'end':
+            for _ in range(steps):
+                self.future_phase_ids.pop()
+
+        elif type == 'start':
+            for _ in range(steps):  
+                self.future_phase_ids.popleft()
+
+        self.signal_groups.deletePhases(type, steps)
         return
     
     def setNextPhaseToVissim(self):
@@ -160,6 +175,7 @@ class SignalGroups(Container):
 
         # 設定オブジェクトを取得
         self.config = upper_object.config
+        self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'SignalController':
             self.signal_controller = upper_object
@@ -238,6 +254,12 @@ class SignalGroups(Container):
         for signal_group in self.getAll():
             tmp_sig_value_list = [tmp_row[signal_group.get('id') - 1] for tmp_row in sig_value_list]
             signal_group.setNextPhases(tmp_sig_value_list)
+    
+    def deletePhases(self, type, steps):
+        for signal_group in self.getAll():
+            self.executor.submit(signal_group.deletePhases, type, steps)
+        self.executor.wait()
+        return
 
     def setNextPhaseToVissim(self):
         for signal_group in self.getAll():
@@ -251,6 +273,7 @@ class SignalGroup(Object):
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = signal_groups.config
+        self.executor = signal_groups.executor
         self.signal_groups = signal_groups
 
         # comオブジェクトを取得
@@ -286,22 +309,11 @@ class SignalGroup(Object):
             self.future_values = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
         elif simulator_info['control_method'] == 'scoot':
             scoot_info = self.config.get('scoot_info')
-            self.future_values = deque(maxlen=scoot_info['max_split'] + 2)
+            self.future_values = deque(maxlen=scoot_info['max_cycle'] - 3 * scoot_info['min_split'])
         return
-
-    @property
-    def direction_id(self):
-        possible_direction_ids = []
-        for signal_head in self.signal_heads.getAll():
-            possible_direction_ids.append(signal_head.get('direction_id'))
-        
-        if len(set(possible_direction_ids)) == 1:
-            return possible_direction_ids[0]
-        else:
-            raise Exception(f"SignalGroup {self.get('id')} has multiple possible direction IDs: {possible_direction_ids}. Please check the signal head connections.")
             
     def setNextPhases(self, sig_value_list):
-        # 赤から青に変化するときは全赤の時間があるため，赤に変更する
+        # 赤から青に変化するときは全赤の時間があるため，赤に変更する（複数ステップ赤には対応していない）
         fixed_sig_value_list = sig_value_list.copy()
         for idx in range(len(sig_value_list)):
             if idx == 0:
@@ -317,6 +329,16 @@ class SignalGroup(Object):
                     fixed_sig_value_list[idx] = 1
         
         self.future_values.extend(fixed_sig_value_list)
+        return
+
+    def deletePhases(self, type, steps):
+        if type == 'end':
+            for _ in range(steps):
+                self.future_values.pop()
+        elif type == 'start':
+            for _ in range(steps):
+                self.future_values.popleft()
+        return
 
     def setNextPhaseToVissim(self):
         # 現在の値と同じ場合は何もしない
@@ -331,3 +353,14 @@ class SignalGroup(Object):
         # future_valuesから1つ削除
         self.current_value = self.future_values.popleft()
         self.value_record.append(self.current_value)
+    
+    @property
+    def direction_id(self):
+        possible_direction_ids = []
+        for signal_head in self.signal_heads.getAll():
+            possible_direction_ids.append(signal_head.get('direction_id'))
+        
+        if len(set(possible_direction_ids)) == 1:
+            return possible_direction_ids[0]
+        else:
+            raise Exception(f"SignalGroup {self.get('id')} has multiple possible direction IDs: {possible_direction_ids}. Please check the signal head connections.")

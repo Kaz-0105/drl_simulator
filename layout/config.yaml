@@ -89,13 +89,14 @@ mpc:
 
 scoot:
   initial_parameters:
-    cycle: 40
-    split: [10, 10, 10, 10]
-  increments:
-    cycle: 2
-    split: 2
-  max_split: 30
-
+    cycle: 40                 # サイクル時間の初期値（ステップ数）
+    split: [10, 10, 10, 10]   # スプリットの初期値（ステップ数）
+  change_steps:
+    cycle: 1 # サイクル時間の変更時の1フェーズあたりに変化量（ステップ数）
+    split: 1 # スプリット変更時のフェーズの仕切りの変化量（ステップ数）
+  max_cycle: 60 # サイクル時間の最大値（ステップ数）
+  min_split: 5  # 1スプリットの最小値（ステップ数）
+  spacing_threshold: 40 # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
   record_flg: false             # 記録を行うかどうか
