@@ -252,7 +252,7 @@ class ScootController(Object):
             self.params['split'][to_phase] -= change_value
 
             # signal_controllerも更新
-            self.signal_controller.setNextPhases([to_phase] * change_value)
+            self.signal_controller.setNextPhases([from_phase] * change_value)
 
         elif from_phase_saturation < to_phase_saturation:
             # 変化量を決定
@@ -271,6 +271,9 @@ class ScootController(Object):
 
             # signal_controllerも更新
             self.signal_controller.deletePhases(type='end', steps=change_value)
+        
+        if tmp_partition['steps'] != self.signal_controller.get('remaining_steps'):
+            raise ValueError('Inconsistent remaining steps between ScootController and SignalController.')
 
         return
 
@@ -285,7 +288,7 @@ class ScootController(Object):
         if avg_saturation < self.saturation_threshold:
             cumulative_change_value = 0
             for idx in range(len(self.remain_steps_info['split'])):
-                # remained_steps_infoの更新
+                # remained_steps_info['split']の更新
                 tmp_partition = self.remain_steps_info['split'][idx]
                 from_phase = tmp_partition['phase']['from']
 
@@ -300,7 +303,11 @@ class ScootController(Object):
 
                 # params['split']の更新
                 self.params['split'][from_phase] -= change_value
-            
+
+                # signal_controllerの更新
+                if idx == 0:
+                    self.signal_controller.deletePhases(type='end', steps=change_value)
+
             # params['cycle']の更新
             self.params['cycle'] -= cumulative_change_value
 
@@ -308,7 +315,7 @@ class ScootController(Object):
             if self.params['cycle'] + self.change_steps['cycle']*self.num_phases <= self.max_cycle:
                 cumulative_change_value = 0
                 for idx in range(len(self.remain_steps_info['split'])):
-                    # remained_steps_infoの更新
+                    # remained_steps_info['split']の更新
                     tmp_partition = self.remain_steps_info['split'][idx]
                     from_phase = tmp_partition['phase']['from']
 
@@ -318,6 +325,10 @@ class ScootController(Object):
 
                     # params['split']の更新
                     self.params['split'][from_phase] += self.change_steps['cycle']
+
+                    # signal_controllerの更新
+                    if idx == 0:
+                        self.signal_controller.setNextPhases([from_phase] * self.change_steps['cycle'])
 
                 # params['cycle']の更新
                 self.params['cycle'] += cumulative_change_value
@@ -335,7 +346,7 @@ class ScootController(Object):
                 
                 cumulative_change_value = 0
                 for idx in range(len(self.remain_steps_info['split'])):
-                    # remained_steps_infoの更新
+                    # remained_steps_info['split']の更新
                     tmp_partition = self.remain_steps_info['split'][idx]
                     from_phase = tmp_partition['phase']['from']
 
@@ -346,9 +357,16 @@ class ScootController(Object):
                     # params['split']の更新
                     self.params['split'][from_phase] += phase_change_value_map[from_phase]
 
+                    # signal_controllerの更新
+                    if idx == 0:
+                        self.signal_controller.setNextPhases([from_phase] * phase_change_value_map[from_phase])
+
                 # params['cycle']の更新
                 self.params['cycle'] += cumulative_change_value
 
+        if self.remain_steps_info['split'][0]['steps'] != self.signal_controller.get('remaining_steps'):
+            raise ValueError('Inconsistent remaining steps between ScootController and SignalController.')
+        
         return
 
     def _proceedOneStep(self):
