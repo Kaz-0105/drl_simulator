@@ -79,7 +79,11 @@ class ScootController(Object):
         self.phase_saturation_map = {}
         for phase_id in range(1, self.num_phases + 1):
             self.phase_saturation_map[phase_id] = 0
-        
+
+        self.phase_num_vehicles_map = {}
+        for phase_id in range(1, self.num_phases + 1):
+            self.phase_num_vehicles_map[phase_id] = 0
+
         # update_flgsを初期化
         self.update_flgs = {'cycle': False, 'split': False}
 
@@ -214,17 +218,25 @@ class ScootController(Object):
             for phase_id in range(1, self.num_phases + 1):
                 self.phase_saturation_map[phase_id] = self.saturations_record[-1][phase_id]
 
+                self.phase_num_vehicles_map[phase_id] = self.num_vehicles_record[-1][phase_id]
+
         elif num_vehs_record_length <= self.params['cycle']:
             # レコードの数がサイクル時間に満たないとき
             for phase_id in range(1, self.num_phases + 1):
                 self.phase_saturation_map[phase_id] *= (num_vehs_record_length - 1) / num_vehs_record_length
                 self.phase_saturation_map[phase_id] += self.saturations_record[-1][phase_id] / num_vehs_record_length
 
+                self.phase_num_vehicles_map[phase_id] *= (num_vehs_record_length - 1) / num_vehs_record_length
+                self.phase_num_vehicles_map[phase_id] += self.num_vehicles_record[-1][phase_id] / num_vehs_record_length
+
         else:
             # サイクル時間分のレコードがそろっているとき
             for phase_id in range(1, self.num_phases + 1):
                 self.phase_saturation_map[phase_id] += self.saturations_record[-1][phase_id] / self.params['cycle']
                 self.phase_saturation_map[phase_id] -= self.saturations_record[-1 - self.params['cycle']][phase_id] / self.params['cycle']
+
+                self.phase_num_vehicles_map[phase_id] += self.num_vehicles_record[-1][phase_id] / self.params['cycle']
+                self.phase_num_vehicles_map[phase_id] -= self.num_vehicles_record[-1 - self.params['cycle']][phase_id] / self.params['cycle']
         return
     
     def _updateSplitParameters(self):
@@ -278,11 +290,12 @@ class ScootController(Object):
         return
 
     def _updateCycleParameters(self):
-        # フェーズごとの飽和度の平均を計算
+        # フェーズごとの飽和度の平均を計算（自動車台数で重みづけ）
         avg_saturation = 0.0
         for phase_id in range(1, self.num_phases + 1):
-            avg_saturation += self.phase_saturation_map[phase_id]
-        avg_saturation /= self.num_phases
+            avg_saturation += self.phase_saturation_map[phase_id] * self.phase_num_vehicles_map[phase_id]
+        avg_saturation /= self.total_num_vehicles
+
 
         
         if avg_saturation < self.saturation_threshold:
@@ -395,3 +408,7 @@ class ScootController(Object):
         
         self.remain_steps_info['cycle'] -= 1
         return
+
+    @property
+    def total_num_vehicles(self):
+        return sum(self.phase_num_vehicles_map.values())

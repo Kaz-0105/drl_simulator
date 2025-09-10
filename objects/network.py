@@ -258,7 +258,7 @@ class Network(Common):
                 save_data['average_delay'] = delay_record.copy()
 
             # 計算時間を記録
-            if self.calc_time_flg:
+            if self.calc_time_flg and self.control_method in ['drl', 'mpc']:
                 if intersection.has('local_agent'):
                     local_agent = intersection.local_agent
                     calc_time_record = local_agent.get('calc_time_record')
