@@ -30,6 +30,12 @@ class VehicleRoutingDecisions(Container):
 
         # パラメータを設定
         self.setTurnRatio()
+
+        # Scoot用：effective_storage_lengthを設定
+        for road in self.network.roads.getAll():
+            road.initEffectiveStorageLengths()
+            
+        return
     
     def makeElements(self):
         for vehicle_routing_decision_com in self.com.GetAll():
