@@ -41,6 +41,7 @@ class Network(Common):
         # 制御手法を取得
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
+        self.simulation_count = simulator_info['simulation_count']
 
         # 保存するデータに関するフラグを設定
         self._getSaveParams()
@@ -62,6 +63,18 @@ class Network(Common):
         self.delay_flg = records_info['metric']['delay_flg']
         self.calc_time_flg = records_info['metric']['calc_time_flg']
         self.old_definition_flg = records_info['old_definition_flg']
+        
+        if self.record_flg:
+            # データ保存用のフォルダを取得
+            self.save_path = Path.cwd() / 'results' / 'metrics'/ self.control_method / records_info['save_folder']
+            if self.save_path.exists():
+                raise FileExistsError(f"The folder '{self.save_path}' already exists. Please change the folder name or disable the record flag.")
+            
+            # シミュレーション回数を1回にしているかどうかの確認
+            if self.simulation_count != 1:
+                raise ValueError("When the record flag is set to True, the simulation_count must be 1. Please change the simulation_count to 1 in the config file.")
+
+        
         return
     
     def _makeLowerObjects(self):
@@ -138,15 +151,8 @@ class Network(Common):
         if not self.record_flg:
             return
         
-        # save_dataの開始インデックスを取得
-        common_save_path_name = 'results/metrics/metric'
-
-        current_idx = 0
-        while True:
-            current_idx += 1
-            save_path = Path(f"{common_save_path_name}_{current_idx}.pkl")
-            if not save_path.exists():
-                break
+        # 保存用のフォルダを作成
+        self.save_path.mkdir(parents=True, exist_ok=False)
 
         # 交差点を走査
         for intersection_id in self.intersections.getKeys(container_flg=True, sorted_flg=True): 
@@ -270,12 +276,9 @@ class Network(Common):
                 save_data['calc_time'] = calc_time_record
 
             # データを保存
-            save_path = Path(f"{common_save_path_name}_{current_idx}.pkl")
+            save_path = self.save_path / f"metric_{intersection_id}.pkl"
             with save_path.open('wb') as f:
                 pickle.dump(save_data, f)
-            
-            # 次のインデックスを更新
-            current_idx += 1
 
         return
 

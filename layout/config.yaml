@@ -1,8 +1,8 @@
 simulator :
-  network_name: '9-4-2'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  network_name: '1-4-1'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
   control_method: 'mpc'       # 制御手法の指定
   simulation_count: 1         # シミュレーションの回数（エピソード数）
-  simulation_time: 500        # シミュレーションを行う時間（秒）
+  simulation_time: 100        # シミュレーションを行う時間（秒）
   seed:
     is_random: false          # シード値をランダムにするかどうか
     value: 1                  # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
@@ -101,6 +101,7 @@ scoot:
 
 records:
   record_flg: true             # 記録を行うかどうか
+  save_folder: 'test_1'         # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
