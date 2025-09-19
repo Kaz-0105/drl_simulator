@@ -573,6 +573,12 @@ class LocalAgent(Object):
             # current_rewardを更新
             self.current_reward = score
 
+        elif self.reward_id == 3:
+            # 
+            score = 0
+
+
+            pass
         # 記録する
         self.reward_record.append(self.current_reward)
         self.total_reward += self.current_reward 

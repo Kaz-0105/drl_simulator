@@ -1,10 +1,10 @@
 simulator :
-  network_name: '7-4-1'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'drl'       # 制御手法の指定
-  simulation_count: 100       # シミュレーションの回数（エピソード数）
+  network_name: '9-4-2'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  control_method: 'mpc'       # 制御手法の指定
+  simulation_count: 1         # シミュレーションの回数（エピソード数）
   simulation_time: 500        # シミュレーションを行う時間（秒）
   seed:
-    is_random: true           # シード値をランダムにするかどうか
+    is_random: false          # シード値をランダムにするかどうか
     value: 1                  # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
   time_step: 2                # シミュレーションの更新の時間幅（秒）
   red_steps: 1                # 全赤のステップ数
@@ -17,12 +17,12 @@ simulator :
 drl:
   method: 'apex'              # DRLの手法の指定（apex）
   learning_flg: true          # 学習を行うかどうか
-  duration_steps: 8           # 1回の予測で決める時間ステップ幅
+  duration_steps: 5           # 1回の予測で決める時間ステップ幅
   network_id: 1               # ニューラルネットワークのID
   features:                   # 特徴量について
     vehicle:                  # 自動車ごとの特徴量について
       position: true
-      speed: false
+      speed: true
       in_queue: false
       direction: true
       wait_flg: false
@@ -39,7 +39,7 @@ drl:
         delay: true
   num_vehicles: 5              # 特徴量として取り出す1車線ごとの自動車台数
   bc_flg: false                # 行動クローンによる初期化を行うかどうか
-  reward_id: 2                 # 報酬のID
+  reward_id: 3                 # 報酬のID
   buffer_save_interval: 5      # リプレイバッファの保存間隔（エピソード数）
 
 apex:
@@ -73,7 +73,7 @@ mpc:
   horizon: 5                   # 予測ホライズンの長さ（ステップ数）
   utilize_steps: 2             # 採用するホライゾンの長さ（ステップ数）(horizonの半分以下)
   remained_steps: 2            # 計算を開始するときの決まってる将来のステップ数（utilize_steps以下，またhorizon > utilize_steps + remained_stepsになるようにすること）
-  min_successive_steps: 8      # 最小の青時間連続時間（ステップ数）
+  min_successive_steps: 4      # 最小の青時間連続時間（ステップ数）
   num_max_changes: 1           # 1回の予測での最大変化数
   bc_buffer: 
     flg: true                  # 行動クローンのためのデータ収集を行うかどうか
@@ -86,6 +86,7 @@ mpc:
       type: '17-phase'         # 4-phase, 8-phase, 17-phaseから選択
     - num_roads: 5
       type: '10-phase'         # 10-phaseのみ
+  objective_type: 2
 
 scoot:
   initial_parameters:
@@ -99,7 +100,7 @@ scoot:
   spacing_threshold: 40 # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
-  record_flg: false             # 記録を行うかどうか
+  record_flg: true             # 記録を行うかどうか
   metric:
     queue_flg: true
     delay_flg: true

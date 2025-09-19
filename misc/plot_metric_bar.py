@@ -5,11 +5,12 @@ import numpy as np
 
 simulation_list = [
     ['scoot_balanced_3333'],
-    ['drl_balanced_3333'],
+    ['mpc_balanced_3333'],
+    ['mpc_balanced_3333_2'],
 ]
 num_bars = 7
 column_names = ['1-1-1', '3-1-1', '1-3-1', '1-1-3', '1-3-3', '3-1-3', '3-3-1']
-row_names = ['scoot', 'mpc', 'drl']
+row_names = ['scoot', 'mpc', 'mpc2']
 
 # MPC及びDRLのデータ取得
 max_queue_list = []
