@@ -3,14 +3,21 @@ from pathlib import Path
 import pickle
 import numpy as np
 
+# データの場所とラベルを設定
 simulation_list = [
-    ['scoot_balanced_3333'],
-    ['mpc_balanced_3333'],
-    ['mpc_balanced_3333_2'],
+    ['scoot/balanced_2222'],
+    ['mpc/balanced_2222_9'],
+    ['mpc/balanced_2222_10'],
+    ['mpc/balanced_2222_11']
 ]
+row_names = ['scoot', 'mpc_9', 'mpc_10', 'mpc_11']
+
+# 交通流パターンの数とラベルを設定
 num_bars = 7
 column_names = ['1-1-1', '3-1-1', '1-3-1', '1-1-3', '1-3-3', '3-1-3', '3-3-1']
-row_names = ['scoot', 'mpc', 'mpc2']
+
+# average_queueのy軸の最大値をmax_queueのy軸の最大値に合わせるかどうか
+y_axis_flg = False
 
 # MPC及びDRLのデータ取得
 max_queue_list = []
@@ -97,14 +104,25 @@ ax_average_queue.set_xlabel('Simulation Configuration', fontsize=14)
 ax_average_queue.set_ylabel('Average Queue Length (m)', fontsize=14)
 ax_average_queue.legend(fontsize=14)
 
-# キューの最大値と平均値のy軸のスケールをそろえる
-max_y_value = max(
-    max(max(row) for row in max_queue_list),
-    max(max(row) for row in average_queue_list)
-)
-y_limit = (0, max_y_value * 1.1)  # 10%の余裕を持たせる
-ax_max_queue.set_ylim(y_limit)
-ax_average_queue.set_ylim(y_limit)
+if y_axis_flg:
+    # キューの最大値と平均値のy軸のスケールをそろえる
+    max_y_value = max(
+        max(max(row) for row in max_queue_list),
+        max(max(row) for row in average_queue_list)
+    )
+    y_limit = (0, max_y_value * 1.1)  # 10%の余裕を持たせる
+    ax_max_queue.set_ylim(y_limit)
+    ax_average_queue.set_ylim(y_limit)
+else:
+    # max_queueについて
+    max_y_value = max(max(row) for row in max_queue_list)
+    y_limit = (0, max_y_value * 1.1)
+    ax_max_queue.set_ylim(y_limit)
+
+    # average_queueについて
+    max_y_value = max(max(row) for row in average_queue_list)
+    y_limit = (0, max_y_value * 1.1)
+    ax_average_queue.set_ylim(y_limit)
 
 # 遅れ時間について
 for row_idx, row_max_delay_list in enumerate(max_delay_list):

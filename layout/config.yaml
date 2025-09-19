@@ -87,7 +87,7 @@ mpc:
     - num_roads: 5
       type: '10-phase'         # 10-phaseのみ
   objective_type: 2            # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
-  signal_change_weight: 9      # 信号変化ペナルティの重み
+  signal_change_weight: 5      # 信号変化ペナルティの重み
 
 scoot:
   initial_parameters:
@@ -102,7 +102,7 @@ scoot:
 
 records:
   record_flg: true             # 記録を行うかどうか
-  save_folder: 'balanced_2222_9'         # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: 'balanced_2222_5'         # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
