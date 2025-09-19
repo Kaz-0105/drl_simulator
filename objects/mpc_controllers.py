@@ -133,6 +133,7 @@ class MpcController(Object):
         self.min_successive_steps = mpc_info['min_successive_steps']
         self.num_max_changes = mpc_info['num_max_changes']
         self.objective_type = mpc_info['objective_type']
+        self.signal_change_weight = mpc_info['signal_change_weight']
 
         # 行動クローンを行うかどうかのフラグを取得
         bc_buffer_info = mpc_info['bc_buffer']
@@ -2322,7 +2323,7 @@ class MpcController(Object):
                     f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
         
         elif (self.objective_type == 2):
-            # 信号待ち自動車の最小化 + flickeringの抑制
+            # 信号待ち自動車の最小化 + 信号変化ペナルティ
             # delta_t2とdelta_t3とphiのリストを取得
             delta_t2_list = self.variable_list_map['delta_t2']
             delta_t3_list = self.variable_list_map['delta_t3']
@@ -2340,7 +2341,7 @@ class MpcController(Object):
                     f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
                 
                 for idx in range(len(phi_list)):
-                    f_matrix[phi_list[idx]] = 20
+                    f_matrix[phi_list[idx]] = self.signal_change_weight
 
 
         # 目的関数の係数をインスタンスとして保持
