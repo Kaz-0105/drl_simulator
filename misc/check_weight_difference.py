@@ -5,7 +5,7 @@ import statistics
 import matplotlib.pyplot as plt
 
 # 比較する重みのリスト
-weights = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20]
+weights = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 
 # 流入量のタイプ
 inflow_type = 'balanced'
@@ -95,6 +95,31 @@ ax_average_queue.plot(x_vals, y_vals, marker='o')
 ax_average_queue.set_xlabel('Weight')
 ax_average_queue.set_ylabel('Average Queue Length')
 ax_average_queue.set_title('Average Queue Length vs Weight')
+
+fig_max_delay, ax_max_delay = plt.subplots()
+x_vals = list(metrics.keys())
+y_vals = [metrics[w]['max_delay'] for w in x_vals]
+ax_max_delay.plot(x_vals, y_vals, marker='o')
+ax_max_delay.set_xlabel('Weight')
+ax_max_delay.set_ylabel('Max Delay Time')
+ax_max_delay.set_title('Max Delay Time vs Weight')
+
+fig_average_delay, ax_average_delay = plt.subplots()
+x_vals = list(metrics.keys())
+y_vals = [metrics[w]['average_delay'] for w in x_vals]
+ax_average_delay.plot(x_vals, y_vals, marker='o')
+ax_average_delay.set_xlabel('Weight')
+ax_average_delay.set_ylabel('Average Delay Time')
+ax_average_delay.set_title('Average Delay Time vs Weight')
+
+fig_calc_time, ax_calc_time = plt.subplots()
+x_vals = list(metrics.keys())
+y_vals = [metrics[w]['calculation_time'] for w in x_vals]
+ax_calc_time.plot(x_vals, y_vals, marker='o')
+ax_calc_time.set_xlabel('Weight')
+ax_calc_time.set_ylabel('Calculation Time')
+ax_calc_time.set_title('Calculation Time vs Weight')
+
 
 plt.show()
 
