@@ -132,6 +132,8 @@ class MpcController(Object):
         self.remained_steps = mpc_info['remained_steps']
         self.min_successive_steps = mpc_info['min_successive_steps']
         self.num_max_changes = mpc_info['num_max_changes']
+        self.objective_type = mpc_info['objective_type']
+        self.signal_change_weight = mpc_info['signal_change_weight']
 
         # 行動クローンを行うかどうかのフラグを取得
         bc_buffer_info = mpc_info['bc_buffer']
@@ -1856,7 +1858,7 @@ class MpcController(Object):
             'z_4': [],
             'z_5': [],
             # 'delta_d': [],
-            # 'delta_p': [],
+            'delta_p': [],
             # 'delta_f': [],
             # 'delta_f1': [],
             # 'delta_f2': [],
@@ -1980,7 +1982,7 @@ class MpcController(Object):
                         if idx == 0:
                             # 先頭車の変数を追加（現状必要ないのはコメントアウト）
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
                             # variable_list_map['delta_t1'].append(count + 4)
                             variable_list_map['delta_t2'].append(count + 5)
@@ -1991,7 +1993,7 @@ class MpcController(Object):
                         else:
                             # 先頭車以外の変数を追加
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f'].append(count + 3)
                             # variable_list_map['delta_1'].append(count + 4)
                             # variable_list_map['delta_2'].append(count + 5)
@@ -2303,20 +2305,44 @@ class MpcController(Object):
         # 目的関数の係数を初期化
         f_matrix = np.zeros(self.num_variables)
 
-        # delta_t2とdelta_t3のリストを取得
-        delta_t2_list = self.variable_list_map['delta_t2']
-        delta_t3_list = self.variable_list_map['delta_t3']
+        if (self.objective_type == 1):
+            # 信号待ち自動車の最小化
+            # delta_t2とdelta_t3のリストを取得
+            delta_t2_list = self.variable_list_map['delta_t2']
+            delta_t3_list = self.variable_list_map['delta_t3']
 
-        # 交通流モデルの変数の長さを取得
-        v_length = self.variable_length_map['v']
+            # 交通流モデルの変数の長さを取得
+            v_length = self.variable_length_map['v']
 
-        # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
-        for step in range(1, self.horizon + 1):
-            for idx in range(len(delta_t2_list)):
-                f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
+            # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
+            for step in range(1, self.horizon + 1):
+                for idx in range(len(delta_t2_list)):
+                    f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
 
-            for idx in range(len(delta_t3_list)):
-                f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
+                for idx in range(len(delta_t3_list)):
+                    f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
+        
+        elif (self.objective_type == 2):
+            # 信号待ち自動車の最小化 + 信号変化ペナルティ
+            # delta_t2とdelta_t3とphiのリストを取得
+            delta_t2_list = self.variable_list_map['delta_t2']
+            delta_t3_list = self.variable_list_map['delta_t3']
+            phi_list = self.variable_list_map['phi']
+
+            # 交通流モデルの変数の長さを取得
+            v_length = self.variable_length_map['v']
+
+            # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
+            for step in range(1, self.horizon + 1):
+                for idx in range(len(delta_t2_list)):
+                    f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
+
+                for idx in range(len(delta_t3_list)):
+                    f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
+                
+                for idx in range(len(phi_list)):
+                    f_matrix[phi_list[idx]] = self.signal_change_weight
+
 
         # 目的関数の係数をインスタンスとして保持
         self.optimization_problem['f'] = f_matrix
