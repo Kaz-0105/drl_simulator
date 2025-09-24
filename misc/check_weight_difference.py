@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 config = {
     'road_layout': '2222',   # '2222' = 各道路の車線が1車線＋分岐車線の合計2車線，'3333' = 各道路の車線が2車線＋分岐車線の合計3車線
     'figure_flgs': {
-        'max_queue': False,
+        'max_queue': True,
         'average_queue': True,
         'max_delay': False,
         'average_delay': True,
         'calculation_time': True,
     },
-    'compare_to' : 'all' # 1. 'all': 全てのdemand_typeを1つのグラフで比較, 2. 'each': 各demand_typeごとに比較（scootとdrlの結果も基準線として表示）
+    'compare_to' : 'each' # 1. 'all': 全てのdemand_typeを1つのグラフで比較, 2. 'each': 各demand_typeごとに比較（scootとdrlの結果も基準線として表示）
 }
 
 # 測定した重みについて（実験をおこなったら追加）
@@ -22,7 +22,7 @@ weights = {
     '2222' : {
         'balanced' : [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
         'unbalanced' : [5, 7, 10, 12, 15, 17, 20],
-        'main-minor' : [5, 6, 7, 10, 12, 15, 17, 20],
+        'main-minor' : [5, 7, 10, 12, 15, 17, 20],
     },
     '3333' : {
         'balanced' : [],
@@ -159,9 +159,197 @@ if config['compare_to'] == 'all':
         ax_calc_time.legend(title='Inflow Type')
 
 elif config['compare_to'] == 'each':
-    pass
+    # scootとdrlのデータを取得
+    compare_metrics = defaultdict(dict)
+
+    for method in ['scoot', 'drl']:
+        for inflow_type in weights[config['road_layout']].keys():
+            # 結果の保存されているディレクトリを取得
+            simulation_dir = Path.cwd() / 'results' / 'metrics' / method / f"{inflow_type}_{config['road_layout']}"
+            if not simulation_dir.exists():
+                # raise FileNotFoundError(f"Directory not found: {simulation_dir}")
+                continue
+
+            tmp_metrics = defaultdict(list)
+            
+            demand_type_id = 0
+            while True:
+                demand_type_id += 1
+                tmp_file_path = simulation_dir / f"metric_{demand_type_id}.pkl"
+
+                if not tmp_file_path.exists():
+                    break
+
+                with open(tmp_file_path, 'rb') as f:
+                    saved_data = pickle.load(f)
+
+                    if saved_data['max_queue'] is not None and config['figure_flgs']['max_queue']:
+                        max_queue_record = saved_data['max_queue']
+                        tmp_metrics['max_queue'].append(max_queue_record['queue_length'].max())
+
+                    if saved_data['average_queue'] is not None and config['figure_flgs']['average_queue']:
+                        average_queue_record = saved_data['average_queue']
+                        tmp_metrics['average_queue'].append(average_queue_record['queue_length'].mean())
+
+                    if saved_data['max_delay'] is not None and config['figure_flgs']['max_delay']:
+                        max_delay_record = saved_data['max_delay']
+                        tmp_metrics['max_delay'].append(max_delay_record['delay'].max())
+
+                    if saved_data['average_delay'] is not None and config['figure_flgs']['average_delay']:
+                        average_delay_record = saved_data['average_delay']
+                        tmp_metrics['average_delay'].append(average_delay_record['delay'].mean())
+
+                    if saved_data['calc_time'] is not None and config['figure_flgs']['calculation_time']:
+                        calc_time_record = saved_data['calc_time']
+                        tmp_metrics['calculation_time'].append(calc_time_record['calculation_time'].mean())
+
+            if 'max_queue' in tmp_metrics:
+                tmp_metrics['max_queue'] = max(tmp_metrics['max_queue'])
+            if 'average_queue' in tmp_metrics:
+                tmp_metrics['average_queue'] = statistics.mean(tmp_metrics['average_queue'])
+            if 'max_delay' in tmp_metrics:
+                tmp_metrics['max_delay'] = max(tmp_metrics['max_delay'])
+            if 'average_delay' in tmp_metrics:
+                tmp_metrics['average_delay'] = statistics.mean(tmp_metrics['average_delay'])
+            if 'calculation_time' in tmp_metrics:
+                tmp_metrics['calculation_time'] = statistics.mean(tmp_metrics['calculation_time'])
+
+            compare_metrics[method][inflow_type] = tmp_metrics
+
+    # グラフの描画
+    if config['figure_flgs']['max_queue']:
+        figs_max_queue = {}
+        axes_max_queue = {}
+
+        for inflow_type in metrics.keys():
+            tmp_fig, tmp_ax = plt.subplots()
+            figs_max_queue[inflow_type] = tmp_fig
+            axes_max_queue[inflow_type] = tmp_ax
+
+            x_vals = list(metrics[inflow_type].keys())
+            y_vals = [metrics[inflow_type][weight]['max_queue'] for weight in x_vals]
+            tmp_ax.plot(x_vals, y_vals, marker='o', label='mpc')
+
+            if 'scoot' in compare_metrics and inflow_type in compare_metrics['scoot']:
+                scoot_val = compare_metrics['scoot'][inflow_type]['max_queue']
+                tmp_ax.axhline(y=scoot_val, color='r', linestyle='--', label='scoot')
+            
+            if 'drl' in compare_metrics and inflow_type in compare_metrics['drl']:
+                drl_val = compare_metrics['drl'][inflow_type]['max_queue']
+                tmp_ax.axhline(y=drl_val, color='g', linestyle='--', label='drl')
+            
+            tmp_ax.set_xlabel('Weight')
+            tmp_ax.set_ylabel('Max Queue Length')
+            tmp_ax.set_title(f'Max Queue Length vs Weight ({inflow_type})')
+            tmp_ax.legend(title='Method')
+    
+    if config['figure_flgs']['average_queue']:
+        figs_average_queue = {}
+        axes_average_queue = {}
+
+        for inflow_type in metrics.keys():
+            tmp_fig, tmp_ax = plt.subplots()
+            figs_average_queue[inflow_type] = tmp_fig
+            axes_average_queue[inflow_type] = tmp_ax
+
+            x_vals = list(metrics[inflow_type].keys())
+            y_vals = [metrics[inflow_type][weight]['average_queue'] for weight in x_vals]
+            tmp_ax.plot(x_vals, y_vals, marker='o', label='mpc')
+
+            if 'scoot' in compare_metrics and inflow_type in compare_metrics['scoot']:
+                scoot_val = compare_metrics['scoot'][inflow_type]['average_queue']
+                tmp_ax.axhline(y=scoot_val, color='r', linestyle='--', label='scoot')
+            
+            if 'drl' in compare_metrics and inflow_type in compare_metrics['drl']:
+                drl_val = compare_metrics['drl'][inflow_type]['average_queue']
+                tmp_ax.axhline(y=drl_val, color='g', linestyle='--', label='drl')
+            
+            tmp_ax.set_xlabel('Weight')
+            tmp_ax.set_ylabel('Average Queue Length')
+            tmp_ax.set_title(f'Average Queue Length vs Weight ({inflow_type})')
+            tmp_ax.legend(title='Method')
+    
+    if config['figure_flgs']['max_delay']:
+        figs_max_delay = {}
+        axes_max_delay = {}
+
+        for inflow_type in metrics.keys():
+            tmp_fig, tmp_ax = plt.subplots()
+            figs_max_delay[inflow_type] = tmp_fig
+            axes_max_delay[inflow_type] = tmp_ax
+
+            x_vals = list(metrics[inflow_type].keys())
+            y_vals = [metrics[inflow_type][weight]['max_delay'] for weight in x_vals]
+            tmp_ax.plot(x_vals, y_vals, marker='o', label='mpc')
+
+            if 'scoot' in compare_metrics and inflow_type in compare_metrics['scoot']:
+                scoot_val = compare_metrics['scoot'][inflow_type]['max_delay']
+                tmp_ax.axhline(y=scoot_val, color='r', linestyle='--', label='scoot')
+            
+            if 'drl' in compare_metrics and inflow_type in compare_metrics['drl']:
+                drl_val = compare_metrics['drl'][inflow_type]['max_delay']
+                tmp_ax.axhline(y=drl_val, color='g', linestyle='--', label='drl')
+            
+            tmp_ax.set_xlabel('Weight')
+            tmp_ax.set_ylabel('Max Delay Time')
+            tmp_ax.set_title(f'Max Delay Time vs Weight ({inflow_type})')
+            tmp_ax.legend(title='Method')
+    
+    if config['figure_flgs']['average_delay']:
+        figs_average_delay = {}
+        axes_average_delay = {}
+
+        for inflow_type in metrics.keys():
+            tmp_fig, tmp_ax = plt.subplots()
+            figs_average_delay[inflow_type] = tmp_fig
+            axes_average_delay[inflow_type] = tmp_ax
+
+            x_vals = list(metrics[inflow_type].keys())
+            y_vals = [metrics[inflow_type][weight]['average_delay'] for weight in x_vals]
+            tmp_ax.plot(x_vals, y_vals, marker='o', label='mpc')
+
+            if 'scoot' in compare_metrics and inflow_type in compare_metrics['scoot']:
+                scoot_val = compare_metrics['scoot'][inflow_type]['average_delay']
+                tmp_ax.axhline(y=scoot_val, color='r', linestyle='--', label='scoot')
+            
+            if 'drl' in compare_metrics and inflow_type in compare_metrics['drl']:
+                drl_val = compare_metrics['drl'][inflow_type]['average_delay']
+                tmp_ax.axhline(y=drl_val, color='g', linestyle='--', label='drl')
+            
+            tmp_ax.set_xlabel('Weight')
+            tmp_ax.set_ylabel('Average Delay Time')
+            tmp_ax.set_title(f'Average Delay Time vs Weight ({inflow_type})')
+            tmp_ax.legend(title='Method')
+
+    if config['figure_flgs']['calculation_time']:
+        figs_calc_time = {}
+        axes_calc_time = {}
+
+        for inflow_type in metrics.keys():
+            tmp_fig, tmp_ax = plt.subplots()
+            figs_calc_time[inflow_type] = tmp_fig
+            axes_calc_time[inflow_type] = tmp_ax
+
+            x_vals = list(metrics[inflow_type].keys())
+            y_vals = [metrics[inflow_type][weight]['calculation_time'] for weight in x_vals]
+            tmp_ax.plot(x_vals, y_vals, marker='o', label='mpc')
+
+            if 'scoot' in compare_metrics and inflow_type in compare_metrics['scoot']:
+                scoot_val = compare_metrics['scoot'][inflow_type]['calculation_time']
+                tmp_ax.axhline(y=scoot_val, color='r', linestyle='--', label='scoot')
+            
+            if 'drl' in compare_metrics and inflow_type in compare_metrics['drl']:
+                drl_val = compare_metrics['drl'][inflow_type]['calculation_time']
+                tmp_ax.axhline(y=drl_val, color='g', linestyle='--', label='drl')
+            
+            tmp_ax.set_xlabel('Weight')
+            tmp_ax.set_ylabel('Calculation Time')
+            tmp_ax.set_title(f'Calculation Time vs Weight ({inflow_type})')
+            tmp_ax.legend(title='Method')
 
 plt.show()
+
+print('test')
 
 
 
