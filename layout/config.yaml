@@ -22,7 +22,7 @@ drl:
   features:                    # 特徴量について
     vehicle:                   # 自動車ごとの特徴量について
       position: true
-      speed: true
+      speed: false
       in_queue: false
       direction: true
       wait_flg: false

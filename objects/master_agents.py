@@ -256,8 +256,6 @@ class MasterAgent(Object):
 
         self.episode_id = len(self.total_reward_record) + 1
         return
-    
-
 
     def _loadModel(self):
         # メインのモデルを読み込む
@@ -307,14 +305,13 @@ class MasterAgent(Object):
             # データをクリア
             local_agent.set('learning_data', [])
 
-            if not self.buffer_change_flg:
-                # バッファーのサイズが変化した場合はフラグを立てる
-                self.buffer_change_flg = True
+            # バッファーのサイズが変化したことをフラグで管理
+            self.buffer_change_flg = True
         return
     
     def train(self):
+        # バッファーのサイズが変化していない場合は学習しない
         if not self.buffer_change_flg:
-            # バッファーのサイズが変化していない場合は学習しない
             return
         
         # 学習フラグが立っていないときはスキップ
@@ -451,45 +448,38 @@ class MasterAgent(Object):
             pickle.dump(session_data, f)
         
         # 何回目のエピソードかを表示
-        print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")
+        if self.learning_flg:
+            print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")
+        else:
+            print(f"Master Agent {self.id}: This simulation is for evaluation only.")
         return
 
     def updateSessionData(self):
+        # トータルの報酬を計算
+        self._updateAverageTotalReward()
+
         # 学習フラグが立っていないときはスキップ
         if not self.learning_flg:
             return
         
-        # トータルの報酬を更新
+        # データを記録
+        self.total_reward_record.append(self.avg_total_reward) 
+        self.update_interval_record.append(self.update_interval)
+        self.num_data_for_learning_record.append(self.replay_buffer.get('num_data_for_learning')) 
+        self.batch_record['number'].append(self.replay_buffer.get('num_batches')) 
+        self.batch_record['size'].append(self.replay_buffer.get('batch_size'))
+        self.num_epochs_record.append(self.num_epochs)
+        self.learning_rate_record.append(self.learning_rate) 
+        self.weight_decay_record.append(self.weight_decay) 
+        self.epsilon_record.append(self.epsilon) 
+        return
+    
+    def _updateAverageTotalReward(self):
         sum_total_reward = 0
         for local_agent in self.local_agents.getAll():
             total_reward = local_agent.get('total_reward')
             sum_total_reward += total_reward
-        
-        avg_total_reward = sum_total_reward / self.local_agents.count()
-        self.total_reward_record.append(avg_total_reward)
-
-        # update_intervalの更新
-        self.update_interval_record.append(self.update_interval)
-
-        # num_data_for_learningの更新
-        self.num_data_for_learning_record.append(self.replay_buffer.get('num_data_for_learning'))
-
-        # batchの更新
-        self.batch_record['number'].append(self.replay_buffer.get('num_batches'))
-        self.batch_record['size'].append(self.replay_buffer.get('batch_size'))
-
-        # num_epochsの更新
-        self.num_epochs_record.append(self.num_epochs)
-
-        # learning_rateの更新
-        self.learning_rate_record.append(self.learning_rate)
-
-        # weight_decayの更新
-        self.weight_decay_record.append(self.weight_decay)
-
-        # epsilonの更新
-        self.epsilon_record.append(self.epsilon)
-
+        self.avg_total_reward = sum_total_reward / self.local_agents.count()
         return
     
     def showTotalReward(self):
@@ -497,7 +487,7 @@ class MasterAgent(Object):
             local_agent = self.local_agents[local_agent_id]
             print(f"Local Agent {local_agent_id}: Total Reward = {local_agent.get('total_reward'):.1f}")
         
-        print(f"Master Agent {self.id}: Average Total Reward = {self.total_reward_record[-1]:.1f}")
+        print(f"Master Agent {self.id}: Average Total Reward = {self.avg_total_reward:.1f}")
         return
     
     @property
