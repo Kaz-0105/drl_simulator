@@ -264,7 +264,7 @@ class LocalAgent(Object):
             lanes = self.road_lanes_map[road_order_id]
 
             # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
-            direction_signal_value_map = self.roads[road_order_id].get('direction_signal_value_map')
+            direction_signal_value_map = road.get('direction_signal_value_map')
 
             # 信号付近の距離を定義
             v_max = road.get('max_speed')
@@ -277,66 +277,62 @@ class LocalAgent(Object):
                 # laneオブジェクトを取得
                 lane = lanes[lane_order_id]
 
-                # vehicle_dataを位置情報でソート
+                # vehicle_dataを取得
                 vehicle_data = lane.get('vehicle_data').copy()
-                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                vehicle_data.reset_index(drop=True, inplace=True)
-
-                # 先頭からnum_vehicles台の車両を取得
+                vehicle_data = vehicle_data.sort_values(by='position', ascending=False)
+                vehicle_data = vehicle_data.reset_index(drop=True)
                 vehicle_data = vehicle_data.head(self.num_vehicles).copy()
 
-                # 距離情報を信号との距離に変換
+                # positionの定義
                 length_info = lane.get('length_info')
                 vehicle_data['position'] = length_info['length'] - vehicle_data['position']
 
-                # near_flgを追加（交差点に近いかどうか）
-                near_flgs = []
-                for _, row in vehicle_data.iterrows():
-                    if row['position'] <=  near_length:
-                        near_flgs.append(True)
-                    else:
-                        near_flgs.append(False)
-                
-                vehicle_data['near_flg'] = near_flgs
+                if self.reward_id in [1, 2]:
+                    # near_flgの定義
+                    near_flgs = []
+                    for _, row in vehicle_data.iterrows():
+                        near_flgs.append(True if row['position'] <= near_length else False)
+                    vehicle_data['near_flg'] = near_flgs
 
-                direction_ids = vehicle_data['direction_id']
-
-                
-                # wait_flgを初期化
-                wait_flgs = []
-                for idx, row in vehicle_data.iterrows():
-                    # 交差点に近くない自動車はスコープから外す
-                    if not near_flgs[idx]:
-                        wait_flgs.append(False)
-                        continue
-
-                    # 信号が赤の場合は信号待ち
-                    signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
-                    if signal_value == 1:
-                        wait_flgs.append(True)
-                        continue
+                    # red_flgsの定義
+                    red_flgs = []
+                    for _, row in vehicle_data.iterrows():
+                        signal_value = direction_signal_value_map[row['direction_id']] if row['direction_id'] != 0 else 3
+                        red_flgs.append(True if signal_value == 1 else False)
+                    vehicle_data['red_flg'] = red_flgs
                     
-                    # 先頭車の場合
-                    if len(wait_flgs) == 0:
-                        wait_flgs.append(False)
-                        continue
+                    # wait_flgを定義
+                    wait_flgs = []
+                    direction_ids = vehicle_data['direction_id']
+                    for idx, row in vehicle_data.iterrows():
+                        if not near_flgs[idx]:
+                            wait_flgs.append(False)
+                            continue
 
-                    # 先頭車でない場合は進路が異なる先行車を探す
-                    found_flg = False
-                    for i in range(len(wait_flgs) - 1, - 1, -1):
-                        if direction_ids[i] != row['direction_id']:
-                            wait_flgs.append(True if wait_flgs[i] else False)
+                        if red_flgs[idx]:
+                            wait_flgs.append(True)
+                            continue
+                        
+                        if len(wait_flgs) == 0:
+                            wait_flgs.append(False)
+                            continue
+
+                        found_flg = False
+                        for tmp_idx in reversed(range(len(wait_flgs))):
+                            if direction_ids[tmp_idx] == row['direction_id']:
+                                continue
+
+                            wait_flgs.append(True if red_flgs[tmp_idx] else False)
                             found_flg = True
                             break
-                    
-                    # 先行車が見つからないとき
-                    if not found_flg:
-                        wait_flgs.append(False)
-                            
                         
-                # wait_flgsをvehicle_dataに追加
-                vehicle_data['wait_flg'] = wait_flgs
+                        if found_flg:
+                            continue
+                        
+                        wait_flgs.append(False)
+                    vehicle_data['wait_flg'] = wait_flgs
                 
+                # mapにプッシュ
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
@@ -347,7 +343,7 @@ class LocalAgent(Object):
         
         # 自動車に関する情報を更新
         self._updateVehicleData()
-        
+
         if self.network_id == 1:
             # 状態を作成
             state = {}
@@ -428,11 +424,10 @@ class LocalAgent(Object):
         return
     
     def getAction(self):
-        # 推論の必要がないときはスキップ
         if not self.infer_flg:
             return
         
-        # ε-greedy法に従って行動を選択
+        # ε-greedy法
         if random.random() < self.epsilon:
             action = random.choices(
                 list(self.random_phase_probs.keys()),
@@ -440,67 +435,55 @@ class LocalAgent(Object):
                 k=1
             )[0]
         else:
-            # 計算時間の測定開始
             if self.calc_time_flg:
                 start_time = time.time()
 
-            # 推論を行う
             with torch.no_grad():
                 self.model.set('requires_grad_flg', False)
                 action_values = self.model([self.current_state])
                 action = torch.argmax(action_values).item() + 1
             
-            # 計算時間の測定終了して記録
             if self.calc_time_flg:
                 end_time = time.time()
                 calc_time = end_time - start_time
                 self.calc_time_record.loc[len(self.calc_time_record)] = [self.current_time, calc_time]
 
-        # 行動をインスタンス変数に保存
+        # 記録
         self.current_action = action
         self.action_record.append(action)
-
-        # 信号機の将来のフェーズに追加
         self.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
-            
-
         return
     
     def getReward(self):
-        # 報酬を計算するタイミングかどうかを確認
         if not self.evaluate_flg:
             return
         
         if self.reward_id == 1:
-            # 信号待ちの自動車の数をカウント
-            score = 0
+            # 信号待ちしていない自動車 - 信号待ちしている自動車
+            self.current_reward = 0
             for _, vehicle_data in self.lane_str_vehicle_data_map.items():
                 if vehicle_data.shape[0] == 0:
                     continue
 
                 for _, row in vehicle_data.iterrows():
                     if not row['wait_flg']:
-                        score += 1
+                        self.current_reward += 1
                     else:
-                        score -= 1
-
-            # 報酬を計算（-1から1の範囲に正規化）
-            self.current_reward = score
+                        self.current_reward -= 1
         
         elif self.reward_id == 2:
-            # 信号待ちの自動車の数をカウント
-            score = 0
+            # 信号待ちしていない自動車 - 信号待ちしている自動車 + データ収集点での通過車両数
+            self.current_reward = 0
             for _, vehicle_data in self.lane_str_vehicle_data_map.items():
                 if vehicle_data.shape[0] == 0:
                     continue
 
                 for _, row in vehicle_data.iterrows():
                     if not row['wait_flg']:
-                        score += 1
+                        self.current_reward += 1
                     else:
-                        score -= 1
+                        self.current_reward -= 1
 
-            # 前回の行動からの交差点の通過車両の数をカウント
             for road in self.roads.getAll():
                 for data_collection_point in road.data_collection_points.getAll():
                     if data_collection_point.get('type') != 'intersection':
@@ -512,15 +495,12 @@ class LocalAgent(Object):
                         
                         num_vehs_record = data_collection_measurement.get('num_vehs_record')
                         num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                        score += sum(num_vehs_list)
-        
-            # current_rewardを更新
-            self.current_reward = score
-
+                        self.current_reward += sum(num_vehs_list)
     
         # 記録する
         self.reward_record.append(self.current_reward)
         self.total_reward += self.current_reward 
+        return
        
     def makeLearningData(self):
         # 推論の必要がないときはスキップ

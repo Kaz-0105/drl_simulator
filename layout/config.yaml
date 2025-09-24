@@ -15,31 +15,28 @@ simulator :
     interval: 5                # バックアップを行う頻度
 
 drl:
-  method: 'apex'               # DRLの手法の指定（apex）
+  method: 'apex'               # DRLの手法の指定
   learning_flg: false          # 学習を行うかどうか
   duration_steps: 5            # 1回の予測で決める時間ステップ幅
   network_id: 1                # ニューラルネットワークのID
   features:                    # 特徴量について
-    vehicle:                   # 自動車ごとの特徴量について
-      position: true
-      speed: false
-      in_queue: false
-      direction: true
-      wait_flg: false
-      near_flg: false
-    lane:                      # 車線ごとの特徴量について
+    vehicle:                   
+      position: true           # 位置情報
+      speed: false             # 速度情報
+      direction: true          # 進路情報
+    lane:                      
       metric: 
-        num_vehicles: true
+        num_vehicles: true     # 自動車台数情報
       shape:
-        length: true
-        type: true
-    road:                      # 道路事の特徴量について
+        length: true           # 車線長さ情報
+        type: true             # 車線タイプ情報
+    road:                      
       metric:
-        queue_length: true
-        delay: true
-  num_vehicles: 5              # 特徴量として取り出す1車線ごとの自動車台数
-  bc_flg: false                # 行動クローンによる初期化を行うかどうか
-  reward_id: 2                 # 報酬のID
+        queue_length: true     # 信号待ち車列情報
+        delay: true            # 遅延情報
+  num_vehicles: 5              # 自動車台数
+  bc_flg: false                # 行動クローン初期化
+  reward_id: 2                 # 報酬
   buffer_save_interval: 5      # リプレイバッファの保存間隔（エピソード数）
 
 apex:
