@@ -252,24 +252,18 @@ class LocalAgent(Object):
         return
 
     def _updateVehicleData(self):
-        # 車両データのマップを初期化
+        # vehicle_dataを更新
         self.lane_str_vehicle_data_map = {} 
-
-        # 信号付近の定義で利用するため最大キュー長を取得
-        max_queue_length = self.intersection.get('max_queue_length')
-
-        # 道路を走査
         for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
-            # roadオブジェクトとlanesオブジェクトを取得
             road = self.roads[road_order_id]
             lanes = self.road_lanes_map[road_order_id]
 
-            # direction_signal_value_mapを取得（信号待ちの状態量が必要な場合）
-            direction_signal_value_map = road.get('direction_signal_value_map')
-
-            # 信号付近の距離を定義
-            v_max = road.get('max_speed')
-            near_length = max_queue_length if max_queue_length > v_max else v_max
+            # 必要な情報を取得
+            if self.reward_id in [1, 2]:
+                direction_signal_value_map = road.get('direction_signal_value_map')
+                v_max = road.get('max_speed')
+                max_queue_length = self.intersection.get('max_queue_length')
+                near_length = max_queue_length if max_queue_length > v_max else v_max
 
             # 車線を走査
             for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
@@ -338,7 +332,6 @@ class LocalAgent(Object):
         return
 
     def getState(self):
-        # 状態量を取得するタイミングかどうかを確認
         if not self.infer_flg:
             return
         
