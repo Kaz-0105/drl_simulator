@@ -1,39 +1,39 @@
 simulator :
-  network_name: '7-4-1'       # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'drl'       # 制御手法の指定
-  simulation_count: 1         # シミュレーションの回数（エピソード数）
-  simulation_time: 500        # シミュレーションを行う時間（秒）
+  network_name: '7-4-1'        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  control_method: 'drl'        # 制御手法の指定
+  simulation_count: 1          # シミュレーションの回数（エピソード数）
+  simulation_time: 500         # シミュレーションを行う時間（秒）
   seed:
-    is_random: false          # シード値をランダムにするかどうか
-    value: 1                  # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
-  time_step: 2                # シミュレーションの更新の時間幅（秒）
-  red_steps: 1                # 全赤のステップ数
-  max_workers: 10             # 並列実行するワーカー数
-  debug_flg: false            # デバッグモードのフラグ
+    is_random: false           # シード値をランダムにするかどうか
+    value: 1                   # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
+  time_step: 2                 # シミュレーションの更新の時間幅（秒）
+  red_steps: 1                 # 全赤のステップ数
+  max_workers: 10              # 並列実行するワーカー数
+  debug_flg: false             # デバッグモードのフラグ
   backup:
-    flg: true                 # バックアップを行うかどうか
-    interval: 5               # バックアップを行う頻度
-  
+    flg: true                  # バックアップを行うかどうか
+    interval: 5                # バックアップを行う頻度
+
 drl:
-  method: 'apex'              # DRLの手法の指定（apex）
-  learning_flg: false         # 学習を行うかどうか
-  duration_steps: 5           # 1回の予測で決める時間ステップ幅
-  network_id: 1               # ニューラルネットワークのID
-  features:                   # 特徴量について
-    vehicle:                  # 自動車ごとの特徴量について
+  method: 'apex'               # DRLの手法の指定（apex）
+  learning_flg: false          # 学習を行うかどうか
+  duration_steps: 5            # 1回の予測で決める時間ステップ幅
+  network_id: 1                # ニューラルネットワークのID
+  features:                    # 特徴量について
+    vehicle:                   # 自動車ごとの特徴量について
       position: true
       speed: true
       in_queue: false
       direction: true
       wait_flg: false
       near_flg: false
-    lane:                     # 車線ごとの特徴量について
+    lane:                      # 車線ごとの特徴量について
       metric: 
         num_vehicles: true
       shape:
         length: true
         type: true
-    road:                     # 道路事の特徴量について
+    road:                      # 道路事の特徴量について
       metric:
         queue_length: true
         delay: true
@@ -44,10 +44,10 @@ drl:
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
-  update_interval: 4000          # ターゲットネットワークの同期間隔
+  update_interval: 4000        # ターゲットネットワークの同期間隔
   buffer:
-    num_data_for_learning: 25    # データが何個たまったら学習を行うか
-    size: 300000                 # リプレイバッファのサイズ
+    num_data_for_learning: 25  # データが何個たまったら学習を行うか
+    size: 300000               # リプレイバッファのサイズ
     batch:
       number: 10               # バッチ数
       size: 128                # バッチサイズ
@@ -58,7 +58,7 @@ apex:
   learning_rate: 1e-4          # 学習率
   weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
   epsilon:                     # ε-greedy法のパラメータ
-    schedule_flg: false         # ε-greedy法のεをスケジューリングを行うかどうか
+    schedule_flg: false        # ε-greedy法のεをスケジューリングを行うかどうか
     value: 0                   # スケジューリングを行わないときのεの値
 
 bc:
@@ -81,28 +81,28 @@ mpc:
     network_id: 1              # 行動クローンを行いたいネットワーク構造のID
   phases:
     - num_roads: 3
-      type: '4-phase'          # 4-phaseのみ
+      num_phases: 4            # 4-phaseのみ
     - num_roads: 4
-      type: '17-phase'         # 4-phase, 8-phase, 17-phaseから選択
+      num_phases: 17           # 4-phase, 8-phase, 17-phaseから選択
     - num_roads: 5
-      type: '10-phase'         # 10-phaseのみ
+      num_phases: 10           # 10-phaseのみ
   objective_type: 2            # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
   signal_change_weight: 8      # 信号変化ペナルティの重み
 
 scoot:
   initial_parameters:
-    cycle: 40                 # サイクル時間の初期値（ステップ数）
-    split: [10, 10, 10, 10]   # スプリットの初期値（ステップ数）
+    cycle: 40                  # サイクル時間の初期値（ステップ数）
+    split: [10, 10, 10, 10]    # スプリットの初期値（ステップ数）
   change_steps:
-    cycle: 1 # サイクル時間の変更時の1フェーズあたりに変化量（ステップ数）
-    split: 1 # スプリット変更時のフェーズの仕切りの変化量（ステップ数）
-  max_cycle: 60 # サイクル時間の最大値（ステップ数）
-  min_split: 5  # 1スプリットの最小値（ステップ数）
-  spacing_threshold: 40 # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
+    cycle: 1                   # サイクル時間の変更時の1フェーズあたりに変化量（ステップ数）
+    split: 1                   # スプリット変更時のフェーズの仕切りの変化量（ステップ数）
+  max_cycle: 60                # サイクル時間の最大値（ステップ数）
+  min_split: 5                 # 1スプリットの最小値（ステップ数）
+  spacing_threshold: 40        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
-  record_flg: true             # 記録を行うかどうか
-  save_folder: 'balanced_2222'         # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  record_flg: false            # 記録を行うかどうか
+  save_folder: 'balanced_2222' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
