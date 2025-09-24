@@ -107,6 +107,7 @@ class LocalAgent(Object):
         # intersectionオブジェクトと紐づける
         self.intersection = intersection
         self.intersection.set('local_agent', self)
+        self.num_roads = self.intersection.get('num_roads')
 
         # signal_controllerオブジェクトと紐づける
         self.signal_controller = self.intersection.signal_controller
@@ -503,35 +504,30 @@ class LocalAgent(Object):
         return
        
     def makeLearningData(self):
-        # 推論の必要がないときはスキップ
         if self.infer_flg == False:
             return
         
-        # データが溜まっていない場合はスキップ
         if len(self.state_record) != self.td_steps + 1:
             return
         
-        # 状態について
+        # 状態，行動，報酬，終了フラグを取得
         state = self.state_record[0]
         next_state = self.state_record[-1]
 
-        # 行動について
         action = self.action_record[0]
 
-        # 累積報酬について
         cumulative_reward = 0
         for reward in list(reversed(self.reward_record)):
             cumulative_reward = reward + self.gamma * cumulative_reward
 
-        # 終了フラグについて
         done = int(self.done_flg)
 
-        # マスターに送るデータを作成
+        # データを保存
         self.learning_data.append((state, action, cumulative_reward, next_state, done))
+        return
     
     @property
     def infer_flg(self):
-        # 現在残っている将来のフェーズを取得
         future_phase_ids = self.signal_controller.get('future_phase_ids')
         return len(future_phase_ids) <= 1
 
@@ -542,9 +538,5 @@ class LocalAgent(Object):
     @property
     def current_time(self):
         return self.network.simulation.get('current_time')
-
-    @property
-    def num_roads(self):
-        return self.intersection.get('num_roads')
     
 
