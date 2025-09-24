@@ -12,14 +12,14 @@ config = {
         'average_queue': True,
         'max_delay': False,
         'average_delay': True,
-        'calculation_time': True,
+        'calculation_time': False,
     },
     'inflow_types': {
-        'balanced' : False,
-        'unbalanced' : False,
+        'balanced' : True,
+        'unbalanced' : True,
         'main-minor' : True,
     },
-    'compare_to' : 'each' # 1. 'all': 全てのdemand_typeを1つのグラフで比較, 2. 'each': 各demand_typeごとに比較（scootとdrlの結果も基準線として表示）
+    'compare_to' : 'all' # 1. 'all': 全てのdemand_typeを1つのグラフで比較, 2. 'each': 各demand_typeごとに比較（scootとdrlの結果も基準線として表示）
 }
 
 # 測定した重みについて（実験をおこなったら追加）
@@ -27,7 +27,7 @@ weights = {
     '2222' : {
         'balanced' : [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
         'unbalanced' : [5, 7, 10, 12, 15, 17, 20],
-        'main-minor' : [5, 7, 10, 12, 15, 17, 20],
+        'main-minor' : [5, 7, 8, 10, 12, 15, 17, 20],
     },
     '3333' : {
         'balanced' : [],
@@ -196,32 +196,6 @@ elif config['compare_to'] == 'each':
             compare_metrics[method][inflow_type] = tmp_metrics
 
     # グラフの描画
-    if config['figure_flgs']['max_queue']:
-        figs_max_queue = {}
-        axes_max_queue = {}
-
-        for inflow_type in metrics.keys():
-            tmp_fig, tmp_ax = plt.subplots()
-            figs_max_queue[inflow_type] = tmp_fig
-            axes_max_queue[inflow_type] = tmp_ax
-
-            x_vals = list(metrics[inflow_type].keys())
-            y_vals = [metrics[inflow_type][weight]['max_queue'] for weight in x_vals]
-            tmp_ax.plot(x_vals, y_vals, marker='o', label='mpc')
-
-            if 'scoot' in compare_metrics and inflow_type in compare_metrics['scoot']:
-                scoot_val = compare_metrics['scoot'][inflow_type]['max_queue']
-                tmp_ax.axhline(y=scoot_val, color='r', linestyle='--', label='scoot')
-            
-            if 'drl' in compare_metrics and inflow_type in compare_metrics['drl']:
-                drl_val = compare_metrics['drl'][inflow_type]['max_queue']
-                tmp_ax.axhline(y=drl_val, color='g', linestyle='--', label='drl')
-            
-            tmp_ax.set_xlabel('Weight')
-            tmp_ax.set_ylabel('Max Queue Length')
-            tmp_ax.set_title(f'Max Queue Length vs Weight ({inflow_type})')
-            tmp_ax.legend(title='Method')
-    
     figs = {}
     axes = {}
     for metric_name, metric_flg in config['figure_flgs'].items():

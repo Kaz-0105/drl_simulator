@@ -22,7 +22,7 @@ drl:
   features:                   # 特徴量について
     vehicle:                  # 自動車ごとの特徴量について
       position: true
-      speed: false
+      speed: true
       in_queue: false
       direction: true
       wait_flg: false
@@ -102,7 +102,7 @@ scoot:
 
 records:
   record_flg: true             # 記録を行うかどうか
-  save_folder: 'unbalanced_2222'         # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: 'balanced_2222'         # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
