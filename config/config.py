@@ -11,12 +11,12 @@ class Config(Common):
         self.readConfigFile()
 
         # ネットワークのパラメータをcsvから読み込む
-        self.roads = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/roads.csv')
-        self.road_link_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/road_link_tags.csv')
-        self.intersections = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersections.csv')
-        self.intersection_road_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_road_tags.csv')
-        self.link_input_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/link_input_tags.csv')
-        self.intersection_turn_ratio_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_turn_ratio_tags.csv')
+        self.roads = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/roads.csv', index_col=False)
+        self.road_link_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/road_link_tags.csv', index_col=False)
+        self.intersections = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersections.csv', index_col=False)
+        self.intersection_road_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_road_tags.csv', index_col=False)
+        self.link_input_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/link_input_tags.csv', index_col=False)
+        self.intersection_turn_ratio_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_turn_ratio_tags.csv', index_col=False)
 
         # 旋回率のテンプレートを取得する
         self._getNumRoadTurnRatioMap()
@@ -29,6 +29,12 @@ class Config(Common):
 
         # epsilonのスケジューリングを取得
         self._getEpsilonSchedule()
+
+        # 状態のtemplateを取得
+        self._getNetworkStateMap()
+
+        # drl_infoの整形
+        self.reshapeDrlInfo()
 
         return
     
@@ -72,7 +78,7 @@ class Config(Common):
     def _getNumRoadTurnRatioMap(self):
         self.num_roads_turn_ratio_map = {}
         for num_roads in [3, 4, 5]:
-            self.num_roads_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv')
+            self.num_roads_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv', index_col=False)
 
     def _getNumRoadPhasesMap(self):
         self.num_roads_phases_map = {}
@@ -82,8 +88,8 @@ class Config(Common):
             if num_roads == 3 or num_roads == 5:
                 continue
 
-            self.num_roads_phases_map[num_roads] = pd.read_csv('layout/phases' + str(num_roads) + '.csv')
-    
+            self.num_roads_phases_map[num_roads] = pd.read_csv('layout/phases' + str(num_roads) + '.csv', index_col=False)
+
     def _validateBcEnvironment(self):
         if self.simulator_info['control_method'] != 'bc':
             return
@@ -95,7 +101,44 @@ class Config(Common):
         if not self.apex_info['epsilon']['schedule_flg']:
             return
         
-        self.epsilon_schedule = pd.read_csv('layout/epsilon_schedule.csv')
+        self.epsilon_schedule = pd.read_csv('layout/epsilon_schedule.csv', index_col=False)
+        return
+
+    def _getNetworkStateMap(self):
+        self.network_state_map = {}
+
+        for network_id in [1]:
+            self.network_state_map[network_id] = pd.read_csv(f"layout/state_template{network_id}.csv", index_col=False)
+        return
+    
+    def reshapeDrlInfo(self):
+        state_template_df = self.network_state_map[self.drl_info['network_id']]
+        target_record = state_template_df[state_template_df['id'] == self.drl_info['state_id']]
+        if target_record.empty:
+            raise ValueError(f"State ID {self.drl_info['state_id']} not found in state_template{self.drl_info['network_id']}.csv")
+        
+        self.drl_info['features'] = {
+            'vehicle' : {
+                'position': bool(target_record['position'].values[0]),
+                'speed': bool(target_record['speed'].values[0]),
+                'direction': bool(target_record['direction'].values[0])
+            },
+            'lane' : {
+                'metric': {
+                    'num_vehicles': bool(target_record['num_vehicles'].values[0]),
+                },
+                'shape' : {
+                    'length': bool(target_record['lane_length'].values[0]),
+                    'type': bool(target_record['lane_type'].values[0])
+                }
+            }, 
+            'road' : {
+                'metric': {
+                    'queue_length': bool(target_record['queue_length'].values[0]),
+                    'delay': bool(target_record['delay'].values[0])
+                }
+            }
+        }
         return
 
     

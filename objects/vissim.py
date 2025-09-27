@@ -102,6 +102,13 @@ class Vissim(Common):
             return False
         
         return True
+    
+    @property
+    def finish_flg(self):
+        if self.simulation.get('control_method') != 'drl':
+            return False
+        
+        return self.network.master_agents.get('finish_flg')
 
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, vissim):
@@ -134,7 +141,7 @@ class ConfigChangeHandler(FileSystemEventHandler):
                 return
             
             # phases4.csvの内容を読み込み、local_agentsのrandom_phase_probsを更新
-            phases = pd.read_csv(event.src_path)
+            phases = pd.read_csv(event.src_path, index_col=False)
             random_phase_probs = {}
             for _, row in phases.iterrows():
                 random_phase_probs[int(row['id'])] = float(row['random_prob'])
@@ -164,9 +171,10 @@ class ConfigChangeHandler(FileSystemEventHandler):
         elif event.src_path.endswith('config.yaml'):
             # 設定ファイルが変更された場合、設定を再読み込み
             self.config.readConfigFile()
+            self.config.reshapeDrlInfo()
         
         elif event.src_path.endswith('epsilon_schedule.csv'):
-            epsilon_schedule = pd.read_csv(event.src_path)
+            epsilon_schedule = pd.read_csv(event.src_path, index_col=False)
             self.config.set('epsilon_schedule', epsilon_schedule)
         
         return

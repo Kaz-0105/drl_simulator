@@ -12,6 +12,7 @@ import torch.nn as nn
 import pickle
 import math
 import numpy as np
+import pandas as pd
 
 class MasterAgents(Container):
     def __init__(self, network, device):
@@ -76,17 +77,9 @@ class MasterAgents(Container):
             master_agent.showTotalReward()
         return
     
-    def saveModel(self):
+    def save(self):
         for master_agent in self.getAll():
-            self.executor.submit(master_agent.saveModel)
-        
-        self.executor.wait()
-        return
-    
-    def saveSession(self):
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.saveSession)
-        
+            self.executor.submit(master_agent.save)
         self.executor.wait()
         return
 
@@ -118,21 +111,19 @@ class MasterAgent(Object):
         # 車線数の情報を取得
         self._makeNumLanesMap(num_lanes_turple)
 
-        # 強化学習で共通のパラメータを取得
-        self._getDrlParameters()
-
-        # Apexのパラメータを取得
-        self._getApeXParameters()
+        # パラメータを取得
+        self._getParams()
 
         # 保存先のパスを定義
         self._makePaths()
 
         # モデルを初期化
-        self._makeModel()
+        self._initSession()
+        self._initModel()
+        self.replay_buffer = ReplayBuffer(self)
         
-        # 前回までのセッションを読み込む
-        self._loadSession()
-        self._loadModel()
+        # model, session, replay_bufferのデータをロード
+        self._load()
 
         # epsilonの初期化
         self._makeEpsilon()
@@ -166,19 +157,28 @@ class MasterAgent(Object):
 
         self.num_lanes_map = num_lanes_map
 
-    def _getDrlParameters(self):
+    def _getParams(self):
+        simulator_info = self.config.get('simulator_info')
+        self.num_simulations = simulator_info['num_simulations']
+        self.simulation_time = simulator_info['simulation_time']
+
         drl_info = self.config.get('drl_info')
         self.drl_method = drl_info['method']
-        self.num_vehicles = drl_info['num_vehicles']
+        self.duration_steps = drl_info['duration_steps']
         self.network_id = drl_info['network_id']
+        self.reward_id = drl_info['reward_id']
+        self.num_vehicles = drl_info['num_vehicles']
         self.bc_flg = drl_info['bc_flg']
         self.learning_flg = drl_info['learning_flg']
-        return
-    
-    def _getApeXParameters(self):
+        self.state_id = drl_info['state_id']
+        self.save_interval = drl_info['save_interval']
+        self.stop_flg = drl_info['stop']['flg']
+        self.stop_episode = drl_info['stop']['episode']
+        
         apex_info = self.config.get('apex_info')
         self.td_steps = apex_info['td_steps']
         self.update_interval = apex_info['update_interval']
+        self.buffer_size = apex_info['buffer']['size']
         self.weight_decay = apex_info['weight_decay']
         self.gamma = apex_info['gamma']
         self.learning_rate = apex_info['learning_rate']
@@ -186,52 +186,94 @@ class MasterAgent(Object):
         return
 
     def _makePaths(self):
-        # 車線情報を文字列に変換
-        lanes_str = ''
+        self.path_map = {}
+
+        num_lanes_str = ''
         for num_lanes in self.num_lanes_map.values():
-            lanes_str += str(num_lanes)
+            num_lanes_str += str(num_lanes)
 
-        self.path_map = {
-            'model': Path(f"models/q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth"),
-            'target_model': Path(f"models/target_q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth"),
-            'session': Path(f"results/session_{self.network_id}_{lanes_str}_{self.num_vehicles}.pkl"),
-        }
+        # modelについて
+        model_dir = Path("models") / self.drl_method
+        if not model_dir.exists():
+            model_dir.mkdir(parents=True, exist_ok=False)
 
-        # リプレーバッファーについて
-        buffer_size = self.config.get('apex_info')['buffer']['size']
+        csv_path = model_dir / "model.csv"
+        if not csv_path.exists():
+            model_df = pd.DataFrame(columns=['id', 'network_id', 'reward_id', 'num_lanes', 'num_vehicles', 'duration_steps', 'buffer_size', 'state_id'])
+        else:
+            model_df = pd.read_csv(csv_path, dtype={'num_lanes': int}, index_col=False)
+
+        filtered_model_df = model_df[
+            (model_df['network_id'] == self.network_id) & 
+            (model_df['reward_id'] == self.reward_id) & 
+            (model_df['num_lanes'] == int(num_lanes_str)) & 
+            (model_df['num_vehicles'] == self.num_vehicles) & 
+            (model_df['duration_steps'] == self.duration_steps) & 
+            (model_df['buffer_size'] == self.buffer_size) & 
+            (model_df['state_id'] == self.state_id) 
+        ]
+        exist_flg = not filtered_model_df.empty
+
+        if exist_flg:
+            self.model_id = filtered_model_df['id'].values[0]
+        else:
+            new_row = {
+                'id' : model_df['id'].max() + 1 if not model_df['id'].empty else 1,
+                'network_id' : self.network_id,
+                'reward_id' : self.reward_id,
+                'num_lanes' : int(num_lanes_str),
+                'num_vehicles' : self.num_vehicles,
+                'duration_steps' : self.duration_steps,
+                'buffer_size' : self.buffer_size,
+                'state_id' : self.state_id,
+            }
+            model_df = pd.concat([model_df, pd.DataFrame([new_row])], ignore_index=True)
+            self.model_id = new_row['id']
+        
+        model_df.to_csv(csv_path, index=False)
+
+        tmp_model_dir = model_dir / f"model_{self.model_id}"
+        if not tmp_model_dir.exists():
+            tmp_model_dir.mkdir(parents=True, exist_ok=False)
+
+        self.path_map['model'] = tmp_model_dir / 'q_net.pth'
+        self.path_map['target_model'] = tmp_model_dir / 'target_q_net.pth'
+
+        # sessionについて
+        session_dir = Path("results") / 'session' / 'drl' / self.drl_method
+        if not session_dir.exists():
+            session_dir.mkdir(parents=True, exist_ok=False)
+        
+        tmp_session_dir = session_dir / f"session_{self.model_id}"
+        if not tmp_session_dir.exists():
+            tmp_session_dir.mkdir(parents=True, exist_ok=False)
+        self.path_map['session'] = tmp_session_dir / 'session.pkl'
+
+        # replay_bufferについて
+        buffer_dir = Path("buffers") / self.drl_method
+        if not buffer_dir.exists():
+            buffer_dir.mkdir(parents=True, exist_ok=False)
+        
+        tmp_buffer_dir = buffer_dir / f"buffer_{self.model_id}"
+        if not tmp_buffer_dir.exists():
+            tmp_buffer_dir.mkdir(parents=True, exist_ok=False)
+
         self.path_map['replay_buffer'] = {
-            'tree': Path(f"buffers/replay_buffer_tree_{self.network_id}_{lanes_str}_{self.num_vehicles}.pkl"),
-            'data': [Path(f"buffers/replay_buffer_data_{self.network_id}_{lanes_str}_{self.num_vehicles}_{idx + 1}.pkl") for idx in range(math.ceil(buffer_size / 1000))],
+            'tree': tmp_buffer_dir / f"replay_buffer_tree.pkl",
+            'data': [tmp_buffer_dir / f"replay_buffer_data_{idx + 1}.pkl" for idx in range(math.ceil(self.buffer_size / 1000))]
         }
 
         if self.bc_flg:
+            # 直す必要あり
             self.path_map['bc_model'] = Path(f"models/bc_q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth")
-
         return
-        
-    def _makeModel(self):
-        # モデルを初期化（学習用にセット）
-        if self.network_id == 1:
-            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
-        self.model.train()
-        self.model.to(self.device)
-
-        # ターゲットモデルを初期化（学習用と同期，推論用にセット）
-        if self.network_id == 1:
-            self.target_model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
-        self.target_model.eval()
-        self.target_model.to(self.device)
-        return
-
-    def _loadSession(self):
-        # リプレイバッファーを取得
-        self.replay_buffer = ReplayBuffer(self)
-
-        # update_countとtotal_reward_recordを取得
+    
+    def _initSession(self):
+        # sessionを初期化
         self.update_count = 0
         self.total_reward_record = []
         self.update_interval_record = []
-        self.num_data_for_learning_record = []
+        self.num_new_data_record = []
         self.batch_record = {
             'number': [],
             'size': [],
@@ -240,35 +282,66 @@ class MasterAgent(Object):
         self.learning_rate_record = []
         self.weight_decay_record = []
         self.epsilon_record = []
+        self.simulation_time_record = []
 
-        if self.path_map['session'].exists():
-            with self.path_map['session'].open('rb') as f:
-                loaded_data = pickle.load(f)
-                self.update_count = loaded_data['update_count'] 
-                self.total_reward_record = loaded_data['total_reward_record']
-                self.update_interval_record = loaded_data['update_interval_record']
-                self.num_data_for_learning_record = loaded_data['num_data_for_learning_record']
-                self.batch_record = loaded_data['batch_record']
-                self.num_epochs_record = loaded_data['num_epochs_record']
-                self.learning_rate_record = loaded_data['learning_rate_record']
-                self.weight_decay_record = loaded_data['weight_decay_record']
-                self.epsilon_record = loaded_data['epsilon_record']
+        self.episode = 1
+        return
+        
+    def _initModel(self):
+        # modelを初期化
+        if self.network_id == 1:
+            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
+        self.model.train()
+        self.model.to(self.device)
 
-        self.episode_id = len(self.total_reward_record) + 1
+        if self.network_id == 1:
+            self.target_model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
+        self.target_model.eval()
+        self.target_model.to(self.device)
         return
 
-    def _loadModel(self):
-        # メインのモデルを読み込む
-        if self.path_map['model'].exists():
+    def _load(self):
+        # sessionを読み込む
+        session_data = None
+        if self.simulation_count == 1 and self.path_map['session'].exists():
+            with self.path_map['session'].open('rb') as f:
+                session_data = pickle.load(f)
+        elif self.shared_resources.has('session_data'):
+            session_data = self.shared_resources.get('session_data')
+
+        if session_data is not None:
+            self.update_count = session_data['update_count']
+            self.total_reward_record = session_data['total_reward_record']
+            self.update_interval_record = session_data['update_interval_record']
+            self.num_new_data_record = session_data['num_new_data_record']
+            self.batch_record = session_data['batch_record']
+            self.num_epochs_record = session_data['num_epochs_record']
+            self.learning_rate_record = session_data['learning_rate_record']
+            self.weight_decay_record = session_data['weight_decay_record']
+            self.epsilon_record = session_data['epsilon_record']
+            self.simulation_time_record = session_data['simulation_time_record']
+
+        self.episode = len(self.total_reward_record) + 1
+
+        # modelを読み込む
+        if self.simulation_count > 1:
+            self.model = self.shared_resources.get('model')
+        elif self.path_map['model'].exists():
             self.model.load_state_dict(torch.load(self.path_map['model']))
         elif self.bc_flg and self.path_map['bc_model'].exists():
             self.model.load_state_dict(torch.load(self.path_map['bc_model']))
         
-        # ターゲットモデルを読み込む
-        if not self.path_map['target_model'].exists() or self.update_count == 0:
+        if self.update_count == 0:
             self.target_model.load_state_dict(self.model.state_dict())
-        else:
+        elif self.simulation_count > 1:
+            self.target_model = self.shared_resources.get('target_model')
+        elif self.path_map['target_model'].exists():
             self.target_model.load_state_dict(torch.load(self.path_map['target_model']))
+        else:
+            self.target_model.load_state_dict(self.model.state_dict())
+        
+        # replay_bufferを読み込む
+        self.replay_buffer.load()
         return
     
     def _makeEpsilon(self):
@@ -283,12 +356,12 @@ class MasterAgent(Object):
         epsilon_schedule = self.config.get('epsilon_schedule')
         schedule_interval = len(epsilon_schedule) 
 
-        self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode_id - 1) % schedule_interval]
+        self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode - 1) % schedule_interval]
         return
     
     def saveLearningData(self):
         # バッファーのサイズが変化したかどうかをフラグで管理
-        self.buffer_change_flg = False
+        self.replay_buffer.set('change_flg', False)
         
         # ローカルエージェントを走査
         for local_agent in self.local_agents.getAll():
@@ -306,23 +379,15 @@ class MasterAgent(Object):
             local_agent.set('learning_data', [])
 
             # バッファーのサイズが変化したことをフラグで管理
-            self.buffer_change_flg = True
+            self.replay_buffer.set('change_flg', True)
         return
     
     def train(self):
         # バッファーのサイズが変化していない場合は学習しない
-        if not self.buffer_change_flg:
-            return
-        
-        # 学習フラグが立っていないときはスキップ
         if not self.learning_flg:
             return
         
         if not self.replay_buffer.get('should_learn_flg'):
-            return
-        
-        # バッファーのサイズが十分でない場合は学習しない
-        if self.replay_buffer.get('current_size') < self.replay_buffer.get('batch_size') * self.replay_buffer.get('num_batches'):
             return
 
         # バッファーからデータを取得
@@ -422,36 +487,52 @@ class MasterAgent(Object):
                 print(f"{name}: {param.grad.norm().item():.3f}")
         return
             
-    def saveModel(self):
-        # モデルを保存
-        torch.save(self.model.state_dict(), self.path_map['model'])
-        torch.save(self.target_model.state_dict(), self.path_map['target_model'])    
-        return
-    
-    def saveSession(self):
-        # バッファーを保存
-        self.replay_buffer.save()
-
-        # その他のセッション情報を保存
-        with self.path_map['session'].open('wb') as f:
-            session_data = {
-                'update_count': self.update_count,
-                'total_reward_record': self.total_reward_record,
-                'update_interval_record': self.update_interval_record,
-                'num_data_for_learning_record': self.num_data_for_learning_record,
-                'batch_record': self.batch_record,
-                'num_epochs_record': self.num_epochs_record,
-                'learning_rate_record': self.learning_rate_record,
-                'weight_decay_record': self.weight_decay_record,
-                'epsilon_record': self.epsilon_record,
-            }
-            pickle.dump(session_data, f)
-        
-        # 何回目のエピソードかを表示
-        if self.learning_flg:
-            print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")
-        else:
+    def save(self):
+        if not self.learning_flg:
             print(f"Master Agent {self.id}: This simulation is for evaluation only.")
+            return
+        
+        if self.finish_flg or self.simulation_count % self.save_interval == 0:   
+            # session情報を保存
+            with self.path_map['session'].open('wb') as f:
+                session_data = {
+                    'update_count': self.update_count,
+                    'total_reward_record': self.total_reward_record,
+                    'update_interval_record': self.update_interval_record,
+                    'num_new_data_record': self.num_new_data_record,
+                    'batch_record': self.batch_record,
+                    'num_epochs_record': self.num_epochs_record,
+                    'learning_rate_record': self.learning_rate_record,
+                    'weight_decay_record': self.weight_decay_record,
+                    'epsilon_record': self.epsilon_record,
+                    'simulation_time_record': self.simulation_time_record,
+                }
+                pickle.dump(session_data, f)
+            
+            # modelを保存
+            torch.save(self.model.state_dict(), self.path_map['model'])
+            torch.save(self.target_model.state_dict(), self.path_map['target_model']) 
+        
+        # bufferを保存
+        self.replay_buffer.save()
+        
+        # shared_resourcesオブジェクトに保存
+        self.shared_resources.set('model', self.model)
+        self.shared_resources.set('target_model', self.target_model)
+        self.shared_resources.set('session_data', {
+            'update_count': self.update_count,
+            'total_reward_record': self.total_reward_record,
+            'update_interval_record': self.update_interval_record,
+            'num_new_data_record': self.num_new_data_record,
+            'batch_record': self.batch_record,
+            'num_epochs_record': self.num_epochs_record,
+            'learning_rate_record': self.learning_rate_record,
+            'weight_decay_record': self.weight_decay_record,
+            'epsilon_record': self.epsilon_record,
+            'simulation_time_record': self.simulation_time_record,
+        })
+
+        print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")    
         return
 
     def updateSessionData(self):
@@ -465,13 +546,14 @@ class MasterAgent(Object):
         # データを記録
         self.total_reward_record.append(self.avg_total_reward) 
         self.update_interval_record.append(self.update_interval)
-        self.num_data_for_learning_record.append(self.replay_buffer.get('num_data_for_learning')) 
+        self.num_new_data_record.append(self.replay_buffer.get('num_new_data')) 
         self.batch_record['number'].append(self.replay_buffer.get('num_batches')) 
         self.batch_record['size'].append(self.replay_buffer.get('batch_size'))
         self.num_epochs_record.append(self.num_epochs)
         self.learning_rate_record.append(self.learning_rate) 
         self.weight_decay_record.append(self.weight_decay) 
         self.epsilon_record.append(self.epsilon) 
+        self.simulation_time_record.append(self.simulation_time)
         return
     
     def _updateAverageTotalReward(self):
@@ -493,6 +575,19 @@ class MasterAgent(Object):
     @property
     def replay_buffer_path_map(self):
         return self.path_map['replay_buffer']
+    
+    @property
+    def simulation_count(self):
+        vissim = self.network.vissim
+        return vissim.get('simulation_count')
+    
+    @property
+    def finish_flg(self):
+        if self.simulation_count == self.num_simulations:
+            return True
+        
+        if self.stop_flg and (self.episode == self.stop_episode):
+            return True
 
 
 

@@ -41,7 +41,7 @@ class Network(Common):
         # 制御手法を取得
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
-        self.simulation_count = simulator_info['simulation_count']
+        self.num_simulations = simulator_info['num_simulations']
 
         # 保存するデータに関するフラグを設定
         self._getSaveParams()
@@ -71,8 +71,8 @@ class Network(Common):
                 raise FileExistsError(f"The folder '{self.save_path}' already exists. Please change the folder name or disable the record flag.")
             
             # シミュレーション回数を1回にしているかどうかの確認
-            if self.simulation_count != 1:
-                raise ValueError("When the record flag is set to True, the simulation_count must be 1. Please change the simulation_count to 1 in the config file.")
+            if self.num_simulations != 1:
+                raise ValueError("When the record flag is set to True, the num_simulations must be 1. Please change the num_simulations to 1 in the config file.")
 
         
         return

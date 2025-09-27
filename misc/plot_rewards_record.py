@@ -20,6 +20,7 @@ with open(session_path, 'rb') as f:
     total_reward_record = session_data['total_reward_record']
     epsilon_record = session_data['epsilon_record']
     num_epochs_record = session_data['num_epochs_record']
+    update_interval_record = session_data['update_interval_record']
 
 # episodeごとのtotal_rewardの推移を描画
 fig_total_reward, ax_total_reward = plt.subplots()
@@ -53,6 +54,15 @@ ax_num_epochs.set_ylabel('Num Epochs', fontsize=20)
 ax_num_epochs.set_title('Num Epochs over Episodes', fontsize=24)
 ax_num_epochs.tick_params(axis='both', which='major', labelsize=20)
 ax_num_epochs.tick_params(axis='both', which='minor', labelsize=20)
+
+# update_intervalの推移を描画
+fig_update_interval, ax_update_interval = plt.subplots()
+ax_update_interval.plot(update_interval_record, linewidth=4)
+ax_update_interval.set_xlabel('Episode', fontsize=20)
+ax_update_interval.set_ylabel('Update Interval', fontsize=20)
+ax_update_interval.set_title('Update Interval over Episodes', fontsize=24)
+ax_update_interval.tick_params(axis='both', which='major', labelsize=20)
+ax_update_interval.tick_params(axis='both', which='minor', labelsize=20)
 
 # グラフを表示
 plt.show()
