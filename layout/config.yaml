@@ -8,7 +8,7 @@ simulator :
     value: 1                   # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
   time_step: 2                 # シミュレーションの更新の時間幅（秒）
   red_steps: 1                 # 全赤のステップ数
-  max_workers: 10              # 並列実行するワーカー数
+  max_workers: 7               # 並列実行するワーカー数
   debug: 
     flg: false                 # デバッグモードのフラグ
   backup:
@@ -27,7 +27,7 @@ drl:
   save_interval: 5             # データを保存する間隔
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    episode: 500               # 強制終了するシミュレーションの回数（エピソード数）
+    episode: 200               # 強制終了するシミュレーションの回数（エピソード数）
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
@@ -88,12 +88,12 @@ scoot:
   spacing_threshold: 40        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
-  record_flg: false            # 記録を行うかどうか
-  save_folder: 'balanced_2222' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  record_flg: false             # 記録を行うかどうか
+  save_folder: 'main-minor_200' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
-    phase_flg: false
+    phase_flg: true
     calc_time_flg: true
   old_definition_flg: false    # 古い定義で報酬を記録するかどうか
   max_len: 20                  # 記録しない場合の一次的に記録するデータの数

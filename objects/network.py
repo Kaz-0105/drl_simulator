@@ -62,11 +62,17 @@ class Network(Common):
         self.queue_flg = records_info['metric']['queue_flg']
         self.delay_flg = records_info['metric']['delay_flg']
         self.calc_time_flg = records_info['metric']['calc_time_flg']
+        self.phase_flg = records_info['metric']['phase_flg']
         self.old_definition_flg = records_info['old_definition_flg']
         
         if self.record_flg:
             # データ保存用のフォルダを取得
-            self.save_path = Path.cwd() / 'results' / 'metrics'/ self.control_method / records_info['save_folder']
+            if self.control_method == 'drl':
+                drl_info = self.config.get('drl_info')
+                drl_method = drl_info['method']
+                self.save_path = Path('results') / 'metrics' / self.control_method / drl_method / records_info['save_folder']
+            else:
+                self.save_path = Path.cwd() / 'results' / 'metrics'/ self.control_method / records_info['save_folder']
             if self.save_path.exists():
                 raise FileExistsError(f"The folder '{self.save_path}' already exists. Please change the folder name or disable the record flag.")
             
@@ -263,6 +269,12 @@ class Network(Common):
                 delay_record['delay'] /= input_roads.count()
                 save_data['average_delay'] = delay_record.copy()
 
+            # フェーズを記録
+            if self.phase_flg:
+                signal_controller = intersection.signal_controller
+                phase_record = signal_controller.get('phase_record')
+                save_data['phase'] = phase_record
+            
             # 計算時間を記録
             if self.calc_time_flg and self.control_method in ['drl', 'mpc']:
                 if intersection.has('local_agent'):

@@ -24,5 +24,9 @@ for sim_count in range(1, simulator_info['num_simulations'] + 1):
     # 終了したことを通知
     print(f"Simulation {sim_count} completed.")
 
+    # 終了フラグが立っていたら終了
+    if vissim.get('finish_flg'):
+        break
+
 # 非同期オブジェクトをシャットダウン
 executor.shutdown()

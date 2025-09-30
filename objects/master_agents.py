@@ -265,7 +265,7 @@ class MasterAgent(Object):
 
         if self.bc_flg:
             # 直す必要あり
-            self.path_map['bc_model'] = Path(f"models/bc_q_net_{self.network_id}_{lanes_str}_{self.num_vehicles}.pth")
+            self.path_map['bc_model'] = Path(f"models/bc_q_net_{self.network_id}_{num_lanes_str}_{self.num_vehicles}.pth")
         return
     
     def _initSession(self):
