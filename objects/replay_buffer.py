@@ -28,21 +28,28 @@ class ReplayBuffer (Common):
         # バッファのパスを取得
         self.path_map = self.master_agent.get('replay_buffer_path_map')
 
-        # バッファのデータをロード
-        self._loadData()
+        # change_flgを初期化
+        self.change_flg = False
         return
     
     def _getBufferInfo(self):
         apex_info = self.config.get('apex_info')
-        self.num_data_for_learning = apex_info['buffer']['num_data_for_learning']
+        self.num_new_data = apex_info['buffer']['num_new_data']
         self.max_size = apex_info['buffer']['size']
         self.num_batches = apex_info['buffer']['batch']['number']
         self.batch_size = apex_info['buffer']['batch']['size']
         self.initial_priority = apex_info['buffer']['initial_priority']
         self.priority_reset_flg = apex_info['buffer']['priority_reset_flg']
+
+        drl_info = self.config.get('drl_info')
+        self.learning_flg = drl_info['learning_flg']
+        self.save_interval = drl_info['save_interval']
+
+        simulator_info = self.config.get('simulator_info')
+        self.num_simulations = simulator_info['num_simulations']
         return
 
-    def _loadData(self):
+    def load(self):
         # 最初のエピソードかどうかで分岐
         if self.simulation_count == 1:
             # データのコンテナを初期化
@@ -56,7 +63,7 @@ class ReplayBuffer (Common):
                 return
             
             # 学習を行わない場合はロードしない
-            if not self.master_agent.get('learning_flg'):
+            if not self.learning_flg:
                 return
             
             with self.path_map['tree'].open('rb') as f:
@@ -121,13 +128,11 @@ class ReplayBuffer (Common):
 
     def save(self):
         # 学習を行わない場合は保存しない
-        if not self.master_agent.get('learning_flg'):
+        if not self.learning_flg:
             return
         
         # pklファイルを更新
-        simulator_info = self.config.get('simulator_info')
-        drl_info = self.config.get('drl_info')
-        if self.simulation_count == simulator_info['simulation_count'] or self.simulation_count % drl_info['buffer_save_interval'] == 0:
+        if self.finish_flg or self.simulation_count % self.save_interval == 0:
             with self.path_map['tree'].open('wb') as f:
                 saved_data = {
                     'tree': self.sum_tree.get('tree'),
@@ -153,13 +158,17 @@ class ReplayBuffer (Common):
         
         # shared_resourcesオブジェクトに保存
         self.shared_resources.set('sum_tree', self.sum_tree)
-        self.shared_resources.set('new_data_count', self.new_data_count)
-            
+        self.shared_resources.set('new_data_count', self.new_data_count)      
         return 
     
     def updateInitialPriority(self, losses):
         max_loss = np.max(losses)
         self.sum_tree.set('initial_priority', max_loss * 1.1)
+        return
+    
+    def _showInfo(self):
+        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_new_data}]")
+        print(f"ReplayBuffer: Data size[{self.current_size}/{self.max_size}]")
         return
 
     @property
@@ -168,22 +177,30 @@ class ReplayBuffer (Common):
     
     @property
     def should_learn_flg(self):
-        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_data_for_learning}], Data size[{self.current_size}/{self.max_size}]")
-
-        # 新しいデータが十分に溜まったら学習を行う
-        if self.new_data_count >= self.num_data_for_learning:
-            self.new_data_count %= self.num_data_for_learning
-            return True
-        else:
+        if not self.change_flg:
             return False
+        
+        self._showInfo()
+
+        if self.new_data_count < self.num_new_data:
+            return False
+        
+        self.new_data_count %= self.num_new_data
+
+        if self.current_size < self.batch_size * self.num_batches:
+            return False
+        
+        return True
         
     @property
     def simulation_count(self):
-        # vissimオブジェクトを取得
         master_agent = self.master_agent
         network = master_agent.network
         vissim = network.vissim
-
         return vissim.get('simulation_count')
+    
+    @property
+    def finish_flg(self):
+        return self.master_agent.get('finish_flg')
         
         

@@ -22,7 +22,7 @@ class Simulation(Common):
         self.end_time = simulation_info['simulation_time']
         self.time_step = simulation_info['time_step']
         self.control_method = simulation_info['control_method']
-        self.debug_flg = simulation_info['debug_flg']
+        self.debug_flg = simulation_info['debug']['flg']
 
         # シード値を設定
         self._makeRandomSeed(simulation_info)
@@ -118,8 +118,7 @@ class Simulation(Common):
 
             # トータルの報酬を更新し，データを保存
             master_agents.updateSessionData()
-            master_agents.saveModel()
-            master_agents.saveSession()
+            master_agents.save()
             
         elif self.control_method == 'mpc':
             # 必要なオブジェクトを取得

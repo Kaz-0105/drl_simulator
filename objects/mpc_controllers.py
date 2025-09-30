@@ -111,7 +111,7 @@ class MpcController(Object):
             if phase_info['num_roads'] == self.num_roads:
                 break
 
-        self.num_phases = int(phase_info['type'].split('-')[0])
+        self.num_phases = int(phase_info['num_roads'])
     
         phases = self.signal_controller.get('phases')
         self.phases = {}

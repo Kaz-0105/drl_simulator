@@ -41,7 +41,7 @@ class Network(Common):
         # 制御手法を取得
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
-        self.simulation_count = simulator_info['simulation_count']
+        self.num_simulations = simulator_info['num_simulations']
 
         # 保存するデータに関するフラグを設定
         self._getSaveParams()
@@ -62,17 +62,23 @@ class Network(Common):
         self.queue_flg = records_info['metric']['queue_flg']
         self.delay_flg = records_info['metric']['delay_flg']
         self.calc_time_flg = records_info['metric']['calc_time_flg']
+        self.phase_flg = records_info['metric']['phase_flg']
         self.old_definition_flg = records_info['old_definition_flg']
         
         if self.record_flg:
             # データ保存用のフォルダを取得
-            self.save_path = Path.cwd() / 'results' / 'metrics'/ self.control_method / records_info['save_folder']
+            if self.control_method == 'drl':
+                drl_info = self.config.get('drl_info')
+                drl_method = drl_info['method']
+                self.save_path = Path('results') / 'metrics' / self.control_method / drl_method / records_info['save_folder']
+            else:
+                self.save_path = Path.cwd() / 'results' / 'metrics'/ self.control_method / records_info['save_folder']
             if self.save_path.exists():
                 raise FileExistsError(f"The folder '{self.save_path}' already exists. Please change the folder name or disable the record flag.")
             
             # シミュレーション回数を1回にしているかどうかの確認
-            if self.simulation_count != 1:
-                raise ValueError("When the record flag is set to True, the simulation_count must be 1. Please change the simulation_count to 1 in the config file.")
+            if self.num_simulations != 1:
+                raise ValueError("When the record flag is set to True, the num_simulations must be 1. Please change the num_simulations to 1 in the config file.")
 
         
         return
@@ -263,6 +269,12 @@ class Network(Common):
                 delay_record['delay'] /= input_roads.count()
                 save_data['average_delay'] = delay_record.copy()
 
+            # フェーズを記録
+            if self.phase_flg:
+                signal_controller = intersection.signal_controller
+                phase_record = signal_controller.get('phase_record')
+                save_data['phase'] = phase_record
+            
             # 計算時間を記録
             if self.calc_time_flg and self.control_method in ['drl', 'mpc']:
                 if intersection.has('local_agent'):

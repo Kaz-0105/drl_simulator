@@ -34,6 +34,7 @@ class Vissim(Common):
 
         # 設定ファイルの変更を監視するためのイベントハンドラを設定
         self.config_change_handler = ConfigChangeHandler(self)
+        return
     
     def _getVissimCom(self):
         simulator_info = self.config.get('simulator_info')
@@ -51,11 +52,11 @@ class Vissim(Common):
 
         # クイックモードについて
         self.com.Graphics.SetAttValue('QuickMode', True)
-        
         return
     
     def run(self):
         self.simulation.run()
+        return
     
     def exit(self):
         self.com.Exit()
@@ -78,8 +79,11 @@ class Vissim(Common):
 
             # ファイルをコピー
             for item in src_dir.iterdir():
+                dest = backup_dir / item.name
                 if item.is_file():
-                    shutil.copy2(item, backup_dir / item.name)
+                    shutil.copy2(item, dest)
+                elif item.is_dir():
+                    shutil.copytree(item, dest)
 
             # 5個以上のバックアップがある場合は古いものを削除
             backup_dirs = sorted(backup_root.glob(f"{src_dir.name}_*"), key=lambda x: x.name)
@@ -88,6 +92,7 @@ class Vissim(Common):
                     shutil.rmtree(old_backup)
 
             print(f"Backup of {src_dir} completed to {backup_dir}")
+        return
     
     @property
     def backup_flg(self):
@@ -102,6 +107,17 @@ class Vissim(Common):
             return False
         
         return True
+    
+    @property
+    def finish_flg(self):
+        if self.simulation.get('control_method') != 'drl':
+            return False
+        
+        for master_agent in self.network.master_agents.getAll():
+            if master_agent.get('finish_flg'):
+                return True
+        
+        return False
 
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, vissim):
@@ -118,11 +134,13 @@ class ConfigChangeHandler(FileSystemEventHandler):
 
         # observerを初期化
         self._initObserver()
+        return
     
     def _initObserver(self):
         self.observer = Observer()
         self.observer.schedule(self, path='layout', recursive=True)
         self.observer.start()
+        return
 
     def on_modified(self, event):
         if event.src_path.endswith('phases3.csv'):
@@ -134,7 +152,7 @@ class ConfigChangeHandler(FileSystemEventHandler):
                 return
             
             # phases4.csvの内容を読み込み、local_agentsのrandom_phase_probsを更新
-            phases = pd.read_csv(event.src_path)
+            phases = pd.read_csv(event.src_path, index_col=False)
             random_phase_probs = {}
             for _, row in phases.iterrows():
                 random_phase_probs[int(row['id'])] = float(row['random_prob'])
@@ -164,9 +182,10 @@ class ConfigChangeHandler(FileSystemEventHandler):
         elif event.src_path.endswith('config.yaml'):
             # 設定ファイルが変更された場合、設定を再読み込み
             self.config.readConfigFile()
+            self.config.reshapeDrlInfo()
         
         elif event.src_path.endswith('epsilon_schedule.csv'):
-            epsilon_schedule = pd.read_csv(event.src_path)
+            epsilon_schedule = pd.read_csv(event.src_path, index_col=False)
             self.config.set('epsilon_schedule', epsilon_schedule)
         
         return
