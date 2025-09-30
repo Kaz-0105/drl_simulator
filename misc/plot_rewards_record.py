@@ -7,7 +7,7 @@ drl_method = 'apex'
 model_id = 3
 
 # 指数移動平均を使うか
-ema_flg = False
+ema_flg = True
 
 # ファイル名を指定してデータを読み込む
 session_path = Path('results/session/drl') / drl_method / f'session_{model_id}' / 'session.pkl'
