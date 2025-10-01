@@ -118,6 +118,7 @@ class LocalAgent(Object):
         # master_agentと紐づける
         self.master_agent = self.intersection.get('master_agent')
         self.master_agent.local_agents.add(self)
+        self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
 
         # 探索率を設定
         self.epsilon = self.master_agent.get('epsilon')
@@ -201,11 +202,13 @@ class LocalAgent(Object):
     def _initDrlParameters(self):
         drl_info = self.config.get('drl_info')
         self.network_id = drl_info['network_id']
+        self.reward_id = drl_info['reward_id']
+        self.state_id = drl_info['state_id']
         self.features_info = drl_info['features']
+        self.data_augmentation_flg = drl_info['data_augmentation_flg']
         self.duration_steps = drl_info['duration_steps']
         self.num_vehicles = drl_info['num_vehicles']
         self.num_lanes_map = self.master_agent.num_lanes_map
-        self.reward_id = drl_info['reward_id']
         return
     
     def _makeRandomPhaseProbs(self):
@@ -517,7 +520,63 @@ class LocalAgent(Object):
 
         # データを保存
         self.learning_data.append((state, action, cumulative_reward, next_state, done))
+
+        # data_augmentation_flgがTrueの場合，データ拡張を実施
+        if self.data_augmentation_flg:
+            self.data_augmentation_target = self.learning_data[-1]
+            self._runDataAugmentation()
+
         return
+    
+    def _runDataAugmentation(self):
+        data_augmentation_type = self.data_augmentation_flg
+        if data_augmentation_type == 0:
+            return
+         
+        if self.num_roads == 4:
+            state_origin, action_origin, cumulative_reward, next_state_origin, done = self.data_augmentation_target
+
+            if data_augmentation_type == 1:
+                symmetry_types = range(1, self.num_roads)
+            elif data_augmentation_type == 2:
+                symmetry_types = [2]
+            else:
+                raise ValueError('data_augmentation_type must be 0, 1, or 2.') 
+            
+            for symmetry_type in symmetry_types:
+                # stateを変換
+                state = self._rotateState(state_origin, symmetry_type)
+                next_state = self._rotateState(next_state_origin, symmetry_type)
+                
+                # actionを変換
+                action = self.symmetry_phase_map[action_origin][symmetry_type]
+                self.learning_data.append((state, action, cumulative_reward, next_state, done))
+        else:
+            raise ValueError('Data augmentation is only available for intersections with 4 roads.')
+        return
+    
+    def _rotateState(self, state_origin, symmetry_type):
+        state = {}
+        state['roads'] = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            new_road_order_id = (road_order_id + symmetry_type - 1) % self.num_roads + 1
+            state['roads'][new_road_order_id] = state_origin['roads'][road_order_id]
+
+        phase_id = self._reshapePhaseState(state_origin['phase'])
+        symmetry_phase_id = self.symmetry_phase_map[phase_id][symmetry_type]
+        phase_state = [0] * (self.intersection.get('num_phases'))
+        phase_state[symmetry_phase_id - 1] = 1
+        state['phase'] = torch.tensor(phase_state).float()
+
+        return state
+
+    def _reshapePhaseState(self, phase_state):
+        phase_state = phase_state.tolist()
+        for idx, val in enumerate(phase_state):
+            if val == 1: 
+                return idx + 1
+        
+        raise ValueError('Current phase state is invalid.')
     
     @property
     def infer_flg(self):

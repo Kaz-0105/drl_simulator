@@ -5,7 +5,7 @@ simulator :
   simulation_time: 500         # シミュレーションを行う時間（秒）
   seed:
     is_random: true            # シード値をランダムにするかどうか
-    value: 1                   # シード値を固定する場合の値（is_randomがfalseのときのみ有効）
+    value: 1                   # シード値（is_randomがfalseのときのみ有効，1-100を入力，検証用）
   time_step: 2                 # シミュレーションの更新の時間幅（秒）
   red_steps: 1                 # 全赤のステップ数
   max_workers: 7               # 並列実行するワーカー数
@@ -21,19 +21,20 @@ drl:
   duration_steps: 5            # 1回の予測で決める時間ステップ幅
   network_id: 1                # ニューラルネットワークのID
   state_id: 2                  # 状態のテンプレートID
+  data_augmentation_flg: true  # データ拡張を行うかどうか
   num_vehicles: 5              # 自動車台数
   reward_id: 2                 # 報酬
   bc_flg: false                # 行動クローン初期化
   save_interval: 5             # データを保存する間隔
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    episode: 200               # 強制終了するシミュレーションの回数（エピソード数）
+    episode: 100               # 強制終了するシミュレーションの回数（エピソード数）
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
   update_interval: 2000        # ターゲットネットワークの同期間隔
   buffer:
-    num_new_data: 25           # データが何個たまったら学習を行うか
+    num_new_data: 50           # データが何個たまったら学習を行うか
     size: 200000               # リプレイバッファのサイズ
     batch:
       number: 10               # バッチ数

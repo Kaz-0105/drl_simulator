@@ -132,6 +132,19 @@ class QNet1(NeuralNetwork):
             nn.Linear(self.hidden_sizes[1], self.output_size),
         )
 
+    def _dataAugmentationCheck(self):
+        if self.num_roads == 4:
+            if self.num_lanes_map[1] == self.num_lanes_map[2] == self.num_lanes_map[3] == self.num_lanes_map[4]:
+                self.data_augmentation_type = 1
+            elif self.num_lanes_map[1] == self.num_lanes_map[3] and self.num_lanes_map[2] == self.num_lanes_map[4]:
+                self.data_augmentation_type = 2
+            else:
+                self.data_augmentation_type = 0
+        else:
+            raise NotImplementedError('Data augmentation is only implemented for 4-road intersections.')
+
+        return
+
     def _initialize_networks(self):
         # 今後ネットワークの初期化を行う場合はここに記述
         return

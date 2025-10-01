@@ -34,7 +34,7 @@ class Simulation(Common):
         seed_info = simulation_info['seed']
 
         if seed_info['is_random']:
-            self.random_seed = random.randint(1, 100)
+            self.random_seed = random.randint(100 + 1, 10000)
         else:
             self.random_seed = seed_info['value']
         
@@ -78,35 +78,25 @@ class Simulation(Common):
             local_agents = self.network.local_agents
             master_agents = self.network.master_agents
 
-            # 最初のネットワークの更新
+            # 最初のネットワーク更新と状態の取得
             self.network.updateData()
-
-            # 状態量を計算
             local_agents.getState()
             
             while self.current_time < self.end_time:
-                # 行動を計算
+                # 行動を取得
                 local_agents.getAction()
 
                 # Vissimを1ステップ進める
                 self._runSingleStep()
 
-                # ネットワークの更新
+                # ネットワークの更新，状態・報酬の取得，学習データの作成
                 self.network.updateData()
-
-                # 次の状態量を計算
                 local_agents.getState()
-
-                # 前回の報酬を計算（状態量が必要なため，次の状態量を決めた後に計算）
                 local_agents.getReward()
-
-                # バッファーに送るデータを作成
                 local_agents.makeLearningData()
 
-                # データをバッファーに保存
+                # データを保存し学習
                 master_agents.saveLearningData()
-
-                # 学習を行う
                 master_agents.train()
 
                 # 終了フラグが立っていた場合終了

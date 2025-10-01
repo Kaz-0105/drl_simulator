@@ -105,6 +105,9 @@ class MasterAgent(Object):
         # IDを設定
         self.id = self.master_agents.count() + 1
 
+        # num_roadsを設定
+        self.num_roads = len(num_lanes_turple)
+
         # intersectionsオブジェクトと紐づける
         self._makeIntersectionConnections(num_lanes_turple)
 
@@ -127,6 +130,9 @@ class MasterAgent(Object):
 
         # epsilonの初期化
         self._makeEpsilon()
+
+        # symmetry_phase_mapを作成
+        self._makeSymmetryPhaseMap()
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
@@ -167,6 +173,7 @@ class MasterAgent(Object):
         self.duration_steps = drl_info['duration_steps']
         self.network_id = drl_info['network_id']
         self.reward_id = drl_info['reward_id']
+        self.data_augmentation_flg = drl_info['data_augmentation_flg']
         self.num_vehicles = drl_info['num_vehicles']
         self.bc_flg = drl_info['bc_flg']
         self.learning_flg = drl_info['learning_flg']
@@ -199,7 +206,7 @@ class MasterAgent(Object):
 
         csv_path = model_dir / "model.csv"
         if not csv_path.exists():
-            model_df = pd.DataFrame(columns=['id', 'network_id', 'reward_id', 'num_lanes', 'num_vehicles', 'duration_steps', 'buffer_size', 'state_id'])
+            model_df = pd.DataFrame(columns=['id', 'network_id', 'reward_id', 'num_lanes', 'num_vehicles', 'duration_steps', 'buffer_size', 'state_id', 'data_augmentation_flg'])
         else:
             model_df = pd.read_csv(csv_path, dtype={'num_lanes': int}, index_col=False)
 
@@ -210,7 +217,8 @@ class MasterAgent(Object):
             (model_df['num_vehicles'] == self.num_vehicles) & 
             (model_df['duration_steps'] == self.duration_steps) & 
             (model_df['buffer_size'] == self.buffer_size) & 
-            (model_df['state_id'] == self.state_id) 
+            (model_df['state_id'] == self.state_id) &
+            (model_df['data_augmentation_flg'] == int(self.data_augmentation_flg))
         ]
         exist_flg = not filtered_model_df.empty
 
@@ -226,6 +234,7 @@ class MasterAgent(Object):
                 'duration_steps' : self.duration_steps,
                 'buffer_size' : self.buffer_size,
                 'state_id' : self.state_id,
+                'data_augmentation_flg' : int(self.data_augmentation_flg),
             }
             model_df = pd.concat([model_df, pd.DataFrame([new_row])], ignore_index=True)
             self.model_id = new_row['id']
@@ -357,6 +366,26 @@ class MasterAgent(Object):
         schedule_interval = len(epsilon_schedule) 
 
         self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode - 1) % schedule_interval]
+        return
+    
+    def _makeSymmetryPhaseMap(self):
+        self.symmetry_phase_map = {}
+        symmetry_phase_tags = self.config.get('symmetry_phase_tags')
+        if self.num_roads == 4:
+            tmp_tags = symmetry_phase_tags[self.num_roads]
+            for _, tmp_tag in tmp_tags.iterrows():
+                phase_id = tmp_tag['phase_id']
+                symmetry_phase_id = tmp_tag['symmetry_phase_id']
+                symmetry_type = tmp_tag['type']
+
+                if phase_id not in self.symmetry_phase_map:
+                    self.symmetry_phase_map[phase_id] = {}
+
+                self.symmetry_phase_map[phase_id][symmetry_type] = symmetry_phase_id
+        else:
+            # 後々定義
+            raise ValueError(f"Symmetry phase map is not defined for {self.num_roads} roads.")
+        
         return
     
     def saveLearningData(self):
