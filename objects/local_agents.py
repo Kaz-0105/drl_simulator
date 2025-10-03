@@ -493,6 +493,34 @@ class LocalAgent(Object):
                         num_vehs_record = data_collection_measurement.get('num_vehs_record')
                         num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
                         self.current_reward += sum(num_vehs_list)
+        
+        elif self.reward_id == 3:
+            # 一定速度以上の自動車台数 + 通過自動車台数
+            self.current_reward = 0
+            for lane_str, vehicle_data in self.lane_str_vehicle_data_map.items():
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                road_order_id, _ = map(int, lane_str.split('-'))
+                road = self.roads[road_order_id]
+                v_max = road.get('max_speed')
+
+                for _, row in vehicle_data.iterrows():
+                    if row['speed'] > v_max / 2:
+                        self.current_reward += 1
+
+            for road in self.roads.getAll():
+                for data_collection_point in road.data_collection_points.getAll():
+                    if data_collection_point.get('type') != 'intersection':
+                        continue
+
+                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                        if data_collection_measurement.get('type') == 'multiple':
+                            continue
+                        
+                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
+                        self.current_reward += sum(num_vehs_list)
     
         # 記録する
         self.reward_record.append(self.current_reward)

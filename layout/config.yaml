@@ -23,7 +23,7 @@ drl:
   state_id: 2                  # 状態のテンプレートID
   data_augmentation_flg: true  # データ拡張を行うかどうか
   num_vehicles: 5              # 自動車台数
-  reward_id: 2                 # 報酬
+  reward_id: 3                 # 報酬
   bc_flg: false                # 行動クローン初期化
   save_interval: 5             # データを保存する間隔
   stop:
