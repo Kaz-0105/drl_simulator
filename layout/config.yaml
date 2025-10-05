@@ -1,7 +1,7 @@
 simulator :
   network_name: '7-4-1'        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
   control_method: 'drl'        # 制御手法の指定
-  num_simulations: 500         # シミュレーションの回数（エピソード数）
+  num_simulations: 500          # シミュレーションの回数（エピソード数）
   simulation_time: 500         # シミュレーションを行う時間（秒）
   seed:
     is_random: true            # シード値をランダムにするかどうか
@@ -17,18 +17,18 @@ simulator :
 
 drl:
   method: 'apex'               # DRLの手法の指定
-  learning_flg: true           # 学習を行うかどうか
+  learning_flg: true          # 学習を行うかどうか
   duration_steps: 5            # 1回の予測で決める時間ステップ幅
   network_id: 1                # ニューラルネットワークのID
   state_id: 2                  # 状態のテンプレートID
   data_augmentation_flg: true  # データ拡張を行うかどうか
   num_vehicles: 5              # 自動車台数
-  reward_id: 3                 # 報酬
+  reward_id: 4                 # 報酬
   bc_flg: false                # 行動クローン初期化
   save_interval: 5             # データを保存する間隔
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    episode: 100               # 強制終了するシミュレーションの回数（エピソード数）
+    episode: 50                # 強制終了するシミュレーションの回数（エピソード数）
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
@@ -90,7 +90,7 @@ scoot:
 
 records:
   record_flg: false             # 記録を行うかどうか
-  save_folder: 'main-minor_200' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: 'main-minor_speed_100' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # 見たい結果を選択
 drl_method = 'apex'
-model_ids = [5]
+model_ids = [6]
 
 # 指数移動平均を使うか
 ema_flg = True
