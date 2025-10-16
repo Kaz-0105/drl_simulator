@@ -17,18 +17,21 @@ simulator :
 
 drl:
   method: 'apex'               # DRLの手法の指定
-  learning_flg: true          # 学習を行うかどうか
+  learning_flg: false          # 学習を行うかどうか
   duration_steps: 5            # 1回の予測で決める時間ステップ幅
   network_id: 1                # ニューラルネットワークのID
   state_id: 2                  # 状態のテンプレートID
   data_augmentation_flg: true  # データ拡張を行うかどうか
   num_vehicles: 5              # 自動車台数
-  reward_id: 4                 # 報酬
+  reward_id: 2                 # 報酬
+  done_reward: -50             # エピソード終了時のペナルティ
   bc_flg: false                # 行動クローン初期化
   save_interval: 5             # データを保存する間隔
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    episode: 250               # 強制終了するシミュレーションの回数（エピソード数）
+    type: 'interval'           # 'episode': エピソード数で指定, 'interval': 間隔で指定
+    episode: 50                # 強制終了するエピソード数
+    interval: 50               # 強制終了する間隔
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
@@ -40,11 +43,16 @@ apex:
       number: 10               # バッチ数
       size: 128                # バッチサイズ
     initial_priority: 300      # 初期優先度
-    priority_reset_flg: false  # 優先度のリセットフラグ
-  num_epochs: 2                # 更新のエポック数
-  gamma: 0.9                   # 割引率
+    priority_reset: 
+      flg: true                # 優先度のリセットを行うかどうか
+      type: 'interval'         # 'episode': エピソード数で指定, 'interval': 間隔で指定
+      episode: 50              # 優先度をリセットするエピソード
+      interval: 25             # 優先度をリセットする間隔
+  num_epochs: 3                # 更新のエポック数
+  gamma: 0.95                  # 割引率
   learning_rate: 1e-4          # 学習率
   weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
+  random_action_type: 2        # 1: 完全ランダム, 2: 自動車台数に基づいたランダム
   epsilon:                     
     schedule_flg: true         # ε-greedy法のスケジューリング
     value: 0                   # εの値（schedule_flgがfalseのとき）

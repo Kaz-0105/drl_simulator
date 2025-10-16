@@ -69,11 +69,14 @@ class LocalAgents(Container):
     @property # 終了フラグ
     def done_flg(self):
         for agent in self.getAll():
-            if agent.done_flg:
+            if agent.get('done_flg'):
                 return True
         return False
     
 class LocalAgent(Object):
+    TOTALLY_RANDOM = 1
+    NUM_VEHICLES_RANDOM = 2
+
     def __init__(self, local_agents, intersection):
         super().__init__() # objectクラスの継承
 
@@ -98,18 +101,21 @@ class LocalAgent(Object):
         # intersectionから道路数を取得
         self.num_roads = self.intersection.get('num_roads')
 
-        # master_agentからsymmetry_phase_map, epsilon, num_lanes_mapを取得
+        # master_agentからsymmetry_phase_map, epsilon, num_lanes_map, random_phase_probsを取得
         self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
         self.epsilon = self.master_agent.get('epsilon')
         self.num_vehicles = self.master_agent.get('num_vehicles')
         self.num_lanes_map = self.master_agent.get('num_lanes_map') 
+        self.random_phase_probs = self.master_agent.get('random_phase_probs')
 
         # road_lanes_mapを作成
         self._makeRoadLanesMap()
 
         # DRL, ApeXのパラメータ設定
         self._initParams()
-        self._makeRandomPhaseProbs() # ランダム行動時の行動の確率分布を作成
+
+        # フェーズ情報を取得
+        self._makePhases()
 
         # DNN初期化
         self._makeModel()
@@ -173,6 +179,7 @@ class LocalAgent(Object):
         drl_info = self.config.get('drl_info')
         self.network_id = drl_info['network_id']
         self.reward_id = drl_info['reward_id']
+        self.done_reward = drl_info['done_reward']
         self.state_id = drl_info['state_id']
         self.features_info = drl_info['features']
         self.data_augmentation_flg = drl_info['data_augmentation_flg']
@@ -183,22 +190,19 @@ class LocalAgent(Object):
         self.td_steps = apex_info['td_steps']
         self.gamma = apex_info['gamma']
         self.epsilon = self.master_agent.get('epsilon')
+        self.random_action_type = apex_info['random_action_type']
         return
     
-    # ランダム行動時の行動の確率分布を作成するメソッド
-    def _makeRandomPhaseProbs(self):
-        num_roads_phases_map = self.config.get('num_roads_phases_map')
-        phases = num_roads_phases_map[self.num_roads]
-        self.random_phase_probs = {}
-    
-        for _, row in phases.iterrows():
-            self.random_phase_probs[int(row['id'])] = float(row['random_prob'])
-        
-        # 確率の合計が1になるように正規化
-        total_prob = sum(self.random_phase_probs.values())
-        for phase_id in self.random_phase_probs:
-            self.random_phase_probs[phase_id] /= total_prob
-        return
+    def _makePhases(self):
+        # フェーズ情報を取得
+        self.phases = self.signal_controller.get('phases', type='copy')
+
+        for phase_id in list(self.phases.keys()):
+            phase_prob = self.random_phase_probs[phase_id]
+            if phase_prob == 0:
+                del self.phases[phase_id]
+
+        return 
     
     # 履歴を初期化するメソッド
     def _initRecords(self):
@@ -403,11 +407,8 @@ class LocalAgent(Object):
         
         # ε-greedy法
         if random.random() < self.epsilon:
-            action = random.choices(
-                list(self.random_phase_probs.keys()),
-                weights=list(self.random_phase_probs.values()),
-                k=1
-            )[0]
+            action = self._getRandomAction()
+            
         else:
             if self.calc_time_flg:
                 start_time = time.time()
@@ -427,6 +428,52 @@ class LocalAgent(Object):
         self.action_record.append(action)
         self.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
         return
+    
+    def _getRandomAction(self):
+        if self.random_action_type == LocalAgent.TOTALLY_RANDOM:
+            action = random.choices(
+                list(self.random_phase_probs.keys()),
+                weights=list(self.random_phase_probs.values()),
+                k=1
+            )[0]
+        
+        elif self.random_action_type == LocalAgent.NUM_VEHICLES_RANDOM:
+            # 各フェーズに何台の自動車が待っているかどうかを調べる
+            signal_num_vehs_map = {route_id: 0 for route_id in range(1, self.num_roads * (self.num_roads - 1) + 1)}
+            for lane_str, vehicle_data in self.lane_str_vehicle_data_map.items():
+                road_order_id, _ = map(int, lane_str.split('-'))
+                
+                for _, row in vehicle_data.iterrows():
+                    direction_id = row['direction_id']
+                    if direction_id == 0:
+                        continue
+                    signal_num_vehs_map[(road_order_id - 1) * (self.num_roads - 1) + direction_id] += 1
+
+            phase_num_vehs_map = {}
+            for phase_id, phase_list in self.phases.items():
+                tmp_num_vehs = 0
+                for signal_id in phase_list:
+                    tmp_num_vehs += signal_num_vehs_map[signal_id]
+                phase_num_vehs_map[phase_id] = tmp_num_vehs
+
+            # 全てのフェーズで0台の場合は完全ランダム
+            if sum(phase_num_vehs_map.values()) == 0:
+                action = random.choices(
+                    list(self.random_phase_probs.keys()),
+                    weights=list(self.random_phase_probs.values()),
+                    k=1
+                )[0]
+            else:
+                action = random.choices(
+                    list(phase_num_vehs_map.keys()),
+                    weights=list(phase_num_vehs_map.values()),
+                    k=1
+                )[0]
+        else: 
+            raise ValueError('not defined random_action_type.')
+        
+        return action
+
     
     # 報酬を取得するメソッド
     def getReward(self):
@@ -501,7 +548,7 @@ class LocalAgent(Object):
                         self.current_reward += sum(num_vehs_list)
                         
         elif self.reward_id == 4:
-            # 一定速度以上の自動車台数 + 通過自動車台数 - 一定速度以下の自動車台数
+            # 法定速度の半分以上の自動車台数 - 法定速度の半分以下の自動車台数 + 通過自動車台数
             self.current_reward = 0
             for lane_str, vehicle_data in self.lane_str_vehicle_data_map.items():
                 if vehicle_data.shape[0] == 0:
@@ -512,9 +559,9 @@ class LocalAgent(Object):
                 v_max = road.get('max_speed')
 
                 for _, row in vehicle_data.iterrows():
-                    if row['speed'] > v_max / 2:
+                    if 2 * row['speed'] >= v_max:
                         self.current_reward += 1
-                    elif row['speed'] < 5.0:
+                    else:
                         self.current_reward -= 1
 
             for road in self.roads.getAll():

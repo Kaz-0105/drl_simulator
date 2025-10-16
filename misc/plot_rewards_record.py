@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # 見たい結果を選択
 drl_method = 'apex'
-model_ids = [6]
+model_ids = [8]
 
 # 指数移動平均を使うか
 ema_flg = True
@@ -31,7 +31,12 @@ for model_id in model_ids:
     for idx, total_reward in enumerate(session_data[model_id]['total_reward_record']):
         ema = alpha * total_reward + (1 - alpha) * ema if idx > 0 else total_reward
         total_reward_record.append(ema)
+    
+    simulation_time_record = session_data[model_id]['simulation_time_record']
+    for idx in range(len(total_reward_record)):
+        total_reward_record[idx] *= 500 / simulation_time_record[idx]
     session_data[model_id]['total_reward_record'] = total_reward_record
+
 
 fig_total_reward, ax_total_reward = plt.subplots()
 for model_id in model_ids:

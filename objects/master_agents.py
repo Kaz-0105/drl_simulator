@@ -113,6 +113,10 @@ class MasterAgent(Object):
 
         # 車線数の情報を取得
         self._makeNumLanesMap(num_lanes_turple)
+        
+        # symmetry_phase_map, random_phase_probsを作成
+        self._makeSymmetryPhaseMap()
+        self._makeRandomPhaseProbs()
 
         # パラメータを取得
         self._getParams()
@@ -130,9 +134,6 @@ class MasterAgent(Object):
 
         # epsilonの初期化
         self._makeEpsilon()
-
-        # symmetry_phase_mapを作成
-        self._makeSymmetryPhaseMap()
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
@@ -162,17 +163,54 @@ class MasterAgent(Object):
             num_lanes_map[len(num_lanes_map) + 1] = num_lanes
 
         self.num_lanes_map = num_lanes_map
+        return
+    
+    # 対称性のあるフェーズの組み合わせをマッピングするメソッド
+    def _makeSymmetryPhaseMap(self):
+        self.symmetry_phase_map = {}
+        symmetry_phase_tags = self.config.get('symmetry_phase_tags')
+        if self.num_roads == 4:
+            tmp_tags = symmetry_phase_tags[self.num_roads]
+            for _, tmp_tag in tmp_tags.iterrows():
+                phase_id = tmp_tag['phase_id']
+                symmetry_phase_id = tmp_tag['symmetry_phase_id']
+                symmetry_type = tmp_tag['type']
+
+                if phase_id not in self.symmetry_phase_map:
+                    self.symmetry_phase_map[phase_id] = {}
+
+                self.symmetry_phase_map[phase_id][symmetry_type] = symmetry_phase_id
+        else:
+            # 後々定義
+            raise ValueError(f"Symmetry phase map is not defined for {self.num_roads} roads.")
+        
+        return
+
+    # ランダム行動時の行動の確率分布を作成するメソッド
+    def _makeRandomPhaseProbs(self):
+        num_roads_phases_map = self.config.get('num_roads_phases_map')
+        phases = num_roads_phases_map[self.num_roads]
+        self.random_phase_probs = {}
+    
+        for _, row in phases.iterrows():
+            self.random_phase_probs[int(row['id'])] = float(row['random_prob'])
+        
+        # 確率の合計が1になるように正規化
+        total_prob = sum(self.random_phase_probs.values())
+        for phase_id in self.random_phase_probs:
+            self.random_phase_probs[phase_id] /= total_prob
+        return
 
     def _getParams(self):
         simulator_info = self.config.get('simulator_info')
         self.num_simulations = simulator_info['num_simulations']
-        self.simulation_time = simulator_info['simulation_time']
 
         drl_info = self.config.get('drl_info')
         self.drl_method = drl_info['method']
         self.duration_steps = drl_info['duration_steps']
         self.network_id = drl_info['network_id']
         self.reward_id = drl_info['reward_id']
+        self.done_reward = drl_info['done_reward']
         self.data_augmentation_flg = drl_info['data_augmentation_flg']
         self.num_vehicles = drl_info['num_vehicles']
         self.bc_flg = drl_info['bc_flg']
@@ -180,7 +218,14 @@ class MasterAgent(Object):
         self.state_id = drl_info['state_id']
         self.save_interval = drl_info['save_interval']
         self.stop_flg = drl_info['stop']['flg']
-        self.stop_episode = drl_info['stop']['episode']
+        self.stop_type = drl_info['stop']['type']
+
+        if self.stop_type == 'episode':
+            self.stop_episode = drl_info['stop']['episode']
+        elif self.stop_type == 'interval':
+            self.stop_interval = drl_info['stop']['interval']
+        else:
+            raise ValueError(f"Invalid stop type: {self.stop_type}")
         
         apex_info = self.config.get('apex_info')
         self.td_steps = apex_info['td_steps']
@@ -206,7 +251,7 @@ class MasterAgent(Object):
 
         csv_path = model_dir / "model.csv"
         if not csv_path.exists():
-            model_df = pd.DataFrame(columns=['id', 'network_id', 'reward_id', 'num_lanes', 'num_vehicles', 'duration_steps', 'buffer_size', 'state_id', 'data_augmentation_flg'])
+            model_df = pd.DataFrame(columns=['id', 'network_id', 'reward_id', 'num_lanes', 'num_vehicles', 'duration_steps', 'buffer_size', 'state_id', 'data_augmentation_flg', 'gamma', 'done_reward'])
         else:
             model_df = pd.read_csv(csv_path, dtype={'num_lanes': int}, index_col=False)
 
@@ -218,7 +263,9 @@ class MasterAgent(Object):
             (model_df['duration_steps'] == self.duration_steps) & 
             (model_df['buffer_size'] == self.buffer_size) & 
             (model_df['state_id'] == self.state_id) &
-            (model_df['data_augmentation_flg'] == int(self.data_augmentation_flg))
+            (model_df['data_augmentation_flg'] == int(self.data_augmentation_flg)) &
+            (model_df['gamma'] == self.gamma) &
+            (model_df['done_reward'] == self.done_reward)
         ]
         exist_flg = not filtered_model_df.empty
 
@@ -235,6 +282,8 @@ class MasterAgent(Object):
                 'buffer_size' : self.buffer_size,
                 'state_id' : self.state_id,
                 'data_augmentation_flg' : int(self.data_augmentation_flg),
+                'gamma': self.gamma,
+                'done_reward': self.done_reward,
             }
             model_df = pd.concat([model_df, pd.DataFrame([new_row])], ignore_index=True)
             self.model_id = new_row['id']
@@ -292,6 +341,7 @@ class MasterAgent(Object):
         self.weight_decay_record = []
         self.epsilon_record = []
         self.simulation_time_record = []
+        self.random_phase_probs_record = {phase_id: [] for phase_id in self.random_phase_probs.keys()}
 
         self.episode = 1
         return
@@ -329,6 +379,7 @@ class MasterAgent(Object):
             self.weight_decay_record = session_data['weight_decay_record']
             self.epsilon_record = session_data['epsilon_record']
             self.simulation_time_record = session_data['simulation_time_record']
+            self.random_phase_probs_record = session_data['random_phase_probs_record']
 
         self.episode = len(self.total_reward_record) + 1
 
@@ -366,26 +417,6 @@ class MasterAgent(Object):
         schedule_interval = len(epsilon_schedule) 
 
         self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode - 1) % schedule_interval]
-        return
-    
-    def _makeSymmetryPhaseMap(self):
-        self.symmetry_phase_map = {}
-        symmetry_phase_tags = self.config.get('symmetry_phase_tags')
-        if self.num_roads == 4:
-            tmp_tags = symmetry_phase_tags[self.num_roads]
-            for _, tmp_tag in tmp_tags.iterrows():
-                phase_id = tmp_tag['phase_id']
-                symmetry_phase_id = tmp_tag['symmetry_phase_id']
-                symmetry_type = tmp_tag['type']
-
-                if phase_id not in self.symmetry_phase_map:
-                    self.symmetry_phase_map[phase_id] = {}
-
-                self.symmetry_phase_map[phase_id][symmetry_type] = symmetry_phase_id
-        else:
-            # 後々定義
-            raise ValueError(f"Symmetry phase map is not defined for {self.num_roads} roads.")
-        
         return
     
     def saveLearningData(self):
@@ -461,10 +492,10 @@ class MasterAgent(Object):
                         cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
 
                         # 終了フラグをテンソルに変換
-                        dones = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
+                        done_flgs = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
 
                         # TDターゲットを計算
-                        td_targets = cumurative_rewards + (1 - dones) * (self.gamma ** self.td_steps) * target_q_values
+                        td_targets = cumurative_rewards + (1 - done_flgs) * (self.gamma ** self.td_steps) * target_q_values
 
                     # メインモデルを学習モードに戻す
                     self.model.train()
@@ -535,6 +566,7 @@ class MasterAgent(Object):
                     'weight_decay_record': self.weight_decay_record,
                     'epsilon_record': self.epsilon_record,
                     'simulation_time_record': self.simulation_time_record,
+                    'random_phase_probs_record': self.random_phase_probs_record,
                 }
                 pickle.dump(session_data, f)
             
@@ -559,6 +591,7 @@ class MasterAgent(Object):
             'weight_decay_record': self.weight_decay_record,
             'epsilon_record': self.epsilon_record,
             'simulation_time_record': self.simulation_time_record,
+            'random_phase_probs_record': self.random_phase_probs_record,
         })
 
         print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")    
@@ -583,6 +616,8 @@ class MasterAgent(Object):
         self.weight_decay_record.append(self.weight_decay) 
         self.epsilon_record.append(self.epsilon) 
         self.simulation_time_record.append(self.simulation_time)
+        for phase_id, prob in self.random_phase_probs.items():
+            self.random_phase_probs_record[phase_id].append(prob)
         return
     
     def _updateAverageTotalReward(self):
@@ -615,8 +650,21 @@ class MasterAgent(Object):
         if self.simulation_count == self.num_simulations:
             return True
         
-        if self.stop_flg and (self.episode == self.stop_episode):
+        if not self.stop_flg:
+            return False
+        
+        if self.stop_type == 'episode' and self.episode == self.stop_episode:
             return True
+
+        if self.stop_type == 'interval' and (self.episode % self.stop_interval == 0):
+            return True
+    
+        return False
+        
+    @property
+    def simulation_time(self):
+        return self.network.simulation.get('current_time')
+        
 
 
 

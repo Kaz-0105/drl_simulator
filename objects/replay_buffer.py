@@ -39,7 +39,10 @@ class ReplayBuffer (Common):
         self.num_batches = apex_info['buffer']['batch']['number']
         self.batch_size = apex_info['buffer']['batch']['size']
         self.initial_priority = apex_info['buffer']['initial_priority']
-        self.priority_reset_flg = apex_info['buffer']['priority_reset_flg']
+        self.priority_reset_flg = apex_info['buffer']['priority_reset']['flg']
+        self.priority_reset_type = apex_info['buffer']['priority_reset']['type']
+        self.priority_reset_episode = apex_info['buffer']['priority_reset']['episode']
+        self.priority_reset_interval = apex_info['buffer']['priority_reset']['interval']
 
         drl_info = self.config.get('drl_info')
         self.learning_flg = drl_info['learning_flg']
@@ -86,7 +89,18 @@ class ReplayBuffer (Common):
             self.new_data_count = self.shared_resources.get('new_data_count')
 
         # 優先度のリセットを行う（フラグが立っている場合）
-        if self.priority_reset_flg:
+        self._resetPriority()
+
+        return
+    
+    def _resetPriority(self):
+        if not self.priority_reset_flg:
+            return
+        
+        if self.priority_reset_type == 'episode' and self.episode == self.priority_reset_episode:
+            self.sum_tree.resetPriority()
+        
+        elif self.priority_reset_type == 'interval' and (self.episode % self.priority_reset_interval == 0):
             self.sum_tree.resetPriority()
 
         return
@@ -202,5 +216,10 @@ class ReplayBuffer (Common):
     @property
     def finish_flg(self):
         return self.master_agent.get('finish_flg')
+
+    
+    @property
+    def episode(self):
+        return self.master_agent.get('episode')
         
         

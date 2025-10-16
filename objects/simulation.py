@@ -100,7 +100,7 @@ class Simulation(Common):
                 master_agents.train()
 
                 # 終了フラグが立っていた場合終了
-                if local_agents.done_flg:
+                if local_agents.get('done_flg'):
                     break
             
             # 最後のネットワーク更新
