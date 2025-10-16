@@ -440,14 +440,16 @@ class LocalAgent(Object):
         elif self.random_action_type == LocalAgent.NUM_VEHICLES_RANDOM:
             # 各フェーズに何台の自動車が待っているかどうかを調べる
             signal_num_vehs_map = {route_id: 0 for route_id in range(1, self.num_roads * (self.num_roads - 1) + 1)}
-            for lane_str, vehicle_data in self.lane_str_vehicle_data_map.items():
-                road_order_id, _ = map(int, lane_str.split('-'))
-                
-                for _, row in vehicle_data.iterrows():
-                    direction_id = row['direction_id']
-                    if direction_id == 0:
-                        continue
-                    signal_num_vehs_map[(road_order_id - 1) * (self.num_roads - 1) + direction_id] += 1
+            for road_order_id in range(1, self.num_roads + 1):
+                lanes = self.road_lanes_map[road_order_id]
+                for lane_order_id in range(1, lanes.count() + 1):
+                    lane = lanes[lane_order_id]
+                    vehicle_data = lane.get('vehicle_data', type='reference')
+                    for _, row in vehicle_data.iterrows():
+                        direction_id = row['direction_id']
+                        if direction_id == 0:
+                            continue
+                        signal_num_vehs_map[(road_order_id - 1) * (self.num_roads - 1) + direction_id] += 1
 
             phase_num_vehs_map = {}
             for phase_id, phase_list in self.phases.items():
