@@ -3,11 +3,9 @@ from libs.executor import Executor
 from objects.vissim import Vissim
 from libs.shared_resource import SharedResources
 
-# 設定オブジェクトと非同期オブジェクトを初期化
+# 設定オブジェクト，非同期オブジェクト，共有オブジェクトを初期化
 config = Config()
 executor = Executor(config)
-
-# 引継ぎ用のオブジェクトを初期化
 shared_resources = SharedResources()
 
 # シミュレーションを実行

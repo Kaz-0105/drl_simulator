@@ -11,165 +11,139 @@ import time
 
 class LocalAgents(Container):
     def __init__(self, upper_object, device=None):
-        # 継承
-        super().__init__()
+        super().__init__() # containerクラスの継承
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
+        # 設定オブジェクト，非同期オブジェクト，引継ぎデータ格納用のオブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
-
-        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = upper_object.shared_resources
 
         # 上位オブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
-            # デバイスを設定
-            self.device = device
-
-            # 上位の紐づくオブジェクトを取得
-            self.network = upper_object
-
-            # 要素オブジェクトを作成
-            self._makeElements()
+            self.network = upper_object # networkオブジェクトを設定
+            self.device = device # cuda or cpuを取得
+            self._makeElements() # 要素オブジェクトを作成
 
         elif upper_object.__class__.__name__ == 'MasterAgent':
-            # 上位の紐づくオブジェクトを取得
-            self.master_agent = upper_object
+            self.master_agent = upper_object # master_agentオブジェクトを取得
+        
+        else:
+            raise ValueError('upper_object must be Network or MasterAgent.')
+
+        return
     
+    # local_agentオブジェクトを初期化するメソッド
     def _makeElements(self):
         intersections = self.network.intersections
         for intersection in intersections.getAll(sorted_flg=True):
             self.add(LocalAgent(self, intersection))
     
+    # 状態を取得するメソッド（非同期処理）
     def getState(self):
-        # 非同期で状態量を取得
         for agent in self.getAll():
-            self.executor.submit(agent.getState)
-            
-        # 全ての状態量取得が終わるまで待機
+            self.executor.submit(agent.getState) 
         self.executor.wait()
         return
     
+    # 行動を取得するメソッド（非同期処理）
     def getAction(self):
-        # 非同期で行動を取得
         for agent in self.getAll():
             self.executor.submit(agent.getAction)
-
-        # 全ての行動取得が終わるまで待機
         self.executor.wait()
         return
     
+    # 報酬を取得するメソッド（非同期処理）
     def getReward(self):
-        # 非同期で報酬を取得
         for agent in self.getAll():
             self.executor.submit(agent.getReward)
-
-        # 全ての報酬取得が終わるまで待機
         self.executor.wait()
+        return
 
+    # 学習データを作成するメソッド（非同期処理，masterにはまだ送らない情報）
     def makeLearningData(self):
-        # データを送信
         for agent in self.getAll():
             self.executor.submit(agent.makeLearningData)
-        
-        # 全てのデータ保存が終わるまで待機
         self.executor.wait()
+        return
     
-    @property
+    @property # 終了フラグ
     def done_flg(self):
         for agent in self.getAll():
-            if agent.done_flg:
+            if agent.get('done_flg'):
                 return True
-    
         return False
     
 class LocalAgent(Object):
-    def __init__(self, local_agents, intersection):
-        # 継承
-        super().__init__()
+    TOTALLY_RANDOM = 1
+    NUM_VEHICLES_RANDOM = 2
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
+    def __init__(self, local_agents, intersection):
+        super().__init__() # objectクラスの継承
+
+        # 設定オブジェクト，非同期オブジェクト，引継ぎデータ格納用のオブジェクトを取得
         self.config = local_agents.config
         self.executor = local_agents.executor
-
-        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = local_agents.shared_resources
 
-        # デバイスを設定
-        self.device = local_agents.device
+        self.local_agents = local_agents # local_agentsオブジェクトを取得
+        self.device = local_agents.device # cuda or cpuを取得
+        self.id = self.local_agents.count() + 1 # idを設定
 
-        # 上位オブジェクトを取得
-        self.local_agents = local_agents
-
-        # IDを設定
-        self.id = self.local_agents.count() + 1
-
-        # intersectionオブジェクトと紐づける
+        # intersection, roads, signal_controller, network, master_agentオブジェクトと紐づける
         self.intersection = intersection
         self.intersection.set('local_agent', self)
-        self.num_roads = self.intersection.get('num_roads')
-
-        # signal_controllerオブジェクトと紐づける
+        self.roads = self.intersection.input_roads
         self.signal_controller = self.intersection.signal_controller
-
-        # networkオブジェクトと紐づける
         self.network = self.local_agents.network
-
-        # master_agentと紐づける
         self.master_agent = self.intersection.get('master_agent')
         self.master_agent.local_agents.add(self)
+        
+        # intersectionから道路数を取得
+        self.num_roads = self.intersection.get('num_roads')
 
-        # 探索率を設定
+        # master_agentからsymmetry_phase_map, epsilon, num_lanes_map, random_phase_probsを取得
+        self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
         self.epsilon = self.master_agent.get('epsilon')
+        self.num_vehicles = self.master_agent.get('num_vehicles')
+        self.num_lanes_map = self.master_agent.get('num_lanes_map') 
+        self.random_phase_probs = self.master_agent.get('random_phase_probs')
 
-        # roadオブジェクトおよびlaneオブジェクトと紐づける（一方通行）
-        self.roads = self.intersection.input_roads
+        # road_lanes_mapを作成
         self._makeRoadLanesMap()
 
-        # DRL共通のパラメータを設定
-        self._initDrlParameters()
+        # DRL, ApeXのパラメータ設定
+        self._initParams()
 
-        # ε-greedyで選ばれる行動の確率を設定
-        self._makeRandomPhaseProbs()
+        # フェーズ情報を取得
+        self._makePhases()
 
-        # APEXに関するパラメータを設定
-        self._initApeXParameters()
-
-        # ネットワークを作成してマスターと同期させる
+        # DNN初期化
         self._makeModel()
         self._syncModel()
 
         # 状態量，行動，報酬，終了フラグを初期化
-        self.current_state = None
-        self.current_action = None
-        self.current_reward = None
+        self.current_state, self.current_action, self.current_reward = None, None, None
         self.done_flg = False
 
         # トータルのリワードを初期化
         self.total_reward = 0
 
-        # バッファーに送る学習データを格納するためのリストを初期化
+        # 学習データの格納用リストを初期化
         self.learning_data = []
 
-        # 状態，行動，報酬を一時的にストックするための変数を初期化
-        self.state_record = deque(maxlen=self.td_steps + 1)
-        self.action_record = deque(maxlen=self.td_steps)
-        self.reward_record = deque(maxlen=self.td_steps)
-
-        # 計算時間の記録を初期化
-        self._initCalculationTimeRecord()
-
+        # 履歴を初期化
+        self._initRecords()
         return
     
+    # キー：道路ID，値：lanesオブジェクトの辞書を作成するメソッド
+    # lanesオブジェクトに格納されるlaneオブジェクトは右分岐車線から順番にラベル付けされる
     def _makeRoadLanesMap(self):
-        # road_lanes_mapを初期化
-        road_lanes_map = {}
-
-        # 道路を走査
-        for road_order_id in self.roads.getKeys(container_flg=True):
-            road = self.intersection.input_roads[road_order_id]
+        self.road_lanes_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            road = self.roads[road_order_id]
             lanes = Lanes(self)
 
+            # 右折分岐車線
             for link in road.links.getAll():
                 if link.get('type') != 'right':
                     continue
@@ -178,6 +152,7 @@ class LocalAgent(Object):
                     lane = link.lanes[lane_id]
                     lanes.add(lane, lanes.count() + 1)
             
+            # 中央車線
             for link in road.links.getAll():
                 if link.get('type') != 'main':
                     continue
@@ -186,6 +161,7 @@ class LocalAgent(Object):
                     lane = link.lanes[lane_id]
                     lanes.add(lane, lanes.count() + 1)
             
+            # 左折分岐車線
             for link in road.links.getAll():
                 if link.get('type') != 'left':
                     continue
@@ -194,67 +170,73 @@ class LocalAgent(Object):
                     lane = link.lanes[lane_id]
                     lanes.add(lane, lanes.count() + 1)
             
-            road_lanes_map[road_order_id] = lanes
+            self.road_lanes_map[road_order_id] = lanes
 
-        self.road_lanes_map = road_lanes_map
+        return
 
-    def _initDrlParameters(self):
+    # DRL, ApeXのパラメータを初期化するメソッド
+    def _initParams(self):
         drl_info = self.config.get('drl_info')
         self.network_id = drl_info['network_id']
+        self.reward_id = drl_info['reward_id']
+        self.done_reward = drl_info['done_reward']
+        self.state_id = drl_info['state_id']
         self.features_info = drl_info['features']
+        self.data_augmentation_flg = drl_info['data_augmentation_flg']
         self.duration_steps = drl_info['duration_steps']
         self.num_vehicles = drl_info['num_vehicles']
-        self.num_lanes_map = self.master_agent.num_lanes_map
-        self.reward_id = drl_info['reward_id']
-        return
-    
-    def _makeRandomPhaseProbs(self):
-        num_roads_phases_map = self.config.get('num_roads_phases_map')
-        phases = num_roads_phases_map[self.num_roads]
-        self.random_phase_probs = {}
-    
-        for _, row in phases.iterrows():
-            self.random_phase_probs[int(row['id'])] = float(row['random_prob'])
-        
-        # 確率の合計が1になるように正規化
-        total_prob = sum(self.random_phase_probs.values())
-        for phase_id in self.random_phase_probs:
-            self.random_phase_probs[phase_id] /= total_prob
 
-        return
-    
-    def _initApeXParameters(self):
         apex_info = self.config.get('apex_info')
         self.td_steps = apex_info['td_steps']
         self.gamma = apex_info['gamma']
         self.epsilon = self.master_agent.get('epsilon')
+        self.random_action_type = apex_info['random_action_type']
         return
     
-    def _initCalculationTimeRecord(self):
+    def _makePhases(self):
+        # フェーズ情報を取得
+        self.phases = self.signal_controller.get('phases', type='copy')
+
+        for phase_id in list(self.phases.keys()):
+            phase_prob = self.random_phase_probs[phase_id]
+            if phase_prob == 0:
+                del self.phases[phase_id]
+
+        return 
+    
+    # 履歴を初期化するメソッド
+    def _initRecords(self):
+        # 状態，行動，報酬の履歴を初期化
+        self.state_record = deque(maxlen=self.td_steps + 1)
+        self.action_record = deque(maxlen=self.td_steps)
+        self.reward_record = deque(maxlen=self.td_steps)
+
+        # 計算時間の履歴を初期化
         records_info = self.config.get('records_info')
         self.calc_time_flg = records_info['metric']['calc_time_flg']
         if self.calc_time_flg:
             self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
         return
     
+    # DNNを初期化するメソッド
     def _makeModel(self):
-        # モデルを初期化
         if (self.network_id == 1):
-            self.model = QNet1(self.config, self.device, self.master_agent.num_vehicles, self.master_agent.num_lanes_map)
+            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
 
         self.model.eval()
         self.model.to(self.device)
         return
-        
+    
+    # master_agentのQネットワークと同期するメソッド
     def _syncModel(self):
         master_agent_model = self.master_agent.get('model')
         self.model.load_state_dict(master_agent_model.state_dict())
         return
 
+    # 車両情報を更新するメソッド
     def _updateVehicleData(self):
-        # vehicle_dataを更新
         self.lane_str_vehicle_data_map = {} 
-        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+        for road_order_id in range(1, self.num_roads + 1):
             road = self.roads[road_order_id]
             lanes = self.road_lanes_map[road_order_id]
 
@@ -331,6 +313,7 @@ class LocalAgent(Object):
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
+    # 状態を取得するメソッド
     def getState(self):
         if not self.infer_flg:
             return
@@ -417,17 +400,15 @@ class LocalAgent(Object):
         self.state_record.append(state)
         return
     
+    # 行動を取得するメソッド
     def getAction(self):
         if not self.infer_flg:
             return
         
         # ε-greedy法
         if random.random() < self.epsilon:
-            action = random.choices(
-                list(self.random_phase_probs.keys()),
-                weights=list(self.random_phase_probs.values()),
-                k=1
-            )[0]
+            action = self._getRandomAction()
+            
         else:
             if self.calc_time_flg:
                 start_time = time.time()
@@ -448,6 +429,55 @@ class LocalAgent(Object):
         self.signal_controller.setNextPhases([self.current_action] * self.duration_steps)
         return
     
+    def _getRandomAction(self):
+        if self.random_action_type == LocalAgent.TOTALLY_RANDOM:
+            action = random.choices(
+                list(self.random_phase_probs.keys()),
+                weights=list(self.random_phase_probs.values()),
+                k=1
+            )[0]
+        
+        elif self.random_action_type == LocalAgent.NUM_VEHICLES_RANDOM:
+            # 各フェーズに何台の自動車が待っているかどうかを調べる
+            signal_num_vehs_map = {route_id: 0 for route_id in range(1, self.num_roads * (self.num_roads - 1) + 1)}
+            for road_order_id in range(1, self.num_roads + 1):
+                lanes = self.road_lanes_map[road_order_id]
+                for lane_order_id in range(1, lanes.count() + 1):
+                    lane = lanes[lane_order_id]
+                    vehicle_data = lane.get('vehicle_data', type='reference')
+                    for _, row in vehicle_data.iterrows():
+                        direction_id = row['direction_id']
+                        if direction_id == 0:
+                            continue
+                        signal_num_vehs_map[(road_order_id - 1) * (self.num_roads - 1) + direction_id] += 1
+
+            phase_num_vehs_map = {}
+            for phase_id, phase_list in self.phases.items():
+                tmp_num_vehs = 0
+                for signal_id in phase_list:
+                    tmp_num_vehs += signal_num_vehs_map[signal_id]
+                phase_num_vehs_map[phase_id] = tmp_num_vehs
+
+            # 全てのフェーズで0台の場合は完全ランダム
+            if sum(phase_num_vehs_map.values()) == 0:
+                action = random.choices(
+                    list(self.random_phase_probs.keys()),
+                    weights=list(self.random_phase_probs.values()),
+                    k=1
+                )[0]
+            else:
+                action = random.choices(
+                    list(phase_num_vehs_map.keys()),
+                    weights=list(phase_num_vehs_map.values()),
+                    k=1
+                )[0]
+        else: 
+            raise ValueError('not defined random_action_type.')
+        
+        return action
+
+    
+    # 報酬を取得するメソッド
     def getReward(self):
         if not self.evaluate_flg:
             return
@@ -490,12 +520,71 @@ class LocalAgent(Object):
                         num_vehs_record = data_collection_measurement.get('num_vehs_record')
                         num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
                         self.current_reward += sum(num_vehs_list)
+        
+        elif self.reward_id == 3:
+            # 一定速度以上の自動車台数 + 通過自動車台数
+            self.current_reward = 0
+            for lane_str, vehicle_data in self.lane_str_vehicle_data_map.items():
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                road_order_id, _ = map(int, lane_str.split('-'))
+                road = self.roads[road_order_id]
+                v_max = road.get('max_speed')
+
+                for _, row in vehicle_data.iterrows():
+                    if row['speed'] > v_max / 2:
+                        self.current_reward += 1
+
+            for road in self.roads.getAll():
+                for data_collection_point in road.data_collection_points.getAll():
+                    if data_collection_point.get('type') != 'intersection':
+                        continue
+
+                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                        if data_collection_measurement.get('type') == 'multiple':
+                            continue
+                        
+                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
+                        self.current_reward += sum(num_vehs_list)
+                        
+        elif self.reward_id == 4:
+            # 法定速度の半分以上の自動車台数 - 法定速度の半分以下の自動車台数 + 通過自動車台数
+            self.current_reward = 0
+            for lane_str, vehicle_data in self.lane_str_vehicle_data_map.items():
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                road_order_id, _ = map(int, lane_str.split('-'))
+                road = self.roads[road_order_id]
+                v_max = road.get('max_speed')
+
+                for _, row in vehicle_data.iterrows():
+                    if 2 * row['speed'] >= v_max:
+                        self.current_reward += 1
+                    else:
+                        self.current_reward -= 1
+
+            for road in self.roads.getAll():
+                for data_collection_point in road.data_collection_points.getAll():
+                    if data_collection_point.get('type') != 'intersection':
+                        continue
+
+                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                        if data_collection_measurement.get('type') == 'multiple':
+                            continue
+                        
+                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
+                        self.current_reward += sum(num_vehs_list)
     
         # 記録する
         self.reward_record.append(self.current_reward)
         self.total_reward += self.current_reward 
         return
-       
+    
+    # 学習データを作成するメソッド
     def makeLearningData(self):
         if self.infer_flg == False:
             return
@@ -506,18 +595,71 @@ class LocalAgent(Object):
         # 状態，行動，報酬，終了フラグを取得
         state = self.state_record[0]
         next_state = self.state_record[-1]
-
         action = self.action_record[0]
-
         cumulative_reward = 0
         for reward in list(reversed(self.reward_record)):
             cumulative_reward = reward + self.gamma * cumulative_reward
-
         done = int(self.done_flg)
 
         # データを保存
         self.learning_data.append((state, action, cumulative_reward, next_state, done))
+
+        # データ拡張を実施
+        if self.data_augmentation_flg:
+            self.data_augmentation_target = self.learning_data[-1]
+            self._runDataAugmentation()
         return
+    
+    # データ拡張をするメソッド
+    def _runDataAugmentation(self):
+        data_augmentation_type = self.data_augmentation_flg
+        if data_augmentation_type == 0:
+            return
+         
+        if self.num_roads == 4:
+            state_origin, action_origin, cumulative_reward, next_state_origin, done = self.data_augmentation_target
+
+            if data_augmentation_type == 1:
+                symmetry_types = range(1, self.num_roads)
+            elif data_augmentation_type == 2:
+                symmetry_types = [2]
+            else:
+                raise ValueError('data_augmentation_type must be 0, 1, or 2.') 
+            
+            for symmetry_type in symmetry_types:
+                # stateを変換
+                state = self._rotateState(state_origin, symmetry_type)
+                next_state = self._rotateState(next_state_origin, symmetry_type)
+                
+                # actionを変換
+                action = self.symmetry_phase_map[action_origin][symmetry_type]
+                self.learning_data.append((state, action, cumulative_reward, next_state, done))
+        else:
+            raise ValueError('Data augmentation is only available for intersections with 4 roads.')
+        return
+    
+    # 状態を回転させるメソッド（symmetry_type = 1: 90度，2:180度，3:270度）
+    def _rotateState(self, state_origin, symmetry_type):
+        state = {}
+        state['roads'] = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            new_road_order_id = (road_order_id + symmetry_type - 1) % self.num_roads + 1
+            state['roads'][new_road_order_id] = state_origin['roads'][road_order_id]
+
+        phase_id = self._reshapePhaseState(state_origin['phase'])
+        symmetry_phase_id = self.symmetry_phase_map[phase_id][symmetry_type]
+        phase_state = [0] * (self.intersection.get('num_phases'))
+        phase_state[symmetry_phase_id - 1] = 1
+        state['phase'] = torch.tensor(phase_state).float()
+        return state
+
+    # one-hotベクトルのフェーズ（テンソル）をフェーズIDに変換するメソッド
+    def _reshapePhaseState(self, phase_state):
+        phase_state = phase_state.tolist()
+        for idx, val in enumerate(phase_state):
+            if val == 1: 
+                return idx + 1
+        raise ValueError('Current phase state is invalid.')
     
     @property
     def infer_flg(self):

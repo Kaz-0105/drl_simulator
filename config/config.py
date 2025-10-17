@@ -36,6 +36,9 @@ class Config(Common):
         # drl_infoの整形
         self.reshapeDrlInfo()
 
+        # symmetry_phase_tagsについて
+        self._getSymmetryPhaseTags()
+
         return
     
     def readConfigFile(self):
@@ -140,5 +143,10 @@ class Config(Common):
             }
         }
         return
-
     
+    def _getSymmetryPhaseTags(self):
+        self.symmetry_phase_tags = {}
+        for num_roads in [4]:
+            self.symmetry_phase_tags[num_roads] = pd.read_csv(f'layout/symmetry_phase_tags{num_roads}.csv', index_col=False)
+        
+        return

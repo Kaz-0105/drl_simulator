@@ -287,6 +287,10 @@ class Network(Common):
                 
                 save_data['calc_time'] = calc_time_record
 
+            # DRLの場合はエピソード数も保存
+            if self.config.get('simulator_info')['control_method'] == 'drl':
+                save_data['episode'] = intersection.local_agent.master_agent.get('episode')
+
             # データを保存
             save_path = self.save_path / f"metric_{intersection_id}.pkl"
             with save_path.open('wb') as f:

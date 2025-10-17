@@ -100,7 +100,8 @@ class QNet1(NeuralNetwork):
     def _makeRoadsNet(self):
         # 道路ごとの特徴量の数を取得
         num_road_features_map = {}
-        for road_order_id, num_lanes in self.num_lanes_map.items():
+        for road_order_id in range(1, self.num_roads + 1):
+            num_lanes = self.num_lanes_map[road_order_id]
             road_net = self.sub_network_map['road'][str(num_lanes)]
             num_road_features_map[road_order_id] = road_net.get('output_size')
         
@@ -131,6 +132,19 @@ class QNet1(NeuralNetwork):
             nn.LeakyReLU(0.01),
             nn.Linear(self.hidden_sizes[1], self.output_size),
         )
+
+    def _dataAugmentationCheck(self):
+        if self.num_roads == 4:
+            if self.num_lanes_map[1] == self.num_lanes_map[2] == self.num_lanes_map[3] == self.num_lanes_map[4]:
+                self.data_augmentation_type = 1
+            elif self.num_lanes_map[1] == self.num_lanes_map[3] and self.num_lanes_map[2] == self.num_lanes_map[4]:
+                self.data_augmentation_type = 2
+            else:
+                self.data_augmentation_type = 0
+        else:
+            raise NotImplementedError('Data augmentation is only implemented for 4-road intersections.')
+
+        return
 
     def _initialize_networks(self):
         # 今後ネットワークの初期化を行う場合はここに記述
@@ -194,8 +208,11 @@ class QNet1(NeuralNetwork):
         
         # 出力を計算
         road_lanes_outputs_map = {}
-        for road_order_id, lanes_inputs in road_lanes_inputs_map.items():
-            # 車線数に応じたネットワークを取得
+        for road_order_id in range(1, self.num_roads + 1):
+            # 入力を取得
+            lanes_inputs = road_lanes_inputs_map[road_order_id]
+
+            # 車線数に応じたサブネットワークを取得
             num_lanes = self.num_lanes_map[road_order_id]
             lanes_net = lanes_net_map[str(num_lanes)]
 
@@ -224,7 +241,8 @@ class QNet1(NeuralNetwork):
 
         # 出力を計算
         road_outputs_map = {}
-        for road_order_id, road_inputs in road_inputs_map.items():
+        for road_order_id in range(1, self.num_roads + 1):
+            road_inputs = road_inputs_map[road_order_id]
             road_net = road_net_map[str(self.num_lanes_map[road_order_id])]
             road_outputs_map[road_order_id] = road_net(road_inputs)
         
@@ -268,11 +286,13 @@ class QNet1(NeuralNetwork):
         vehicle_inputs = []
         for states in x:
             roads = states['roads']
-            for road in roads.values():
+            for road_order_id in range(1, self.num_roads + 1):
+                road = roads[road_order_id]
                 lanes = road['lanes']
-                for lane in lanes.values():
+                for lane_id in range(1, len(lanes) + 1):
+                    lane = lanes[lane_id]
                     vehicles = lane['vehicles']
-                    vehicle_inputs.extend([vehicle for _, vehicle in vehicles.items()])
+                    vehicle_inputs.extend([vehicles[vehicle_id] for vehicle_id in range(1, self.num_vehicles + 1)])
         
         vehicle_inputs = torch.stack(vehicle_inputs)
         vehicle_inputs.requires_grad_(self.requires_grad)
@@ -287,9 +307,10 @@ class QNet1(NeuralNetwork):
         lane_shape_inputs = []
         for states in x:
             roads = states['roads']
-            for road in roads.values():
+            for road_order_id in range(1, self.num_roads + 1):
+                road = roads[road_order_id]
                 lanes = road['lanes']
-                lane_shape_inputs.extend([lane['shape'] for lane in lanes.values()])
+                lane_shape_inputs.extend([lanes[lane_id]['shape'] for lane_id in range(1, len(lanes) + 1)])
         
         lane_shape_inputs = torch.stack(lane_shape_inputs)
         lane_shape_inputs.requires_grad_(self.requires_grad) 
@@ -301,9 +322,10 @@ class QNet1(NeuralNetwork):
         lane_metric_inputs = []
         for states in x:
             roads = states['roads']
-            for road in roads.values():
+            for road_order_id in range(1, self.num_roads + 1):
+                road = roads[road_order_id]
                 lanes = road['lanes']
-                lane_metric_inputs.extend([lane['metric'] for lane in lanes.values()])
+                lane_metric_inputs.extend([lanes[lane_id]['metric'] for lane_id in range(1, len(lanes) + 1)])
         
         lane_metric_inputs = torch.stack(lane_metric_inputs)
         lane_metric_inputs.requires_grad_(self.requires_grad)
@@ -321,7 +343,8 @@ class QNet1(NeuralNetwork):
 
         # 道路の車線数を参照して，区切っていく
         end_col = -1
-        for road_order_id, num_lanes in self.num_lanes_map.items():
+        for road_order_id in range(1, self.num_roads + 1):
+            num_lanes = self.num_lanes_map[road_order_id]
             start_col = end_col + 1
             end_col += num_lanes * lane_output_size
 
@@ -335,8 +358,8 @@ class QNet1(NeuralNetwork):
         road_metric_inputs = []
         for states in x:
             roads = states['roads']
-            road_metric_inputs.extend([road['metric'] for road in roads.values()])
-            
+            road_metric_inputs.extend([roads[road_order_id]['metric'] for road_order_id in range(1, self.num_roads + 1)])
+
         road_metric_inputs = torch.stack(road_metric_inputs)
         road_metric_inputs.requires_grad_(self.requires_grad)
         road_metric_inputs = road_metric_inputs.to(self.device)
@@ -353,7 +376,7 @@ class QNet1(NeuralNetwork):
         
         # 道路ごとに区切っていく
         end_col = -1
-        for road_order_id in self.num_lanes_map.keys():
+        for road_order_id in range(1, self.num_roads + 1):
             start_col = end_col + 1
             end_col += output_size
 
@@ -367,7 +390,7 @@ class QNet1(NeuralNetwork):
         road_inputs_map = {}
 
         # 道路を走査
-        for road_order_id in self.num_lanes_map.keys():
+        for road_order_id in range(1, self.num_roads + 1):
             # 車線の特徴量を取得
             lane_outputs = road_lanes_outputs_map[road_order_id]
 

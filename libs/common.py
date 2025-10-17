@@ -1,7 +1,13 @@
 class Common:
-    def get(self, property_name):
+    def get(self, property_name, type='reference'):
         try:
-            return getattr(self, property_name)
+            if type == 'reference':
+                return getattr(self, property_name)
+            elif type == 'copy':
+                return getattr(self, property_name).copy()
+            else:
+                raise ValueError(f"Type '{type}' is not supported. Use 'reference' or 'copy'.")
+            
         except AttributeError:
             raise AttributeError(f"Property '{property_name}' not found in {self.__class__.__name__}.")
     
