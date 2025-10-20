@@ -313,6 +313,22 @@ class LocalAgent(Object):
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
+    def _updateMaxQueueMap(self):
+        self.road_max_queue_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            max_queue_length = 0
+            lanes = self.road_lanes_map[road_order_id]
+            for lane_order_id in range(1, lanes.count() + 1):
+                vehicle_data = self.lane_str_vehicle_data_map[f"{road_order_id}-{lane_order_id}"]
+                for _, row in vehicle_data[::-1].iterrows():
+                    if row['wait_flg']:
+                        position = row['position']
+                        max_queue_length = position if position > max_queue_length else max_queue_length
+                        break
+
+            self.road_max_queue_map[road_order_id] = max_queue_length
+        return
+
     # 状態を取得するメソッド
     def getState(self):
         if not self.infer_flg:
@@ -320,6 +336,7 @@ class LocalAgent(Object):
         
         # 自動車に関する情報を更新
         self._updateVehicleData()
+        self._updateRoadMaxQueueMap()
 
         if self.network_id == 1:
             # 状態を作成
@@ -334,18 +351,18 @@ class LocalAgent(Object):
 
             # 道路の状態を作成
             roads_state = {}
-            for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+            for road_order_id in range(1, self.num_roads + 1):
                 road = self.roads[road_order_id]
                 road_state = {}
                 metric_state = []
-                metric_state.append(int(road.get('max_queue_length')))
+                metric_state.append(int(self.road_max_queue_map[road_order_id]))
                 metric_state.append(int(road.get('average_delay')))
                 road_state['metric'] = torch.tensor(metric_state, dtype=torch.float32)
                 
                 # 車線の状態を作成
                 lanes_state = {}
                 lanes = self.road_lanes_map[road_order_id]
-                for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                for lane_order_id in range(1, lanes.count() + 1):
                     lane = lanes[lane_order_id]
                     lane_state = {}
                     lane_state['metric'] = torch.tensor([lane.get('num_vehicles')]).float()
@@ -399,7 +416,7 @@ class LocalAgent(Object):
         self.current_state = state
         self.state_record.append(state)
         return
-    
+
     # 行動を取得するメソッド
     def getAction(self):
         if not self.infer_flg:
@@ -574,10 +591,28 @@ class LocalAgent(Object):
                     for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
                         if data_collection_measurement.get('type') == 'multiple':
                             continue
-                        
-                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
-                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                        self.current_reward += sum(num_vehs_list)
+
+                    num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                    num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
+                    self.current_reward += sum(num_vehs_list)
+
+        elif self.reward_id == 5:
+            # queueの長さ
+            self.current_reward = 0
+            for road_id in range(1, self.num_roads + 1):
+                max_queue_length = 0
+                lanes = self.road_lanes_map[road_id]
+                for lane_id in range(1, lanes.count() + 1):
+                    vehicle_data = self.lane_str_vehicle_data_map[f"{road_id}-{lane_id}"]
+                    for _, row in vehicle_data[::-1].iterrows():
+                        if row['wait_flg']:
+                            position = row['position']
+                            max_queue_length = position if position > max_queue_length else max_queue_length
+                            break
+
+                self.current_reward -= max_queue_length
+
+
     
         # 記録する
         self.reward_record.append(self.current_reward)

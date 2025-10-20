@@ -6,11 +6,10 @@ import numpy as np
 # データの場所とラベルを設定
 simulation_list = [
     ['scoot/balanced_2222'],
-    ['mpc/balanced_2222_5'],
     ['mpc/balanced_2222_10'],
-    ['mpc/balanced_2222_15']
+    ['drl/apex/balanced_2222'],
 ]
-row_names = ['scoot', 'mpc_5', 'mpc_10', 'mpc_15']
+row_names = ['scoot', 'mpc_10', 'drl_apex']
 
 if len(simulation_list) != len(row_names):
     raise ValueError("The length of simulation_list and row_names must be the same.")
