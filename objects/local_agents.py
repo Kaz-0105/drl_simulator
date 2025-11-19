@@ -258,7 +258,7 @@ class LocalAgent(Object):
                 vehicle_data = lane.get('vehicle_data').copy()
                 vehicle_data = vehicle_data.sort_values(by='position', ascending=False)
                 vehicle_data = vehicle_data.reset_index(drop=True)
-                vehicle_data = vehicle_data.head(self.num_vehicles).copy()
+                # vehicle_data = vehicle_data.head(self.num_vehicles).copy()
 
                 # positionの定義
                 length_info = lane.get('length_info')
@@ -313,7 +313,7 @@ class LocalAgent(Object):
                 self.lane_str_vehicle_data_map[lane_str] = vehicle_data 
         return
 
-    def _updateMaxQueueMap(self):
+    def _updateRoadMaxQueueMap(self):
         self.road_max_queue_map = {}
         for road_order_id in range(1, self.num_roads + 1):
             max_queue_length = 0
@@ -321,7 +321,7 @@ class LocalAgent(Object):
             for lane_order_id in range(1, lanes.count() + 1):
                 vehicle_data = self.lane_str_vehicle_data_map[f"{road_order_id}-{lane_order_id}"]
                 for _, row in vehicle_data[::-1].iterrows():
-                    if row['wait_flg']:
+                    if row['speed'] < 10.0:
                         position = row['position']
                         max_queue_length = position if position > max_queue_length else max_queue_length
                         break
@@ -597,23 +597,13 @@ class LocalAgent(Object):
                     self.current_reward += sum(num_vehs_list)
 
         elif self.reward_id == 5:
-            # queueの長さ
+            # 流入道路の入れるスペースの和
             self.current_reward = 0
-            for road_id in range(1, self.num_roads + 1):
-                max_queue_length = 0
-                lanes = self.road_lanes_map[road_id]
-                for lane_id in range(1, lanes.count() + 1):
-                    vehicle_data = self.lane_str_vehicle_data_map[f"{road_id}-{lane_id}"]
-                    for _, row in vehicle_data[::-1].iterrows():
-                        if row['wait_flg']:
-                            position = row['position']
-                            max_queue_length = position if position > max_queue_length else max_queue_length
-                            break
+            for road_order_id in range(1, self.num_roads + 1):
+                road = self.roads[road_order_id]
+                space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 20 - 10  # -10〜10に正規化
+                self.current_reward += space
 
-                self.current_reward -= max_queue_length
-
-
-    
         # 記録する
         self.reward_record.append(self.current_reward)
         self.total_reward += self.current_reward 
