@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 
 # 見たい結果を選択
 drl_method = 'apex'
-model_ids = [7]
+model_ids = [11]
 
 # 指数移動平均を使うか
-ema_flg = False
+ema_flg = True
 
 # ファイル名を指定してデータを読み込む
 session_paths = {}

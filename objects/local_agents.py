@@ -605,7 +605,7 @@ class LocalAgent(Object):
             self.current_reward = 0
             for road_order_id in range(1, self.num_roads + 1):
                 road = self.roads[road_order_id]
-                space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 20 - 10  # -10〜10に正規化
+                space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 10 - 5  # -5〜5に正規化
                 self.current_reward += space
 
         # 記録する
