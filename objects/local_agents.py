@@ -537,6 +537,8 @@ class LocalAgent(Object):
                         num_vehs_record = data_collection_measurement.get('num_vehs_record')
                         num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
                         self.current_reward += sum(num_vehs_list)
+            
+            self.current_reward /= 10  # 報酬のスケールを調整
         
         elif self.reward_id == 3:
             # 一定速度以上の自動車台数 + 通過自動車台数
@@ -595,6 +597,8 @@ class LocalAgent(Object):
                     num_vehs_record = data_collection_measurement.get('num_vehs_record')
                     num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
                     self.current_reward += sum(num_vehs_list)
+
+            self.current_reward /= 10  # 報酬のスケールを調整
 
         elif self.reward_id == 5:
             # 流入道路の入れるスペースの和
