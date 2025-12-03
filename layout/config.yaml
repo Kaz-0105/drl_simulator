@@ -42,7 +42,7 @@ apex:
     batch:
       number: 20               # バッチ数
       size: 128                # バッチサイズ
-    initial_priority: 200      # 初期優先度
+    initial_priority: 500      # 初期優先度
     priority_reset: 
       flg: true                # 優先度のリセットを行うかどうか
       type: 'interval'         # 'episode': エピソード数で指定, 'interval': 間隔で指定
