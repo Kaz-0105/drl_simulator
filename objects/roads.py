@@ -223,6 +223,11 @@ class Road(Object):
                 self.vehicle_data = vehicle_data
             else:
                 self.vehicle_data = pd.concat([self.vehicle_data, vehicle_data], ignore_index=True)
+        
+        # 位置でソートする
+        if self.vehicle_data is not None:
+            self.vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+            self.vehicle_data.reset_index(drop=True, inplace=True)
 
         # 1台も車両がいないときNoneになるので、DataFrameを初期化
         if self.vehicle_data is None:

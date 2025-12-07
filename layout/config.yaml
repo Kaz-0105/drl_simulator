@@ -1,10 +1,10 @@
 simulator :
   network_name: '7-4-1'        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
   control_method: 'drl'        # 制御手法の指定
-  num_simulations: 500          # シミュレーションの回数（エピソード数）
+  num_simulations: 100          # シミュレーションの回数（エピソード数）
   simulation_time: 500         # シミュレーションを行う時間（秒）
   seed:
-    is_random: true            # シード値をランダムにするかどうか
+    is_random: true           # シード値をランダムにするかどうか
     value: 1                   # シード値（is_randomがfalseのときのみ有効，1-100を入力，検証用）
   time_step: 2                 # シミュレーションの更新の時間幅（秒）
   red_steps: 1                 # 全赤のステップ数
@@ -23,7 +23,7 @@ drl:
   state_id: 2                  # 状態のテンプレートID
   data_augmentation_flg: true  # データ拡張を行うかどうか
   num_vehicles: 5              # 自動車台数
-  reward_id: 2                 # 報酬
+  reward_id: 5                 # 報酬
   done_reward: -50             # エピソード終了時のペナルティ
   bc_flg: false                # 行動クローン初期化
   save_interval: 5             # データを保存する間隔
@@ -37,22 +37,22 @@ apex:
   td_steps: 1                  # TD法の参照するステップ数
   update_interval: 2000        # ターゲットネットワークの同期間隔
   buffer:
-    num_new_data: 50           # データが何個たまったら学習を行うか
+    num_new_data: 25           # データが何個たまったら学習を行うか
     size: 200000               # リプレイバッファのサイズ
     batch:
-      number: 10               # バッチ数
+      number: 20               # バッチ数
       size: 128                # バッチサイズ
-    initial_priority: 300      # 初期優先度
+    initial_priority: 500      # 初期優先度
     priority_reset: 
       flg: true                # 優先度のリセットを行うかどうか
       type: 'interval'         # 'episode': エピソード数で指定, 'interval': 間隔で指定
-      episode: 50              # 優先度をリセットするエピソード
-      interval: 25             # 優先度をリセットする間隔
-  num_epochs: 2                # 更新のエポック数
+      episode: 10              # 優先度をリセットするエピソード
+      interval: 10             # 優先度をリセットする間隔
+  num_epochs: 1                # 更新のエポック数
   gamma: 0.95                  # 割引率
   learning_rate: 1e-4          # 学習率
-  weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
-  random_action_type: 2        # 1: 完全ランダム, 2: 自動車台数に基づいたランダム
+  weight_decay: 1e-5           # 学習時のL2正則化の重み減衰
+  random_action_type: 1        # 1: 完全ランダム, 2: 自動車台数に基づいたランダム
   epsilon:                     
     schedule_flg: true         # ε-greedy法のスケジューリング
     value: 0                   # εの値（schedule_flgがfalseのとき）
@@ -98,7 +98,7 @@ scoot:
 
 records:
   record_flg: false             # 記録を行うかどうか
-  save_folder: 'main-minor_speed_100' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: 'unbalanced_2222' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
