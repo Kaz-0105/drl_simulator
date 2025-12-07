@@ -23,20 +23,17 @@ import pickle
 import torch
 
 class Network(Common):
-    def __init__(self, vissim):
+    def __init__(self, simulation):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
-        self.config = vissim.config
-        self.executor = vissim.executor
-        self.shared_resources = vissim.shared_resources
-
-        # 上位の紐づくオブジェクトを取得
-        self.vissim = vissim
+        self.simulation = simulation
+        self.config = simulation.config
+        self.executor = simulation.executor
+        self.shared_resources = simulation.shared_resources
 
         # 対応するComオブジェクトを取得
-        self.com = self.vissim.com.Net
+        self.com = self.simulation.vissim.com.Net
 
         # 制御手法を取得
         simulator_info = self.config.get('simulator_info')
@@ -48,10 +45,6 @@ class Network(Common):
 
         # 下位のオブジェクトを初期化
         self._makeLowerObjects()
-
-        # simulationオブジェクトと紐づける
-        self.simulation = self.vissim.simulation
-        self.simulation.set('network', self)
 
         # Vissimに各種パラメータを反映
         self._setParametersToVissim()

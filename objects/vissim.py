@@ -2,8 +2,7 @@ from libs.common import Common
 from config.config import Config
 from libs.executor import Executor
 from libs.shared_resource import SharedResources
-from objects.network import Network
-from objects.simulation import Simulation
+from objects.simulations import Simulations
 
 import win32com.client
 import os
@@ -25,25 +24,21 @@ class Vissim(Common):
         self.executor = Executor(self)
         self.shared_resources = SharedResources(self)
 
-        # シミュレーションのカウントを設定
-        self.simulation_count = 1
-
         # 設定ファイルの変更を監視するためのイベントハンドラを設定
         self.config_change_handler = ConfigChangeHandler(self)
+
+        # simulationsオブジェクトを初期化
+        self.simulations = Simulations(self)
+
+        self.current_simulation_id = None
 
         return
 
     def _activate(self):
-        # VissimのCOMオブジェクトを取得
-        self._getVissimCom()
-
-        # 下位のオブジェクトを初期化
-        self.simulation = Simulation(self)
-        self.network = Network(self)
 
         return
 
-    def _getVissimCom(self):
+    def _activateCom(self):
         simulator_info = self.config.get('simulator_info')
         network_name = simulator_info['network_name']
         while True:
@@ -60,10 +55,9 @@ class Vissim(Common):
         # クイックモードについて
         self.com.Graphics.SetAttValue('QuickMode', True)
         return
-
-    def _deactivate(self):
+    
+    def _deactivateCom(self):
         self.com.Exit()
-        self.config_change_handler.stop()
         return
 
     def _backup(self):
@@ -98,23 +92,26 @@ class Vissim(Common):
         return
     
     def run(self):
-        # シミュレーションを実行
-        while True:
-            print(f'Simulation {self.simulation_count}: Activated')
+        for simulation_id in range(1, self.simulations.count()):
+            self.current_simulation_id = simulation_id
+            simulation = self.simulations[simulation_id]
 
-            self._activate()
-            self.simulation.run()
-            self._deactivate()
+            print(f'Simulation {simulation_id}: Started')
+
+            self._activateCom()
+            simulation.run()
+            self._deactivateCom()
+
             self._backup()
+            print(f'Simulation {simulation_id}: Finished')
 
-            print(f'Simulation {self.simulation_count}: Deactivated')
-            self.simulation_count += 1
-
-            if self.finish_flg:
+            if simulation.get('finish_flg'):
                 print('Finish flag detected. Stopping simulations.')
                 break
-        
+
         self.executor.shutdown()
+        self.config_change_handler.stop()
+
         return
 
     @property
@@ -123,27 +120,13 @@ class Vissim(Common):
         if not simulator_info['backup']['flg']:
             return False
         
-        if self.simulation_count % simulator_info['backup']['interval'] != 0:
+        if self.current_simulation_id % simulator_info['backup']['interval'] != 0:
             return False
         
         if simulator_info['control_method'] != 'drl':
             return False
         
         return True
-    
-    @property
-    def finish_flg(self):
-        if self.simulation_count == self.config.get('simulator_info')['num_simulations']:
-            return True
-        
-        if self.simulation.get('control_method') != 'drl':
-            return False
-        
-        for master_agent in self.network.master_agents.getAll():
-            if master_agent.get('finish_flg'):
-                return True
-        
-        return False
 
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, vissim):

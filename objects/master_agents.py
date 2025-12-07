@@ -32,8 +32,13 @@ class MasterAgents(Container):
         # 上位の紐づくオブジェクトを取得
         self.network = network
 
+        # simulation_id
+        self.simulation_id = self.network.simulation.get('id')
+
         # 要素オブジェクトを初期化
         self._makeElements()
+
+        return
     
     def _makeElements(self):
         # intersectionsオブジェクトを取得
@@ -362,7 +367,7 @@ class MasterAgent(Object):
     def _load(self):
         # sessionを読み込む
         session_data = None
-        if self.simulation_count == 1 and self.path_map['session'].exists():
+        if self.master_agents.get('simulation_id') == 1 and self.path_map['session'].exists():
             with self.path_map['session'].open('rb') as f:
                 session_data = pickle.load(f)
         elif self.shared_resources.has('session_data'):
@@ -384,7 +389,7 @@ class MasterAgent(Object):
         self.episode = len(self.total_reward_record) + 1
 
         # modelを読み込む
-        if self.simulation_count > 1:
+        if self.master_agents.get('simulation_id') > 1:
             self.model = self.shared_resources.get('model')
         elif self.path_map['model'].exists():
             self.model.load_state_dict(torch.load(self.path_map['model']))
@@ -393,7 +398,7 @@ class MasterAgent(Object):
         
         if self.update_count == 0:
             self.target_model.load_state_dict(self.model.state_dict())
-        elif self.simulation_count > 1:
+        elif self.master_agents.get('simulation_id') > 1:
             self.target_model = self.shared_resources.get('target_model')
         elif self.path_map['target_model'].exists():
             self.target_model.load_state_dict(torch.load(self.path_map['target_model']))
@@ -557,7 +562,7 @@ class MasterAgent(Object):
             print(f"Master Agent {self.id}: This simulation is for evaluation only.")
             return
         
-        if self.finish_flg or self.simulation_count % self.save_interval == 0:   
+        if self.finish_flg or self.master_agents.get('simulation_id') % self.save_interval == 0:   
             # session情報を保存
             with self.path_map['session'].open('wb') as f:
                 session_data = {
@@ -646,15 +651,8 @@ class MasterAgent(Object):
         return self.path_map['replay_buffer']
     
     @property
-    def simulation_count(self):
-        vissim = self.network.vissim
-        return vissim.get('simulation_count')
-    
-    @property
     def finish_flg(self):
-        if self.simulation_count == self.num_simulations:
-            return True
-        
+        # 終了条件を満たしているかどうかを判定
         if not self.stop_flg:
             return False
         

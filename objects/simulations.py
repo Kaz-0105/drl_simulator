@@ -1,16 +1,44 @@
-from libs.common import Common
+from libs.container import Container
+from libs.object import Object
+from objects.network import Network
 
 import random
 
-class Simulation(Common):
+class Simulations(Container):
     def __init__(self, vissim):
+        super().__init__()
+
+        self.vissim = vissim
+        self.config = vissim.config
+        self.executor = vissim.executor
+        self.shared_resources = vissim.shared_resources
+        
+        self._makeElements()
+        return
+
+    def _makeElements(self):
+        for simulation_id in range(1, self.config.get('simulator_info')['num_simulations'] + 1):
+            self.add(Simulation(self, simulation_id))
+        return
+    
+class Simulation(Object):
+    def __init__(self, simulations, simulation_id):
         # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
-        self.config = vissim.config
-        self.vissim = vissim
+        self.simulations = simulations
+        self.vissim = self.simulations.vissim
+        self.config = self.simulations.config
+        self.executor = self.simulations.executor
+        self.shared_resources = self.simulations.shared_resources
 
+        # idの設定
+        self.id = simulation_id
+
+        return
+
+    def _setup(self):
         # comオブジェクトを取得
         self.com = self.vissim.com.Simulation
 
@@ -29,6 +57,11 @@ class Simulation(Common):
 
         # vissimに反映
         self._setParametersToVissim()
+
+        # networkオブジェクトを作成
+        self.network = Network(self)
+
+        return
 
     def _makeRandomSeed(self, simulation_info):
         seed_info = simulation_info['seed']
@@ -66,6 +99,9 @@ class Simulation(Common):
         return
 
     def run(self):
+        # 各種初期設定
+        self._setup()
+
         # デバックフラグが立っているとき30秒進める
         if self.debug_flg:
             self._runForDebug()
@@ -207,3 +243,15 @@ class Simulation(Common):
         for signal_controller in self.network.signal_controllers.getAll():
             for signal_group in signal_controller.signal_groups.getAll():
                 signal_group.com.SetAttValue('SigState', 1)
+
+    
+    @property
+    def finish_flg(self):
+        if self.get('control_method') != 'drl':
+            return False
+        
+        for master_agent in self.network.master_agents.getAll():
+            if master_agent.get('finish_flg'):
+                return True
+        
+        return False
