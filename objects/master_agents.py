@@ -534,8 +534,15 @@ class MasterAgent(Object):
     def _showUpdateInfo(self, epoch, losses):
         # 更新情報を表示
         losses = np.array(losses)
+        mean_loss = np.mean(losses)
+        min_loss = np.min(losses)
+        max_loss = np.max(losses)
+        std_loss = np.std(losses)
         print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}]")
-        print(f"Average Loss: {np.mean(losses):.2f}, Min Loss: {np.min(losses):.2f}, Max Loss: {np.max(losses):.2f}, Std Loss: {np.std(losses):.2f}")
+        print(f"Average Loss: {mean_loss:.2f}, Min Loss: {min_loss:.2f}, Max Loss: {max_loss:.2f}, Std Loss: {std_loss:.2f}")
+
+        if epoch == 0:
+            self.replay_buffer.set('initial_priority', max_loss)
 
         # 10回ごとに更新情報を表示（それ以外はスキップ）
         if self.update_count % 1000 != 0:
