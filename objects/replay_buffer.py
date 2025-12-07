@@ -176,11 +176,6 @@ class ReplayBuffer (Common):
         self.shared_resources.set('new_data_count', self.new_data_count)      
         return 
     
-    def updateInitialPriority(self, losses):
-        max_loss = np.max(losses)
-        self.sum_tree.set('initial_priority', max_loss * 1.1)
-        return
-    
     def _showInfo(self):
         print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_new_data}]")
         print(f"ReplayBuffer: Data size[{self.current_size}/{self.max_size}]")

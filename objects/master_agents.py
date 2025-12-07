@@ -523,9 +523,6 @@ class MasterAgent(Object):
                 if self.update_count >= self.update_interval:
                     self.target_model.load_state_dict(self.model.state_dict())
                     self.update_count = 0
-            
-            # lossの最大値をsum_treeの初期優先度に設定
-            self.replay_buffer.updateInitialPriority(np.array(losses))
 
             # 更新情報を表示
             self._showUpdateInfo(epoch, losses)
@@ -543,6 +540,7 @@ class MasterAgent(Object):
 
         if epoch == 0:
             self.replay_buffer.set('initial_priority', max_loss)
+            
 
         # 10回ごとに更新情報を表示（それ以外はスキップ）
         if self.update_count % 1000 != 0:
