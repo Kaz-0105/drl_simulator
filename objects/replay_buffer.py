@@ -266,7 +266,6 @@ class SumTree (Common):
     def add(self, tmp_data, priority = None):
         # 優先度が指定されていない場合は直近のデータの平均をつかう
         if priority is None:
-            print(f"initial_priority is {self.initial_priority}.")
             priority = self.initial_priority
 
         # 優先度を更新するツリーのインデックスを計算
