@@ -2,12 +2,13 @@ from concurrent.futures import ThreadPoolExecutor
 from libs.common import Common
 
 class Executor(Common):
-    def __init__(self, config):
+    def __init__(self, vissim):
         # 継承
         super().__init__()
 
         # 設定オブジェクトを取得
-        self.config = config
+        self.vissim = vissim
+        self.config = vissim.config
 
         # スレッドプールを初期化
         simulator_info = self.config.get('simulator_info')

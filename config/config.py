@@ -3,9 +3,11 @@ import pandas as pd
 from libs.common import Common 
 
 class Config(Common):
-    def __init__(self):
+    def __init__(self, vissim):
         # 継承
         super().__init__()
+
+        self.vissim = vissim
 
         # config.yamlを読み込む
         self.readConfigFile()

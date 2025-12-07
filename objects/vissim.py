@@ -1,4 +1,7 @@
 from libs.common import Common
+from config.config import Config
+from libs.executor import Executor
+from libs.shared_resource import SharedResources
 from objects.network import Network
 from objects.simulation import Simulation
 
@@ -13,18 +16,24 @@ import shutil
 from pathlib import Path
 
 class Vissim(Common):
-    def __init__(self, config, executor, shared_resources, simulation_count):
+    def __init__(self):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期オブジェクトを設定
-        self.config = config
-        self.executor = executor
-        self.shared_resources = shared_resources
+        # 設定オブジェクトと非同期オブジェクトを設定    
+        self.config = Config(self)
+        self.executor = Executor(self)
+        self.shared_resources = SharedResources(self)
 
         # シミュレーションのカウントを設定
-        self.simulation_count = simulation_count
+        self.simulation_count = 1
 
+        # 設定ファイルの変更を監視するためのイベントハンドラを設定
+        self.config_change_handler = ConfigChangeHandler(self)
+
+        return
+
+    def _activate(self):
         # VissimのCOMオブジェクトを取得
         self._getVissimCom()
 
@@ -32,10 +41,8 @@ class Vissim(Common):
         self.simulation = Simulation(self)
         self.network = Network(self)
 
-        # 設定ファイルの変更を監視するためのイベントハンドラを設定
-        self.config_change_handler = ConfigChangeHandler(self)
         return
-    
+
     def _getVissimCom(self):
         simulator_info = self.config.get('simulator_info')
         network_name = simulator_info['network_name']
@@ -53,17 +60,13 @@ class Vissim(Common):
         # クイックモードについて
         self.com.Graphics.SetAttValue('QuickMode', True)
         return
-    
-    def run(self):
-        self.simulation.run()
-        return
-    
-    def exit(self):
+
+    def _deactivate(self):
         self.com.Exit()
         self.config_change_handler.stop()
         return
-    
-    def backup(self):
+
+    def _backup(self):
         # バックアップする必要がないときはスキップ
         if not self.backup_flg:
             return
@@ -94,6 +97,26 @@ class Vissim(Common):
             print(f"Backup of {src_dir} completed to {backup_dir}")
         return
     
+    def run(self):
+        # シミュレーションを実行
+        while True:
+            print(f'Simulation {self.simulation_count}: Activated')
+
+            self._activate()
+            self.simulation.run()
+            self._deactivate()
+            self._backup()
+
+            print(f'Simulation {self.simulation_count}: Deactivated')
+            self.simulation_count += 1
+
+            if self.finish_flg:
+                print('Finish flag detected. Stopping simulations.')
+                break
+        
+        self.executor.shutdown()
+        return
+
     @property
     def backup_flg(self):
         simulator_info = self.config.get('simulator_info')
@@ -110,6 +133,9 @@ class Vissim(Common):
     
     @property
     def finish_flg(self):
+        if self.simulation_count == self.config.get('simulator_info')['num_simulations']:
+            return True
+        
         if self.simulation.get('control_method') != 'drl':
             return False
         
