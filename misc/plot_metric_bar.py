@@ -7,7 +7,7 @@ import numpy as np
 simulation_list = [
     ['scoot/balanced_2222'],
     ['mpc/balanced_2222_10'],
-    ['drl/apex/balanced_2222'],
+    ['drl/apex/balanced_2222_queue'],
 ]
 row_names = ['scoot', 'mpc_10', 'drl_apex']
 
