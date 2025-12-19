@@ -5,11 +5,12 @@ import numpy as np
 
 # データの場所とラベルを設定
 simulation_list = [
-    ['scoot/balanced_2222'],
-    ['mpc/balanced_2222_10'],
-    ['drl/apex/balanced_2222_queue'],
+    ['scoot/main-minor_2222'],
+    ['mpc/main-minor_2222_10'],
+    ['drl/apex/main-minor_2222_queue'],
+    ['drl/apex/main-minor_2222_wait'],
 ]
-row_names = ['scoot', 'mpc_10', 'drl_apex']
+row_names = ['scoot', 'mpc_10', 'drl_queue', 'drl_wait']
 
 if len(simulation_list) != len(row_names):
     raise ValueError("The length of simulation_list and row_names must be the same.")
@@ -78,11 +79,11 @@ for simulation_dir_wrapper in simulation_list:
     calc_time_list.append(tmp_calc_time_list)
 
 # グラフの描画
-fig_max_queue, ax_max_queue = plt.subplots()
-fig_average_queue, ax_average_queue = plt.subplots()
-fig_max_delay, ax_max_delay = plt.subplots()
-fig_average_delay, ax_average_delay = plt.subplots()
-fig_calc_time, ax_calc_time = plt.subplots()
+fig_max_queue, ax_max_queue = plt.subplots(figsize=(16,9))
+fig_average_queue, ax_average_queue = plt.subplots(figsize=(16,9))
+fig_max_delay, ax_max_delay = plt.subplots(figsize=(16,9))
+fig_average_delay, ax_average_delay = plt.subplots(figsize=(16,9))
+fig_calc_time, ax_calc_time = plt.subplots(figsize=(16,9))
 
 # 最大キュー長について
 x = np.arange(len(demand_type_names))
@@ -100,6 +101,7 @@ ax_max_queue.set_title('Max Queue Length', fontsize=16)
 ax_max_queue.set_xlabel('Simulation Configuration', fontsize=14)
 ax_max_queue.set_ylabel('Max Queue Length (m)', fontsize=14)
 ax_max_queue.legend(fontsize=14)
+fig_max_queue.savefig(Path(__file__).parent / '..' / 'results' / 'plots' / 'max_queue_comparison.png')
 
 # 平均キュー長について
 for row_idx, row_average_queue_list in enumerate(average_queue_list):
@@ -136,6 +138,8 @@ else:
     y_limit = (0, max_y_value * 1.1)
     ax_average_queue.set_ylim(y_limit)
 
+fig_average_queue.savefig(Path(__file__).parent / '..' / 'results' / 'plots' / 'average_queue_comparison.png')  
+
 # 遅れ時間について
 for row_idx, row_max_delay_list in enumerate(max_delay_list):
     ax_max_delay.bar(
@@ -150,6 +154,7 @@ ax_max_delay.set_title('Max Delay Time', fontsize=16)
 ax_max_delay.set_xlabel('Simulation Configuration', fontsize=14)
 ax_max_delay.set_ylabel('Max Delay Time (s)', fontsize=14)
 ax_max_delay.legend(fontsize=14)
+fig_max_delay.savefig(Path(__file__).parent / '..' / 'results' / 'plots' / 'max_delay_comparison.png')
 
 # 平均遅れ時間について
 for row_idx, row_average_delay_list in enumerate(average_delay_list):
@@ -165,6 +170,7 @@ ax_average_delay.set_title('Average Delay Time', fontsize=16)
 ax_average_delay.set_xlabel('Simulation Configuration', fontsize=14)
 ax_average_delay.set_ylabel('Average Delay Time (s)', fontsize=14)
 ax_average_delay.legend(fontsize=14)
+fig_average_delay.savefig(Path(__file__).parent / '..' / 'results' / 'plots' / 'average_delay_comparison.png')
 
 # 計算時間について
 for row_idx, row_calc_time_list in enumerate(calc_time_list):
@@ -180,8 +186,7 @@ ax_calc_time.set_title('Calculation Time', fontsize=16)
 ax_calc_time.set_xlabel('Simulation Configuration', fontsize=14)
 ax_calc_time.set_ylabel('Calculation Time (s)', fontsize=14)
 ax_calc_time.legend(fontsize=14)
-
-plt.show()
+fig_calc_time.savefig(Path(__file__).parent / '..' / 'results' / 'plots' / 'calculation_time_comparison.png')
 
 
 

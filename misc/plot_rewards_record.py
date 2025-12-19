@@ -20,6 +20,10 @@ ema_flg = True
 # 結果保存先パスを取得
 results_path = (Path(__file__).parent/ '..' / 'results').resolve()
 
+# create plot directory if not exists
+plot_dir = results_path / 'plots'
+plot_dir.mkdir(parents=True, exist_ok=True)
+
 # ファイル名を指定してデータを読み込む
 session_dir_path = results_path / 'session' / 'drl' / 'apex'/ f'session_{model_id}' / 'session.pkl'
 if not session_dir_path.exists():

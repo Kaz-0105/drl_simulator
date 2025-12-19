@@ -4,9 +4,10 @@ import pickle
 
 # get target directories
 target_dir_path_map = {
-    'scoot': 'scoot/unbalanced_2222',
-    'mpc': 'mpc/unbalanced_2222_10',
-    'drl': 'drl/apex/unbalanced_2222_wait',
+    'scoot': 'scoot/balanced_2222',
+    'mpc': 'mpc/balanced_2222_10',
+    'drl_queue': 'drl/apex/balanced_2222_queue',
+    'drl_wait': 'drl/apex/balanced_2222_wait',
 }
 
 # init path objects
@@ -58,10 +59,10 @@ if not any(intersection_flgs.values()):
     raise ValueError("At least one plot flag must be True.")
 
 # set metric types to plot
-metric_type = 'average_queue' 
+metric_type = 'average_speed' 
 
 # create plot directory if not exists
-plot_dir = Path(__file__) / '..' / '..' / 'results' / 'plots'
+plot_dir = Path(__file__).parent / '..' / 'results' / 'plots'
 plot_dir.mkdir(parents=True, exist_ok=True)
 
 time_series_data_map = {}
@@ -93,16 +94,18 @@ for intersection_id in range(1, num_intersections + 1):
     if not intersection_flgs[intersection_id]:
         continue
     
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(16,9))
 
     intersection_name = intersection_names[intersection_id]
     for target_name, time_series_data in time_series_data_map[intersection_id].items():
-        ax.plot(time_series_data['time'], time_series_data['queue_length'], label=target_name)
+        ax.plot(time_series_data['time'], time_series_data['queue_length'],linewidth=4, label=target_name)
     
-    ax.set_title(f'Intersection {intersection_name} - {metric_type.replace("_", " ").title()} Over Time')
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel(f'{metric_type.replace("_", " ").title()}')
-    ax.legend()
+    ax.set_title(f'Intersection {intersection_name} - {metric_type.replace("_", " ").title()} Over Time', fontsize=24)
+    ax.set_xlabel('Time (s)', fontsize=20)
+    ax.set_ylabel(f'{metric_type.replace("_", " ").title()}', fontsize=20)
+    ax.tick_params(axis='both', which='major', labelsize=20)
+    ax.tick_params(axis='both', which='minor', labelsize=20)
+    ax.legend(fontsize=16)
 
     fig.savefig(f"results/plots/{intersection_name}_{metric_type}_time_series.png")
 
