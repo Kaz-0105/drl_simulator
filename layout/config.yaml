@@ -1,10 +1,10 @@
 simulator :
   network_name: '7-4-1'        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
   control_method: 'drl'        # 制御手法の指定
-  num_simulations: 1           # シミュレーションの回数（エピソード数）
+  num_simulations: 1000          # シミュレーションの回数（エピソード数）
   simulation_time: 500         # シミュレーションを行う時間（秒）
   seed:
-    is_random: false            # シード値をランダムにするかどうか
+    is_random: true            # シード値をランダムにするかどうか
     value: 1                   # シード値（is_randomがfalseのときのみ有効，1-100を入力，検証用）
   time_step: 2                 # シミュレーションの更新の時間幅（秒）
   red_steps: 1                 # 全赤のステップ数
@@ -17,7 +17,7 @@ simulator :
 
 drl:
   method: 'apex'               # DRLの手法の指定
-  learning_flg: false          # 学習を行うかどうか
+  learning_flg: true          # 学習を行うかどうか
   duration_steps: 5            # 1回の予測で決める時間ステップ幅
   network_id: 1                # ニューラルネットワークのID
   state_id: 2                  # 状態のテンプレートID
@@ -31,7 +31,7 @@ drl:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
     type: 'interval'           # 'episode': エピソード数で指定, 'interval': 間隔で指定
     episode: 50                # 強制終了するエピソード数
-    interval: 50               # 強制終了する間隔
+    interval: 100              # 強制終了する間隔
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
@@ -54,7 +54,7 @@ apex:
   weight_decay: 1e-5           # 学習時のL2正則化の重み減衰
   random_action_type: 1        # 1: 完全ランダム, 2: 自動車台数に基づいたランダム
   epsilon:                     
-    schedule_flg: false         # ε-greedy法のスケジューリング
+    schedule_flg: true         # ε-greedy法のスケジューリング
     value: 0                   # εの値（schedule_flgがfalseのとき）
 
 bc:
@@ -97,7 +97,7 @@ scoot:
   spacing_threshold: 40        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
-  record_flg: true             # 記録を行うかどうか
+  record_flg: false             # 記録を行うかどうか
   save_folder: 'balanced_2222_wait' # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
