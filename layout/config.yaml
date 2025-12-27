@@ -31,7 +31,7 @@ drl:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
     type: 'interval'           # 'episode': エピソード数で指定, 'interval': 間隔で指定
     episode: 50                # 強制終了するエピソード数
-    interval: 100              # 強制終了する間隔
+    interval: 200              # 強制終了する間隔
 
 apex:
   td_steps: 1                  # TD法の参照するステップ数
