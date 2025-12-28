@@ -3,7 +3,7 @@ import pickle
 import matplotlib.pyplot as plt
 
 # 見たいモデルを選択
-model_id = 8
+model_id = 12
 
 # 保存する結果
 fig_flgs = {
