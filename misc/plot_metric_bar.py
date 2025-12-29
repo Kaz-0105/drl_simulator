@@ -6,17 +6,24 @@ import numpy as np
 # データの場所とラベルを設定
 simulation_list = [
     ['scoot/main-minor_2222'],
-    ['mpc/main-minor_2222_10'],
-    ['drl/apex/main-minor_2222_queue'],
     ['drl/apex/main-minor_2222_wait'],
+    ['drl/apex/main-minor_2222_wait_v2'],
 ]
-row_names = ['scoot', 'mpc_10', 'drl_queue', 'drl_wait']
+row_names = ['scoot', 'drl_wait', 'drl_wait_v2']
 
 if len(simulation_list) != len(row_names):
     raise ValueError("The length of simulation_list and row_names must be the same.")
 
 # 交通流パターンの数とラベルを設定
-demand_type_names = ['1-1-1', '3-1-1', '1-3-1', '1-1-3', '1-3-3', '3-1-3', '3-3-1']
+demand_type_names = [
+    '1-1-1', 
+    '3-1-1', 
+    '1-3-1', 
+    '1-1-3', 
+    '1-3-3', 
+    '3-1-3', 
+    '3-3-1',
+]
 num_demand_types = len(demand_type_names)
 
 # average_queueのy軸の最大値をmax_queueのy軸の最大値に合わせるかどうか
