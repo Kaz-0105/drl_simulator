@@ -11,7 +11,7 @@ simulation_dir_path_map = {
 }
 
 # select an intersection to compare
-intersection_id = 1
+intersection_id = 2
 
 # set number of phases
 num_phases = 17

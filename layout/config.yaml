@@ -1,10 +1,10 @@
 simulator :
   network_name: '7-4-1'        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'drl'        # 制御手法の指定
-  num_simulations: 1000        # シミュレーションの回数（エピソード数）
+  control_method: 'mpc'        # 制御手法の指定
+  num_simulations: 1        # シミュレーションの回数（エピソード数）
   simulation_time: 500         # シミュレーションを行う時間（秒）
   seed:
-    is_random: true            # シード値をランダムにするかどうか
+    is_random: false            # シード値をランダムにするかどうか
     value: 1                   # シード値（is_randomがfalseのときのみ有効，1-100を入力，検証用）
   time_step: 2                 # シミュレーションの更新の時間幅（秒）
   red_steps: 1                 # 全赤のステップ数
@@ -29,8 +29,8 @@ drl:
   save_interval: 5             # データを保存する間隔
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    type: 'episode'           # 'episode': エピソード数で指定, 'interval': 間隔で指定
-    episode: 200               # 強制終了するエピソード数
+    type: 'episode'            # 'episode': エピソード数で指定, 'interval': 間隔で指定
+    episode: 400               # 強制終了するエピソード数
     interval: 100              # 強制終了する間隔
 
 apex:
@@ -83,7 +83,7 @@ mpc:
     - num_roads: 5
       num_phases: 10           # 10-phaseのみ
   objective_type: 2            # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
-  signal_change_weight: 10     # 信号変化ペナルティの重み
+  signal_change_weight: 6      # 信号変化ペナルティの重み
 
 scoot:
   initial_parameters:
@@ -97,8 +97,8 @@ scoot:
   spacing_threshold: 40        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
-  record_flg: false             # 記録を行うかどうか
-  save_folder: unbalanced_2222_queue_v2 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  record_flg: true             # 記録を行うかどうか
+  save_folder: balanced_low_2222_6 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
