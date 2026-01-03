@@ -2,39 +2,111 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import pickle
 
-simulation_ids = [1, 2, 3]
-simulation_names = [
-    '1-1-1',
-    '3-1-1',
-    '1-3-1',
-]
-metric_flgs = {
-    'max_queue': True,
-    'calc_time': True,
+# get target directories
+target_dir_path_map = {
+    'scoot': 'scoot/balanced_2222',
+    'mpc': 'mpc/balanced_2222_10',
+    'drl_queue': 'drl/apex/balanced_2222_queue',
+    'drl_wait': 'drl/apex/balanced_2222_wait',
 }
 
-fig_max_queue, ax_max_queue = plt.subplots()
-fig_calc_time, ax_calc_time = plt.subplots()
+# init path objects
+num_intersections = None
+for target_name in target_dir_path_map:
+    target_dir_path = target_dir_path_map[target_name]
+    target_dir_path = Path(__file__) / '..' / '..' / 'results' / 'metrics' / target_dir_path
 
-for idx, simulation_id in enumerate(simulation_ids):
-    metric_path = Path(f"results/metrics/metric_{simulation_id}.pkl")
-    if not metric_path.exists():
-        print(f"Metric file {metric_path} does not exist.")
+    if not target_dir_path.exists():
+        raise FileNotFoundError(f"Directory not found: {target_dir_path}")
+
+    target_dir_path_map[target_name] = target_dir_path.resolve()
+
+    if num_intersections is None:
+        num_intersections = len(list(target_dir_path.glob('metric_*.pkl')))
         continue
 
-    with open(metric_path, 'rb') as f:
-        saved_data = pickle.load(f)
-        if saved_data['max_queue'] is not None:
-            max_queue_record = saved_data['max_queue']
-            ax_max_queue.plot(max_queue_record['time'].to_numpy(), max_queue_record['queue_length'].to_numpy(), label=simulation_names[idx])
+    if num_intersections != len(list(target_dir_path.glob('metric_*.pkl'))):
+        raise ValueError("The number of intersection files is inconsistent among target directories. Do experiments with the same configuration.")
+
     
 
-ax_max_queue.set_title('Max Queue Length Over Time')
-ax_max_queue.set_xlabel('Time (s)')
-ax_max_queue.set_ylabel('Max Queue Length (m)')
-ax_max_queue.legend()
-ax_max_queue.grid()
+# set label name for each intersection (metric_*.pkl)
+intersection_names = {
+    1: '1-1-1',
+    2: '3-1-1',
+    3: '1-3-1',
+    4: '1-1-3',
+    5: '1-3-3',
+    6: '3-1-3',
+    7: '3-3-1',
+}
 
-plt.show()
+if num_intersections != len(intersection_names):
+    raise ValueError("The number of intersection names does not match the number of intersection files.")
+
+# set plot flgs for each intersection
+intersection_flgs = {
+    1: True,
+    2: True,
+    3: True,
+    4: True,
+    5: True,
+    6: True,
+    7: True,
+}
+
+if not any(intersection_flgs.values()):
+    raise ValueError("At least one plot flag must be True.")
+
+# set metric types to plot
+metric_type = 'average_speed' 
+
+# create plot directory if not exists
+plot_dir = Path(__file__).parent / '..' / 'results' / 'plots'
+plot_dir.mkdir(parents=True, exist_ok=True)
+
+time_series_data_map = {}
+for intersection_id in range(1, num_intersections + 1):
+    if not intersection_flgs[intersection_id]:
+        continue
+
+    tmp_intersection_time_series_data_map = {}
+
+    for target_name, target_dir_path in target_dir_path_map.items():
+        metric_file_path = target_dir_path / f'metric_{intersection_id}.pkl'
+
+        if not metric_file_path.exists():
+            raise FileNotFoundError(f"File not found: {metric_file_path}")
+
+        with open(metric_file_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        if metric_type not in data:
+            raise ValueError(f"{metric_type} data does not exist in {metric_file_path}")
+
+        tmp_intersection_time_series_data_map[target_name] = data[metric_type]
+    
+    time_series_data_map[intersection_id] = tmp_intersection_time_series_data_map
+
+
+# plot time series data
+for intersection_id in range(1, num_intersections + 1):
+    if not intersection_flgs[intersection_id]:
+        continue
+    
+    fig, ax = plt.subplots(figsize=(16,9))
+
+    intersection_name = intersection_names[intersection_id]
+    for target_name, time_series_data in time_series_data_map[intersection_id].items():
+        ax.plot(time_series_data['time'], time_series_data['queue_length'],linewidth=4, label=target_name)
+    
+    ax.set_title(f'Intersection {intersection_name} - {metric_type.replace("_", " ").title()} Over Time', fontsize=24)
+    ax.set_xlabel('Time (s)', fontsize=20)
+    ax.set_ylabel(f'{metric_type.replace("_", " ").title()}', fontsize=20)
+    ax.tick_params(axis='both', which='major', labelsize=20)
+    ax.tick_params(axis='both', which='minor', labelsize=20)
+    ax.legend(fontsize=16)
+
+    fig.savefig(f"results/plots/{intersection_name}_{metric_type}_time_series.png")
 
     

@@ -108,11 +108,12 @@ class Vissim(Common):
             self._backup()
 
             print(f'Simulation {self.simulation_count}: Deactivated')
-            self.simulation_count += 1
 
             if self.finish_flg:
                 print('Finish flag detected. Stopping simulations.')
                 break
+
+            self.simulation_count += 1
         
         self.executor.shutdown()
         return

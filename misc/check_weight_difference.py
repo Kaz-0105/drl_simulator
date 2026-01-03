@@ -4,15 +4,18 @@ import pickle
 import statistics
 import matplotlib.pyplot as plt
 
+# set root_dir_path
+root_dir_path = (Path(__file__).parent / '..').resolve()
+
 # 出力に関する設定
 config = {
     'road_layout': '2222',   # '2222' = 各道路の車線が1車線＋分岐車線の合計2車線，'3333' = 各道路の車線が2車線＋分岐車線の合計3車線
     'figure_flgs': {
-        'max_queue': False,
+        'max_queue': True,
         'average_queue': True,
-        'max_delay': False,
+        'max_delay': True,
         'average_delay': True,
-        'calculation_time': False,
+        'calculation_time': True,
     },
     'inflow_types': {
         'balanced' : True,
@@ -25,9 +28,10 @@ config = {
 # 測定した重みについて（実験をおこなったら追加）
 weights = {
     '2222' : {
-        'balanced' : [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-        'unbalanced' : [5, 7, 10, 12, 15, 17, 20],
-        'main-minor' : [5, 7, 8, 10, 12, 15, 17, 20],
+        'balanced' : [6, 8, 10, 12, 14, 16, 18, 20],
+        'balanced-low': [6, 8, 10, 12, 14, 16, 18, 20],
+        'unbalanced' : [6, 8, 10, 12, 14, 16, 18, 20],
+        'main-minor' : [6, 8, 10, 12, 14, 16, 18, 20],
     },
     '3333' : {
         'balanced' : [],
@@ -127,8 +131,9 @@ if config['compare_to'] == 'all':
         axes[metric_name].set_ylabel(metric_name.replace('_', ' ').title())
         axes[metric_name].set_title(f'{metric_name.replace("_", " ").title()} vs Weight')
         axes[metric_name].legend(title='Inflow Type')
-    
-    plt.show()
+
+        figs[metric_name].tight_layout()
+        figs[metric_name].savefig(root_dir_path / 'results' / 'plots' / f'weight_comparison_{metric_name}.png')
 
 elif config['compare_to'] == 'each':
     # scootとdrlのデータを取得
@@ -228,7 +233,8 @@ elif config['compare_to'] == 'each':
             axes[metric_name][inflow_type].set_title(f'{metric_name.replace("_", " ").title()} vs Weight ({inflow_type})')
             axes[metric_name][inflow_type].legend(title='Method')
 
-    plt.show()
+            figs[metric_name][inflow_type].tight_layout()
+            figs[metric_name][inflow_type].savefig(root_dir_path / 'results' / 'plots' / f'weight_comparison_{metric_name}_{inflow_type}.png')
 
 print('Finished')
 
