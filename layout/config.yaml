@@ -30,7 +30,7 @@ drl:
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
     type: episode              # 'episode': エピソード数で指定, 'interval': 間隔で指定
-    episode: 200               # 強制終了するエピソード数
+    episode: 400               # 強制終了するエピソード数
     interval: 100              # 強制終了する間隔
 
 apex:
