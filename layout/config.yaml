@@ -107,3 +107,6 @@ records:
   old_definition_flg: false    # 古い定義で報酬を記録するかどうか
   max_len: 20                  # 記録しない場合の一次的に記録するデータの数
 
+config:
+  change_handle_flg: false   # シミュレーション中にconfigurationの変更を反映するかどうか
+
