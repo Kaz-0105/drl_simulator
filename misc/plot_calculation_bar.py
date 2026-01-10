@@ -6,13 +6,12 @@ import numpy as np
 # configuration 
 mpc_simulation_file_map = {
     'balanced_low': 'balanced_low_2222_10',
-    'balanced': 'balanced_2222_10',
+    'balanced': 'balanced_2222_8',
 }
 
-stack_rule = 'inflow' # inflow or route_choice
-sec_range = 0.1
-bin_width_rate = 1.0
-save_file_extension = 'eps' # png or eps
+stack_rule = 'simulation' # simulation or route_choice
+num_bins = 50
+save_file_extension = 'png' # png or eps
 
 # define root_dir_path
 root_dir_path = (Path(__file__).parent / '..').resolve()
@@ -25,24 +24,33 @@ for simulation_name, simulation_str in mpc_simulation_file_map.items():
     mpc_simulation_file_map[simulation_name] = simulation_dir_path
 
 # make optimization_iterations_map
-if stack_rule == 'inflow':
-    optimization_iterations_map = {}
+if stack_rule == 'simulation':
+    all_calc_time_list_map = {}
     for simulation_name, simulation_dir_path in mpc_simulation_file_map.items():
-        tmp_optimization_iterations_map = {}
+        all_calc_time_list = []
         for metric_file_path in simulation_dir_path.glob('metric_*.pkl'):
             with open(metric_file_path, 'rb') as f:
                 metric_data = pickle.load(f)
             
             calc_time_df = metric_data['calc_time']
             calc_time_record = calc_time_df['calculation_time'].tolist()
+            all_calc_time_list.extend(calc_time_record)
+        
+        all_calc_time_list_map[simulation_name] = all_calc_time_list
 
-            for calc_time in calc_time_record:
-                time_id = int(round(calc_time / sec_range))
-                if time_id not in tmp_optimization_iterations_map:
-                    tmp_optimization_iterations_map[time_id] = 0
-                tmp_optimization_iterations_map[time_id] += 1
-            
-        optimization_iterations_map[simulation_name] = tmp_optimization_iterations_map
+    # determine min_calc_time and max_calc_time
+    min_calc_time = 0
+    max_calc_time = np.max([np.max(calc_time_list) for calc_time_list in all_calc_time_list_map.values()])
+    
+    calc_time_hist_map = {}
+    for simulation_name, all_calc_time_list in all_calc_time_list_map.items():
+        hist, bin_edges = np.histogram(
+            all_calc_time_list,
+            bins=num_bins,
+            range=(min_calc_time, max_calc_time)
+        )
+
+        calc_time_hist_map[simulation_name] = hist
 else:
     raise NotImplementedError(f"stack_rule {stack_rule} not implemented.")
 
@@ -55,31 +63,21 @@ colors = cmap(np.linspace(0.35, 0.85, len(mpc_simulation_file_map)))
 for simulation_id, simulation_name in enumerate(mpc_simulation_file_map.keys()):
     colors_map[simulation_name] = colors[simulation_id]
 
-bar_bottoms = {}
-for simulation_name, tmp_optimization_iterations_map in optimization_iterations_map.items():
-    bar_positions = [round(time_id * sec_range + sec_range / 2, 3) for time_id in sorted(tmp_optimization_iterations_map.keys())]
+bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+bin_range = bin_edges[1] - bin_edges[0]
 
-    bar_heights = []
-    for time_id in sorted(tmp_optimization_iterations_map.keys()):
-        bar_heights.append(tmp_optimization_iterations_map[time_id])
-        
-    tmp_bar_bottoms = []
-    for time_id in sorted(tmp_optimization_iterations_map.keys()):
-        if time_id in bar_bottoms:
-            tmp_bar_bottoms.append(bar_bottoms[time_id])
-            bar_bottoms[time_id] += tmp_optimization_iterations_map[time_id]
-        else:
-            tmp_bar_bottoms.append(0)
-            bar_bottoms[time_id] = tmp_optimization_iterations_map[time_id]
-    
+bin_bottoms = np.zeros(num_bins)
+for simulation_name, calc_time_hist in calc_time_hist_map.items():
     ax.bar(
-        bar_positions,
-        bar_heights,
-        width=sec_range * bin_width_rate,
-        bottom=tmp_bar_bottoms,
+        bin_centers,
+        calc_time_hist,
+        width=bin_range,
         label=simulation_name,
+        bottom = bin_bottoms,
         color=colors_map[simulation_name],
     )
+
+    bin_bottoms += calc_time_hist
 
 ax.set_xlabel('Calculation Time (s)', fontsize=20)
 ax.set_ylabel('Number of Optimizations', fontsize=20)
@@ -87,7 +85,7 @@ ax.set_title(f'Calculation Time Distribution', fontsize=24)
 ax.tick_params(axis='both', which='major', labelsize=20)
 ax.tick_params(axis='both', which='minor', labelsize=20)
 ax.legend(fontsize=16)
-ax.set_xlim(0, max(bar_bottoms.keys()) * sec_range + sec_range)
+ax.set_xlim(bin_edges[0], bin_edges[-1])
 xticks = ax.get_xticks()
 ax.set_xticks(xticks[xticks != 0])
 

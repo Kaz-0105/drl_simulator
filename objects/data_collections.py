@@ -87,17 +87,26 @@ class DataCollectionPoint(Object):
         return
     
     def _makeType(self):
-        # コネクタのとき
+        # コネクター上にあるときは交差点の計測用
         if self.link.get('type') == 'connector':
             self.type = 'intersection'
             return
         
-        if self.link.from_links.count() == 0:
-            self.type = 'input'
-        elif self.link.to_links.count() == 0:
-            self.type = 'output'
+        num_from_links = self.link.from_links.count()
+        num_to_links = self.link.to_links.count()
 
-        return
+        #　from_linkの数が0またはto_linkの数より小さいときは流入の計測
+        if num_from_links == 0 or num_from_links < num_to_links:
+            self.type = 'input'
+            return
+        
+        # to_linkの数が0またはfrom_linkの数より小さいときは流出の計測
+        if num_to_links == 0 or num_to_links < num_from_links:
+            self.type = 'output'
+            return
+
+        # それ以外はエラー
+        raise ValueError(f"DataCollectionPoint {self.id} on Link {self.link.get('id')} cannot determine type.")
 
     def _makeRoadConnection(self):
         # 流入道路または流出道路の計測用のとき

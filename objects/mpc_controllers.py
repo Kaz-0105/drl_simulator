@@ -2324,6 +2324,7 @@ class MpcController(Object):
         
         elif (self.objective_type == 2):
             # 信号待ち自動車の最小化 + 信号変化ペナルティ
+
             # delta_t2とdelta_t3とphiのリストを取得
             delta_t2_list = self.variable_list_map['delta_t2']
             delta_t3_list = self.variable_list_map['delta_t3']
@@ -2331,6 +2332,9 @@ class MpcController(Object):
 
             # 交通流モデルの変数の長さを取得
             v_length = self.variable_length_map['v']
+
+            # 信号変化ペナルティを目的関数に加えるかのフラグを取得
+            signal_change_penalty_flg = self._getSignalChangePenaltyFlg()
 
             # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
             for step in range(1, self.horizon + 1):
@@ -2340,13 +2344,30 @@ class MpcController(Object):
                 for idx in range(len(delta_t3_list)):
                     f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
                 
+            # 信号変化ペナルティを目的関数に加える
+            if signal_change_penalty_flg:
                 for idx in range(len(phi_list)):
                     f_matrix[phi_list[idx]] = self.signal_change_weight
-
 
         # 目的関数の係数をインスタンスとして保持
         self.optimization_problem['f'] = f_matrix
         return
+
+    def _getSignalChangePenaltyFlg(self):
+        # 信号変化ペナルティを目的関数に加えるかのフラグを定義
+        for road_order_id in range(1, self.num_roads + 1):
+                vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+
+                tmp_num_vehs = 0
+                for _, vehicle_data in vehicle_data_map.items():
+                    tmp_num_vehs += vehicle_data.shape[0]
+                
+                # 道路内の自動車台数に実際に適用するステップをかけたものが信号変化ペナルティの重みを超える場合はペナルティ項を使う
+                if tmp_num_vehs * self.utilize_steps > self.signal_change_weight:
+                    return True
+            
+        # すべての道路で条件を満たさなかった場合ペナルティ項は使わない
+        return False
 
     def _updateBounds(self):
         # 変数の下限と上限を初期化

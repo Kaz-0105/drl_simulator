@@ -1,8 +1,8 @@
 simulator :
-  network_name: '7-4-1'        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
-  control_method: 'mpc'        # 制御手法の指定
-  num_simulations: 1        # シミュレーションの回数（エピソード数）
-  simulation_time: 500         # シミュレーションを行う時間（秒）
+  network_name: 7-4-1        # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  control_method: drl        # 制御手法の指定
+  num_simulations: 200       # シミュレーションの回数（エピソード数）
+  simulation_time: 500       # シミュレーションを行う時間（秒）
   seed:
     is_random: false            # シード値をランダムにするかどうか
     value: 1                   # シード値（is_randomがfalseのときのみ有効，1-100を入力，検証用）
@@ -16,7 +16,7 @@ simulator :
     interval: 10               # バックアップを行う頻度
 
 drl:
-  method: 'apex'               # DRLの手法の指定
+  method: apex                 # DRLの手法の指定
   learning_flg: true           # 学習を行うかどうか
   duration_steps: 5            # 1回の予測で決める時間ステップ幅
   network_id: 1                # ニューラルネットワークのID
@@ -29,7 +29,7 @@ drl:
   save_interval: 5             # データを保存する間隔
   stop:
     flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    type: 'episode'            # 'episode': エピソード数で指定, 'interval': 間隔で指定
+    type: episode              # 'episode': エピソード数で指定, 'interval': 間隔で指定
     episode: 400               # 強制終了するエピソード数
     interval: 100              # 強制終了する間隔
 
@@ -45,7 +45,7 @@ apex:
     initial_priority: 500      # 初期優先度
     priority_reset: 
       flg: true                # 優先度のリセットを行うかどうか
-      type: 'interval'         # 'episode': エピソード数で指定, 'interval': 間隔で指定
+      type: interval           # 'episode': エピソード数で指定, 'interval': 間隔で指定
       episode: 10              # 優先度をリセットするエピソード
       interval: 10             # 優先度をリセットする間隔
   num_epochs: 1                # 更新のエポック数
@@ -77,13 +77,13 @@ mpc:
     network_id: 1              # 行動クローンを行いたいネットワーク構造のID
   phases:
     - num_roads: 3
-      num_phases: 4            # 4-phaseのみ
+      num_phases: 4             # 4-phaseのみ
     - num_roads: 4
-      num_phases: 17           # 4-phase, 8-phase, 17-phaseから選択
+      num_phases: 17            # 4-phase, 8-phase, 17-phaseから選択
     - num_roads: 5
-      num_phases: 10           # 10-phaseのみ
-  objective_type: 2            # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
-  signal_change_weight: 6     # 信号変化ペナルティの重み
+      num_phases: 10            # 10-phaseのみ
+  objective_type: 2             # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
+  signal_change_weight: 8      # 信号変化ペナルティの重み
 
 scoot:
   initial_parameters:
@@ -97,8 +97,8 @@ scoot:
   spacing_threshold: 40        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
 
 records:
-  record_flg: true             # 記録を行うかどうか
-  save_folder: balanced_2222_6 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  record_flg: false             # 記録を行うかどうか
+  save_folder: balanced_2222_8 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
