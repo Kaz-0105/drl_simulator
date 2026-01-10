@@ -40,7 +40,6 @@ class Config(Common):
 
         # symmetry_phase_tagsについて
         self._getSymmetryPhaseTags()
-
         return
     
     def readConfigFile(self):
@@ -78,6 +77,9 @@ class Config(Common):
 
             # 記録する情報について
             self.records_info = data['records']
+
+            # config自身に対する設定
+            self.config_info = data['config']
             return
 
     def _getNumRoadTurnRatioMap(self):

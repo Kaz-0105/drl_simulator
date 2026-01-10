@@ -29,7 +29,8 @@ class Vissim(Common):
         self.simulation_count = 1
 
         # 設定ファイルの変更を監視するためのイベントハンドラを設定
-        self.config_change_handler = ConfigChangeHandler(self)
+        if self.config.get('config_info')['change_handle_flg']:
+            self.config_change_handler = ConfigChangeHandler(self)
 
         return
 
@@ -214,7 +215,6 @@ class ConfigChangeHandler(FileSystemEventHandler):
         elif event.src_path.endswith('epsilon_schedule.csv'):
             epsilon_schedule = pd.read_csv(event.src_path, index_col=False)
             self.config.set('epsilon_schedule', epsilon_schedule)
-        
         return
 
     def stop(self):
