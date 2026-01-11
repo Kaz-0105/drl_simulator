@@ -13,7 +13,7 @@ mpc_simulation_file_map = {
 stack_rule = 'queue' # simulation or queue
 num_bins = 50 # number of bins for histogram
 save_file_extension = 'png' # png or eps
-queue_bin_width = 10 # width of each bin for queue length histogram
+queue_bin_width = 5 # width of each bin for queue length histogram
 
 # define root_dir_path
 root_dir_path = (Path(__file__).parent / '..').resolve()
