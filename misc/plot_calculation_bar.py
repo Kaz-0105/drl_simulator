@@ -6,11 +6,11 @@ import numpy as np
 # configuration 
 mpc_simulation_file_map = {
     'balanced_low': 'balanced_low_2222_10',
-    'balanced': 'balanced_2222_8',
-    #'balanced_high': 'balanced_high_2222_6',
+    'balanced': 'balanced_2222_10',
+    'balanced_high': 'balanced_high_2222_10',
 }
 
-stack_rule = 'queue' # simulation or queue
+stack_rule = 'simulation' # simulation or queue
 num_bins = 50 # number of bins for histogram
 save_file_extension = 'png' # png or eps
 queue_bin_width = 5 # width of each bin for queue length histogram
