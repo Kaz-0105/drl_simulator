@@ -64,7 +64,8 @@ class Vissim(Common):
 
     def _deactivate(self):
         self.com.Exit()
-        self.config_change_handler.stop()
+        if self.config.get('config_info')['change_handle_flg']:
+            self.config_change_handler.stop()
         return
 
     def _backup(self):
