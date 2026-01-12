@@ -98,7 +98,7 @@ scoot:
 
 records:
   record_flg: true              # 記録を行うかどうか
-  save_folder: unbalanced_2222_20 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: main-minor_2222_20 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
