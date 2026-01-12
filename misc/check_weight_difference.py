@@ -20,7 +20,8 @@ config = {
     'inflow_types': {
         'balanced_low': True,
         'balanced' : True,
-        'unbalanced' : False,
+        'balanced_high' : True,
+        'unbalanced' : True,
         'main-minor' : False,
     },
     'compare_to' : 'all' # 1. 'all': 全てのdemand_typeを1つのグラフで比較, 2. 'each': 各demand_typeごとに比較（scootとdrlの結果も基準線として表示）
@@ -30,8 +31,9 @@ config = {
 weights = {
     '2222' : {
         'balanced_low': [6, 8, 10, 12, 14, 16, 18, 20],
-        'balanced' : [6, 8],
-        'unbalanced' : [],
+        'balanced' : [6, 8, 10, 12, 14, 18, 20],
+        'balanced_high' : [6, 8, 10, 12, 14, 16, 18, 20],
+        'unbalanced' : [6],
         'main-minor' : [],
     },
     '3333' : {
