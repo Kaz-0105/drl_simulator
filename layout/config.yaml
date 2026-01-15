@@ -79,7 +79,7 @@ mpc:
     - num_roads: 3
       num_phases: 4             # 4-phaseのみ
     - num_roads: 4
-      num_phases: 4            # 4-phase, 8-phase, 17-phaseから選択
+      num_phases: 8            # 4-phase, 8-phase, 17-phaseから選択
     - num_roads: 5
       num_phases: 10            # 10-phaseのみ
   objective_type: 2             # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
@@ -98,7 +98,7 @@ scoot:
 
 records:
   record_flg: true              # 記録を行うかどうか
-  save_folder: balanced_4_700_2222_10 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: balanced_8_700_2222_10 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
