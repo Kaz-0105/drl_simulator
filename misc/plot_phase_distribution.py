@@ -1,12 +1,38 @@
 import matplotlib.pyplot as plt
-import numpy as np
 from pathlib import Path
 import pickle
+plt.rcParams['font.family'] = 'sans'
+plt.rcParams['mathtext.default'] = 'regular'
+plt.rcParams['figure.figsize'] = (14, 10)
+plt.rcParams['figure.dpi'] = 120
+plt.rcParams['font.size'] = 20
+plt.rcParams['font.weight'] = 'bold'
+plt.rcParams['axes.labelsize'] = 50
+plt.rcParams['axes.titlesize'] = 50
+plt.rcParams['axes.linewidth'] = 3
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['legend.fontsize'] = 15
+plt.rcParams['xtick.labelsize'] = 40
+plt.rcParams['ytick.labelsize'] = 40
+plt.rcParams['lines.linewidth'] = 2
+plt.rcParams['lines.markersize'] = 8
+plt.rcParams['xtick.major.size'] = 20.0
+plt.rcParams['xtick.major.width'] = 3
+plt.rcParams['xtick.minor.size'] = 12.0
+plt.rcParams['xtick.minor.width'] = 1.5
+plt.rcParams['ytick.major.size'] = 20.0
+plt.rcParams['ytick.major.width'] = 3
+plt.rcParams['ytick.minor.size'] = 12.0
+plt.rcParams['ytick.minor.width'] = 1.5
+plt.rcParams['text.usetex'] = False
+plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+plt.rcParams["figure.facecolor"] = "w"
+plt.rcParams["figure.edgecolor"] = "w"
 
 # select simulation directories which you want to compare
 simulation_dir_path_map = {
     'scoot': 'scoot/balanced_2222',
-    'mpc': 'mpc/balanced_2222_10',
+    'mpc': 'mpc/balanced_700_2222_10',
     'drl_v2': 'drl/apex/balanced_2222_wait_v2',
 }
 

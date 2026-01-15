@@ -3,6 +3,33 @@ from collections import defaultdict
 import pickle
 import statistics
 import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'sans'
+plt.rcParams['mathtext.default'] = 'regular'
+plt.rcParams['figure.figsize'] = (14, 10)
+plt.rcParams['figure.dpi'] = 120
+plt.rcParams['font.size'] = 20
+plt.rcParams['font.weight'] = 'bold'
+plt.rcParams['axes.labelsize'] = 50
+plt.rcParams['axes.titlesize'] = 50
+plt.rcParams['axes.linewidth'] = 3
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['legend.fontsize'] = 15
+plt.rcParams['xtick.labelsize'] = 40
+plt.rcParams['ytick.labelsize'] = 40
+plt.rcParams['lines.linewidth'] = 2
+plt.rcParams['lines.markersize'] = 8
+plt.rcParams['xtick.major.size'] = 20.0
+plt.rcParams['xtick.major.width'] = 3
+plt.rcParams['xtick.minor.size'] = 12.0
+plt.rcParams['xtick.minor.width'] = 1.5
+plt.rcParams['ytick.major.size'] = 20.0
+plt.rcParams['ytick.major.width'] = 3
+plt.rcParams['ytick.minor.size'] = 12.0
+plt.rcParams['ytick.minor.width'] = 1.5
+plt.rcParams['text.usetex'] = False
+plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+plt.rcParams["figure.facecolor"] = "w"
+plt.rcParams["figure.edgecolor"] = "w"
 
 # set root_dir_path
 root_dir_path = (Path(__file__).parent / '..').resolve()
@@ -18,11 +45,12 @@ config = {
         'calculation_time': True,
     },
     'inflow_types': {
-        'balanced_low': True,
-        'balanced' : True,
-        'balanced_high' : True,
-        'unbalanced' : True,
-        'main-minor' : True,
+        'balanced_500': True,
+        'balanced_600': True,
+        'balanced_700' : True,
+        'balanced_800' : True,
+        'unbalanced' : False,
+        'main-minor' : False,
     },
     'compare_to' : 'all' # 1. 'all': 全てのdemand_typeを1つのグラフで比較, 2. 'each': 各demand_typeごとに比較（scootとdrlの結果も基準線として表示）
 }
@@ -30,9 +58,10 @@ config = {
 # 測定した重みについて（実験をおこなったら追加）
 weights = {
     '2222' : {
-        'balanced_low': [6, 8, 10, 12, 14, 16, 18, 20],
-        'balanced' : [6, 8, 10, 12, 14, 18, 20],
-        'balanced_high' : [6, 8, 10, 12, 14, 16, 18, 20],
+        'balanced_500': [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        'balanced_600': [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        'balanced_700' : [0, 2, 4, 6, 8, 10, 12, 14, 18, 20],
+        'balanced_800' : [6, 8, 10, 12, 14, 16, 18, 20],
         'unbalanced' : [6, 8, 10, 12, 14, 16, 20],
         'main-minor' : [8, 10, 12, 14, 16],
     },
@@ -129,15 +158,38 @@ if config['compare_to'] == 'all':
 
             x_vals = list(metrics[inflow_type].keys())
             y_vals = [metrics[inflow_type][weight][metric_name] for weight in x_vals]
-            axes[metric_name].plot(x_vals, y_vals, marker='o', label=inflow_type)
+            axes[metric_name].plot(
+                x_vals, 
+                y_vals, 
+                marker='o', 
+                label=inflow_type,
+                linewidth=4
+            )
         
-        axes[metric_name].set_xlabel('Weight')
-        axes[metric_name].set_ylabel(metric_name.replace('_', ' ').title())
-        axes[metric_name].set_title(f'{metric_name.replace("_", " ").title()} vs Weight')
-        axes[metric_name].legend(title='Inflow Type')
+        axes[metric_name].set_xlabel('Weight', fontsize=20, fontweight='bold')
+        axes[metric_name].set_ylabel(metric_name.replace('_', ' ').title(), fontsize=20, fontweight='bold')
+        axes[metric_name].tick_params(axis='both', which='major', labelsize=20)
+        axes[metric_name].tick_params(axis='both', which='minor', labelsize=20)
+        axes[metric_name].set_title(f'{metric_name.replace("_", " ").title()} vs Weight', fontsize=24, fontweight='bold')
+        axes[metric_name].grid(
+            which='major',
+            axis='both',
+            linestyle='--',
+            linewidth=1,
+            alpha=0.5,
+        )
+        axes[metric_name].legend(
+            title='Inflow Type',
+            fontsize=20,
+            title_fontsize=20,
+        )
 
         figs[metric_name].tight_layout()
-        figs[metric_name].savefig(root_dir_path / 'results' / 'plots' / f'weight_comparison_{metric_name}.png')
+
+        save_dir_path = root_dir_path / 'results' / 'plots' / 'weight_comparison'
+        save_dir_path.mkdir(parents=True, exist_ok=True)
+        save_file_path = save_dir_path / f"weight_comparison_{metric_name}.png"
+        figs[metric_name].savefig(save_file_path)
 
 elif config['compare_to'] == 'each':
     # scootとdrlのデータを取得

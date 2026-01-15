@@ -5,9 +5,10 @@ import numpy as np
 
 # configuration 
 mpc_simulation_file_map = {
-    'balanced_low': 'balanced_low_2222_10',
-    'balanced': 'balanced_2222_10',
-    'balanced_high': 'balanced_high_2222_10',
+    'balanced_500': 'balanced_500_2222_10',
+    'balanced_600': 'balanced_600_2222_10',
+    'balanced_700': 'balanced_700_2222_10',
+    'balanced_800': 'balanced_800_2222_10',
 }
 
 stack_rule = 'simulation' # simulation or queue
