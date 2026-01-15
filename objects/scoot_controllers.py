@@ -296,7 +296,6 @@ class ScootController(Object):
             avg_saturation += self.phase_saturation_map[phase_id] * self.phase_num_vehicles_map[phase_id]
         avg_saturation /= self.total_num_vehicles
 
-
         
         if avg_saturation < self.saturation_threshold:
             cumulative_change_value = 0
