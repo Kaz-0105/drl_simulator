@@ -36,7 +36,7 @@ def calculate_ema(data, span):
     # spanは「何日移動平均か」に相当するパラメータ
     return pd.Series(data).ewm(span=span, adjust=False).mean().values
 
-simulation_name = 'mpc/balanced_connected_600_8_2222_10'
+simulation_name = 'mpc/balanced_connected_700_8_2222_10'
 metric = 'average_queue'
 type = 'separate'  # 'mix' or 'separate'
 
@@ -66,7 +66,7 @@ if type == 'separate':
         if metric in ['average_queue', 'max_queue']:
             ax.plot(
                 metric_record['time'],
-                calculate_ema(metric_record['queue_length'], span=20),
+                calculate_ema(metric_record['queue_length'], span=30),
                 label=f'ID: {intersection_id}',
                 linewidth=4,
                 linestyle='-',

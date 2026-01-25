@@ -238,8 +238,9 @@ class MpcController(Object):
                             from_link_id = from_link.get('id')
                             params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
-                    # for lane_str in combinations:
-                    #     params['D_b'][lane_str] -= 1 # vissimが引っかかるから1m手前にする
+                    # vissimが引っかかるから5m手前にする(TODO: 根本的な解決をしたい)
+                    for lane_str in combinations:
+                        params['D_b'][lane_str] -= 5
                         
                 combination_params_map[combination_order_id] = params
 
@@ -566,8 +567,8 @@ class MpcController(Object):
         return
 
     def _updateDt(self):
-        max_queue_length = max(list(self.road_max_queue_map.values()))
         for road_order_id in range(1, self.num_roads + 1):
+            max_queue_length = self.road_max_queue_map[road_order_id]
             # combinations_mapを取得
             combination_params_map = self.road_combination_params_map[road_order_id]
 
