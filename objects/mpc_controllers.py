@@ -238,6 +238,9 @@ class MpcController(Object):
                             from_link_id = from_link.get('id')
                             params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
+                    # for lane_str in combinations:
+                    #     params['D_b'][lane_str] -= 1 # vissimが引っかかるから1m手前にする
+                        
                 combination_params_map[combination_order_id] = params
 
             road_combination_params_map[road_order_id] = combination_params_map
@@ -468,14 +471,14 @@ class MpcController(Object):
             if vehicle_data.shape[0] == 0:
                 vehicle_data_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
-                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
+                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
                 road_vehicle_data_map[road_order_id] = vehicle_data_map
                 continue
 
             # 距離を道路の入口空の距離に変換
             vehicle_data = self._transformPositionData(road_order_id, vehicle_data)
             # 必要ない情報を削除
-            vehicle_data = vehicle_data.drop(columns=['in_queue', 'speed', 'road_id']).copy()
+            vehicle_data = vehicle_data.drop(columns=['in_queue', 'road_id']).copy()
         
             # 新たに信号待ちする車線に関する情報および従う信号機を追加するために配列を初期化
             wait_link_ids = []
@@ -547,8 +550,23 @@ class MpcController(Object):
         
         self.road_vehicle_data_map = road_vehicle_data_map
 
+        # road_max_queue_mapを作成
+        self.road_max_queue_map = {}
+        max_queue = 0
+        for road_order_id in range(1, self.num_roads + 1):
+            late_vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            for _, vehicles_df in late_vehicle_data_map.items():
+                for _, vehicle_row in reversed(list(vehicles_df.iterrows())):
+                    if vehicle_row['speed'] < 10:
+                        tmp_queue = vehicle_row['position']
+                        max_queue = max(max_queue, tmp_queue)
+                        break
+            self.road_max_queue_map[road_order_id] = max_queue
+            
+        return
+
     def _updateDt(self):
-        max_queue_length = self.intersection.get('max_queue_length')
+        max_queue_length = max(list(self.road_max_queue_map.values()))
         for road_order_id in range(1, self.num_roads + 1):
             # combinations_mapを取得
             combination_params_map = self.road_combination_params_map[road_order_id]

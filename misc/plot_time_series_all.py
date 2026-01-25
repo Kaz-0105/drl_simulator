@@ -36,7 +36,7 @@ def calculate_ema(data, span):
     # spanは「何日移動平均か」に相当するパラメータ
     return pd.Series(data).ewm(span=span, adjust=False).mean().values
 
-simulation_name = 'mpc/balanced_connected_2222_10'
+simulation_name = 'mpc/balanced_connected_600_8_2222_10'
 metric = 'average_queue'
 type = 'separate'  # 'mix' or 'separate'
 
@@ -98,8 +98,8 @@ if type == 'separate':
         fontsize=16,
         title_fontsize=20,
     )
-    ax.set_xlim(0,500)
-    ax.set_ylim(bottom=0)
+    ax.set_xlim(0, metric_record['time'].to_numpy()[-1])
+    ax.set_ylim(0, None)
 
 elif type == 'mix':
     # plot
@@ -135,8 +135,8 @@ elif type == 'mix':
     ax.set_title(f'{metric.replace("_", " ").title()} Over Time (Average of All Intersections)', fontsize=24)
     ax.legend()
     ax.set_xlim(0, time_list[-1])
-    xticks = ax.get_xticks()
-    ax.set_xticks(xticks[xticks != 0])
+    ax.set_ylim(0, max(average_metric_list)*1.1)
+    fig.tight_layout()
     
 else: 
     raise NotImplementedError(f"Not supported type: {type}")

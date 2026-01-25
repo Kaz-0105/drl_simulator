@@ -11,6 +11,8 @@ plt.rcParams['font.weight'] = 'bold'
 plt.rcParams['axes.labelsize'] = 50
 plt.rcParams['axes.titlesize'] = 50
 plt.rcParams['axes.linewidth'] = 3
+plt.rcParams['xtick.direction'] = 'in'
+plt.rcParams['ytick.direction'] = 'in'
 plt.rcParams['axes.labelweight'] = 'bold'
 plt.rcParams['legend.fontsize'] = 15
 plt.rcParams['xtick.labelsize'] = 40
@@ -40,7 +42,7 @@ mpc_simulation_file_map = {
 
 stack_rule = 'simulation' # simulation or queue
 num_bins = 30 # number of bins for histogram
-save_file_extension = 'png' # png or eps
+save_file_extension = 'eps' # png or eps
 queue_bin_width = 5 # width of each bin for queue length histogram
 
 # define root_dir_path
@@ -171,11 +173,11 @@ elif stack_rule == 'queue':
             linewidth=4,
         )
 
-ax.set_xlabel('Calculation Time (s)', fontsize=20, fontweight='bold')
-ax.set_ylabel('Cumulative Distribution Function', fontsize=20, fontweight='bold')
+ax.set_xlabel('Calculation Time (s)', fontsize=24, fontweight='bold')
+ax.set_ylabel('Cumulative Probability', fontsize=24, fontweight='bold')
 ax.set_title(f'Calculation Time Cumulative Distribution Function', fontsize=24, fontweight='bold')
-ax.tick_params(axis='both', which='major', labelsize=20)
-ax.tick_params(axis='both', which='minor', labelsize=20)
+ax.tick_params(axis='both', which='major', labelsize=24)
+ax.tick_params(axis='both', which='minor', labelsize=24)
 ax.legend(fontsize=16)
 ax.set_xlim(bin_edges[0], bin_edges[-1] + ( bin_edges[1] - bin_edges[0] ))
 ax.set_ylim(0, 1.1)
@@ -189,10 +191,11 @@ ax.grid(
 leg= ax.legend(
     loc='lower right',
     title='Vehicle Inflow Rate' if stack_rule == 'simulation' else 'Average Queue Length',
-    title_fontsize=20,
-    fontsize=20,
+    title_fontsize=24,
+    fontsize=24,
 )
 leg.get_title().set_fontweight('bold')
+fig.tight_layout()
 
 save_dir = root_dir_path / 'results' / 'plots' / 'calc_time_cdf'
 save_dir.mkdir(parents=True, exist_ok=True)

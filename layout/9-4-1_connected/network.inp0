@@ -10532,7 +10532,7 @@
 		</vehicleInput>
 	</vehicleInputs>
 	<vehicleRoutingDecisionsStatic>
-		<vehicleRoutingDecisionStatic allVehTypes="true" anmFlag="false" combineStaRoutDec="false" link="5" name="" no="1" pos="80.688064913071187" routeChoiceMeth="STATIC">
+		<vehicleRoutingDecisionStatic allVehTypes="true" anmFlag="false" combineStaRoutDec="false" link="1" name="" no="1" pos="0.1" routeChoiceMeth="STATIC">
 			<vehRoutSta>
 				<vehicleRouteStatic destLink="10005" destPos="0.099676192042262107" formula="" name="" no="1" relFlow=""/>
 				<vehicleRouteStatic destLink="10004" destPos="0.099996607627934969" formula="" name="" no="2" relFlow="2 0:3"/>
