@@ -239,8 +239,8 @@ class MpcController(Object):
                             params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
                     # vissimが引っかかるから5m手前にする(TODO: 根本的な解決をしたい)
-                    for lane_str in combinations:
-                        params['D_b'][lane_str] -= 5
+                    # for lane_str in combinations:
+                    #     params['D_b'][lane_str] -= 5
                         
                 combination_params_map[combination_order_id] = params
 
@@ -1485,10 +1485,16 @@ class MpcController(Object):
                             for direction_id in range(1, self.num_roads):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
-                                
-                                if last_vehs_map[lane_str][direction_id]['idx'] > target_idx:
-                                    target_idx = last_vehs_map[lane_str][direction_id]['idx']
-                                    target_direction_id = direction_id
+
+                                if vehicle['position'] <= D_b:
+                                    if last_vehs_map[lane_str][direction_id]['idx'] > target_idx:
+                                        target_idx = last_vehs_map[lane_str][direction_id]['idx']
+                                        target_direction_id = direction_id
+                                else:
+                                    for tmp_lane_str in combinations:
+                                        if last_vehs_map[tmp_lane_str][direction_id]['idx'] > target_idx:
+                                            target_idx = last_vehs_map[tmp_lane_str][direction_id]['idx']
+                                            target_direction_id = direction_id
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
@@ -1805,8 +1811,11 @@ class MpcController(Object):
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
                                     continue
-
-                                target_idx = max(target_idx, last_veh_indices[lane_str][direction_id])
+                                
+                                if vehicle['position'] <= D_b:
+                                    target_idx = max(target_idx, last_veh_indices[lane_str][direction_id])
+                                else:
+                                    target_idx = max([last_veh_indices[tmp_lane_str][direction_id] for tmp_lane_str in combinations] + [target_idx])
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
