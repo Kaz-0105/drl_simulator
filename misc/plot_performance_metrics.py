@@ -3,12 +3,43 @@ from pathlib import Path
 import pickle
 import numpy as np
 
+# set matplotlib parameters
+plt.rcParams['font.family'] = 'sans'
+plt.rcParams['mathtext.default'] = 'regular'
+plt.rcParams['figure.figsize'] = (14, 10)
+plt.rcParams['figure.dpi'] = 120
+plt.rcParams['font.size'] = 20
+plt.rcParams['font.weight'] = 'bold'
+plt.rcParams['axes.labelsize'] = 50
+plt.rcParams['axes.titlesize'] = 50
+plt.rcParams['axes.linewidth'] = 3
+plt.rcParams['xtick.direction'] = 'in'
+plt.rcParams['ytick.direction'] = 'in'
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['legend.fontsize'] = 15
+plt.rcParams['xtick.labelsize'] = 40
+plt.rcParams['ytick.labelsize'] = 40
+plt.rcParams['lines.linewidth'] = 2
+plt.rcParams['lines.markersize'] = 8
+plt.rcParams['xtick.major.size'] = 20.0
+plt.rcParams['xtick.major.width'] = 3
+plt.rcParams['xtick.minor.size'] = 12.0
+plt.rcParams['xtick.minor.width'] = 1.5
+plt.rcParams['ytick.major.size'] = 20.0
+plt.rcParams['ytick.major.width'] = 3
+plt.rcParams['ytick.minor.size'] = 12.0
+plt.rcParams['ytick.minor.width'] = 1.5
+plt.rcParams['text.usetex'] = False
+plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+plt.rcParams["figure.facecolor"] = "w"
+plt.rcParams["figure.edgecolor"] = "w"
+
 # データの場所とラベルを設定
 simulation_list = [
-    ['scoot/balanced_800'],
-    ['mpc/balanced_700_4_10'],
-    ['mpc/balanced_700_8_10'],
-    ['mpc/balanced_700_17_10']
+    ['scoot/balanced_600'],
+    ['mpc/balanced_600_4_10'],
+    ['mpc/balanced_600_8_10'],
+    ['mpc/balanced_600_17_10']
 ]
 row_names = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
 if len(simulation_list) != len(row_names):
@@ -108,11 +139,14 @@ for row_idx, row_max_queue_list in enumerate(max_queue_list):
     )
 
 ax_max_queue.set_xticks(x + 0.1)
-ax_max_queue.set_xticklabels(demand_type_names, fontsize=14)
-ax_max_queue.set_title('Max Queue Length', fontsize=16)
-ax_max_queue.set_xlabel('Simulation Configuration', fontsize=14)
-ax_max_queue.set_ylabel('Max Queue Length (m)', fontsize=14)
-ax_max_queue.legend(fontsize=14)
+ax_max_queue.set_xticklabels(demand_type_names, fontsize=24)
+ax_max_queue.set_title('Max Queue Length', fontsize=24)
+ax_max_queue.set_xlabel('Simulation Configuration', fontsize=24)
+ax_max_queue.set_ylabel('Max Queue Length (m)', fontsize=24)
+ax_max_queue.tick_params(axis='both', which='major', labelsize=24)
+ax_max_queue.tick_params(axis='both', which='minor', labelsize=24)
+ax_max_queue.legend(fontsize=24)
+fig_max_queue.tight_layout()
 fig_max_queue.savefig(save_dir_path / f"max_queue.png")
 
 # 平均キュー長について
@@ -124,11 +158,13 @@ for row_idx, row_average_queue_list in enumerate(average_queue_list):
         label=row_names[row_idx]
     )
 ax_average_queue.set_xticks(x + 0.1)
-ax_average_queue.set_xticklabels(demand_type_names, fontsize=14)
-ax_average_queue.set_title('Average Queue Length', fontsize=16)
-ax_average_queue.set_xlabel('Simulation Configuration', fontsize=14)
-ax_average_queue.set_ylabel('Average Queue Length (m)', fontsize=14)
-ax_average_queue.legend(fontsize=14)
+ax_average_queue.set_xticklabels(demand_type_names, fontsize=24)
+ax_average_queue.set_title('Average Queue Length', fontsize=24)
+ax_average_queue.set_xlabel('Simulation Configuration', fontsize=24)
+ax_average_queue.set_ylabel('Average Queue Length (m)', fontsize=24)
+ax_average_queue.tick_params(axis='both', which='major', labelsize=24)
+ax_average_queue.tick_params(axis='both', which='minor', labelsize=24)
+ax_average_queue.legend(fontsize=24)
 
 if y_axis_flg:
     # キューの最大値と平均値のy軸のスケールをそろえる
@@ -150,6 +186,7 @@ else:
     y_limit = (0, max_y_value * 1.1)
     ax_average_queue.set_ylim(y_limit)
 
+fig_average_queue.tight_layout()
 fig_average_queue.savefig(save_dir_path / 'average_queue.png')  
 
 # 遅れ時間について
@@ -161,11 +198,14 @@ for row_idx, row_max_delay_list in enumerate(max_delay_list):
         label=row_names[row_idx]
     )
 ax_max_delay.set_xticks(x + 0.1)
-ax_max_delay.set_xticklabels(demand_type_names, fontsize=14)
-ax_max_delay.set_title('Max Delay Time', fontsize=16)
-ax_max_delay.set_xlabel('Simulation Configuration', fontsize=14)
-ax_max_delay.set_ylabel('Max Delay Time (s)', fontsize=14)
-ax_max_delay.legend(fontsize=14)
+ax_max_delay.set_xticklabels(demand_type_names, fontsize=24)
+ax_max_delay.set_title('Max Delay Time', fontsize=24)
+ax_max_delay.set_xlabel('Simulation Configuration', fontsize=24)
+ax_max_delay.set_ylabel('Max Delay Time (s)', fontsize=24)
+ax_max_delay.tick_params(axis='both', which='major', labelsize=24)
+ax_max_delay.tick_params(axis='both', which='minor', labelsize=24)
+ax_max_delay.legend(fontsize=24)
+fig_max_delay.tight_layout()
 fig_max_delay.savefig(save_dir_path / 'max_delay.png')
 
 # 平均遅れ時間について
@@ -177,11 +217,14 @@ for row_idx, row_average_delay_list in enumerate(average_delay_list):
         label=row_names[row_idx]
     )
 ax_average_delay.set_xticks(x + 0.1)
-ax_average_delay.set_xticklabels(demand_type_names, fontsize=14) 
-ax_average_delay.set_title('Average Delay Time', fontsize=16)
-ax_average_delay.set_xlabel('Simulation Configuration', fontsize=14)
-ax_average_delay.set_ylabel('Average Delay Time (s)', fontsize=14)
-ax_average_delay.legend(fontsize=14)
+ax_average_delay.set_xticklabels(demand_type_names, fontsize=24) 
+ax_average_delay.set_title('Average Delay Time', fontsize=24)
+ax_average_delay.set_xlabel('Simulation Configuration', fontsize=24)
+ax_average_delay.set_ylabel('Average Delay Time (s)', fontsize=24)
+ax_average_delay.tick_params(axis='both', which='major', labelsize=24)
+ax_average_delay.tick_params(axis='both', which='minor', labelsize=24)
+ax_average_delay.legend(fontsize=24)
+fig_average_delay.tight_layout()
 fig_average_delay.savefig(save_dir_path / 'average_delay.png')
 
 # 計算時間について
@@ -193,11 +236,15 @@ for row_idx, row_calc_time_list in enumerate(calc_time_list):
         label=row_names[row_idx]
     )
 ax_calc_time.set_xticks(x + 0.1)
-ax_calc_time.set_xticklabels(demand_type_names, fontsize=14)
-ax_calc_time.set_title('Calculation Time', fontsize=16)
-ax_calc_time.set_xlabel('Simulation Configuration', fontsize=14)
-ax_calc_time.set_ylabel('Calculation Time (s)', fontsize=14)
-ax_calc_time.legend(fontsize=14)
+ax_calc_time.set_xticklabels(demand_type_names, fontsize=24)
+ax_calc_time.set_title('Calculation Time', fontsize=24)
+ax_calc_time.set_xlabel('Simulation Configuration', fontsize=24)
+ax_calc_time.set_ylabel('Calculation Time (s)', fontsize=24)
+ax_calc_time.tick_params(axis='x', which='major', labelsize=18)
+ax_calc_time.tick_params(axis='y', which='major', labelsize=24)
+ax_calc_time.tick_params(axis='both', which='minor', labelsize=24)
+ax_calc_time.legend(fontsize=24)
+fig_calc_time.tight_layout()
 fig_calc_time.savefig(save_dir_path / 'calculation_time.png')
 
 

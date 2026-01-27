@@ -2,14 +2,16 @@ from pathlib import Path
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
+
+# set matplotlib parameters
 plt.rcParams['font.family'] = 'sans'
 plt.rcParams['mathtext.default'] = 'regular'
 plt.rcParams['figure.figsize'] = (14, 10)
 plt.rcParams['figure.dpi'] = 120
 plt.rcParams['font.size'] = 20
 plt.rcParams['font.weight'] = 'bold'
-plt.rcParams['axes.labelsize'] = 50
-plt.rcParams['axes.titlesize'] = 50
+plt.rcParams['axes.labelsize'] = 24
+plt.rcParams['axes.titlesize'] = 24
 plt.rcParams['axes.linewidth'] = 3
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'

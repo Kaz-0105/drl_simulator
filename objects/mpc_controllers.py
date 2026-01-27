@@ -1496,9 +1496,13 @@ class MpcController(Object):
                                         target_direction_id = direction_id
                                 else:
                                     for tmp_lane_str in combinations:
-                                        if last_vehs_map[tmp_lane_str][direction_id]['pos'] < target_pos:
-                                            target_idx = last_vehs_map[tmp_lane_str][direction_id]['idx']
-                                            target_pos = last_vehs_map[tmp_lane_str][direction_id]['pos']
+                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                            continue
+
+                                        if last_veh_info['pos'] < target_pos:
+                                            target_idx = last_veh_info['idx']
+                                            target_pos = last_veh_info['pos']
                                             target_direction_id = direction_id
                             
                             if target_idx == -1:
@@ -1829,9 +1833,13 @@ class MpcController(Object):
                                         target_pos = last_vehs_map[lane_str][direction_id]['pos']
                                 else:
                                     for tmp_lane_str in combinations:
-                                        if last_vehs_map[tmp_lane_str][direction_id]['pos'] < target_pos:
-                                            target_pos = last_vehs_map[tmp_lane_str][direction_id]['pos']
-                                            target_idx = last_vehs_map[tmp_lane_str][direction_id]['idx']
+                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                            continue
+
+                                        if last_veh_info['pos'] < target_pos:
+                                            target_pos = last_veh_info['pos']
+                                            target_idx = last_veh_info['idx']
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
