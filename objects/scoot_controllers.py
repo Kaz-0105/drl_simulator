@@ -295,9 +295,12 @@ class ScootController(Object):
         for phase_id in range(1, self.num_phases + 1):
             avg_saturation += self.phase_saturation_map[phase_id] * self.phase_num_vehicles_map[phase_id]
         avg_saturation /= self.total_num_vehicles
-
         
         if avg_saturation < self.saturation_threshold:
+            # 今のフェーズが終わるタイミングとかぶったらスキップ
+            if self.remain_steps_info['split'][0]['steps'] == 0:
+                return
+            
             cumulative_change_value = 0
             for idx in range(len(self.remain_steps_info['split'])):
                 # remained_steps_info['split']の更新
@@ -406,6 +409,12 @@ class ScootController(Object):
             self.remain_steps_info['cycle'] = self.params['cycle']
         
         self.remain_steps_info['cycle'] -= 1
+
+        # debug
+        print(f"len(self.signal_controller.get('future_phase_ids'): {len(self.signal_controller.get('future_phase_ids'))}")
+        print(f"self.remained_steps_info['split'][0]['steps']: {self.remain_steps_info['split'][0]['steps']}")
+        if len(self.signal_controller.get('future_phase_ids')) - self.remain_steps_info['split'][0]['steps'] != 1:
+            raise ValueError('Inconsistent remaining steps between ScootController and SignalController.')
         return
 
     @property

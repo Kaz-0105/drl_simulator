@@ -36,9 +36,9 @@ def calculate_ema(data, span):
     # spanは「何日移動平均か」に相当するパラメータ
     return pd.Series(data).ewm(span=span, adjust=False).mean().values
 
-simulation_name = 'mpc/balanced_connected_700_8_2222_10'
+simulation_name = 'scoot/balanced_sh_connected_700'
 metric = 'average_queue'
-type = 'separate'  # 'mix' or 'separate'
+type = 'mix'  # 'mix' or 'separate'
 
 
 simulation_dir_path = Path(__file__) / '..' / '..' / 'results' / 'metrics' / simulation_name
