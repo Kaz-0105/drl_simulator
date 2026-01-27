@@ -239,8 +239,8 @@ class MpcController(Object):
                             params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
                     # vissimが引っかかるから5m手前にする(TODO: 根本的な解決をしたい)
-                    for lane_str in combinations:
-                        params['D_b'][lane_str] -= 5
+                    # for lane_str in combinations:
+                    #     params['D_b'][lane_str] -= 5
                         
                 combination_params_map[combination_order_id] = params
 
@@ -1321,7 +1321,7 @@ class MpcController(Object):
                                 'idx': -1,
                                 'rows': [-2, -1],
                                 'col': -1,
-                                'pos': -1,
+                                'pos': float('inf'),
                             }
                         last_vehs_map[lane_str] = tmp_last_vehs_map
 
@@ -1483,7 +1483,7 @@ class MpcController(Object):
 
                             # delta_t3(10)の定義
                             target_idx = -1
-                            target_pos = -1
+                            target_pos = float('inf')
                             target_direction_id = None
                             for direction_id in range(1, self.num_roads):
                                 if direction_id == int(vehicle['direction_id']):
@@ -1701,7 +1701,7 @@ class MpcController(Object):
                         for direction_id in range(1, self.num_roads):
                             tmp_last_vehs_map[direction_id] = {
                                 'idx': -1,
-                                'pos': -1,
+                                'pos': float('inf'),
                             }
                         last_vehs_map[lane_str] = tmp_last_vehs_map
 
@@ -1822,24 +1822,27 @@ class MpcController(Object):
 
                             # delta_t3の定義
                             target_idx = -1
-                            target_pos = -1
+                            target_pos = float('inf')
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
                                     continue
+
+                                last_veh_info = last_vehs_map[lane_str][direction_id]
                                 
                                 if vehicle['position'] > p_s - D_b:
-                                    if last_vehs_map[lane_str][direction_id]['pos'] < target_pos:
-                                        target_idx = last_vehs_map[lane_str][direction_id]['idx']
-                                        target_pos = last_vehs_map[lane_str][direction_id]['pos']
+                                    if last_veh_info['pos'] < target_pos:
+                                        target_idx = last_veh_info['idx']
+                                        target_pos = last_veh_info['pos']
                                 else:
                                     for tmp_lane_str in combinations:
                                         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+
                                         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
                                             continue
 
                                         if last_veh_info['pos'] < target_pos:
-                                            target_pos = last_veh_info['pos']
                                             target_idx = last_veh_info['idx']
+                                            target_pos = last_veh_info['pos']
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
