@@ -1,8 +1,8 @@
 simulator :
-  network_name: 7-4-1         # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
+  network_name: 1-4-1         # シミュレーションに使うネットワーク名（ディレクトリ名）（交差点数-道路数-車線数）
   control_method: mpc         # 制御手法の指定
   num_simulations: 1          # シミュレーションの回数（エピソード数）
-  simulation_time: 500        # シミュレーションを行う時間（秒）
+  simulation_time: 10        # シミュレーションを行う時間（秒）
   seed:
     is_random: false            # シード値をランダムにするかどうか
     value: 1                   # シード値（is_randomがfalseのときのみ有効，1-100を入力，検証用）
@@ -14,6 +14,8 @@ simulator :
   backup:
     flg: true                  # バックアップを行うかどうか
     interval: 100              # バックアップを行う頻度
+  config_change:
+    flg: true                  # シミュレーション中にconfig.yamlの変更を反映させるかどうか
 
 drl:
   method: apex                 # DRLの手法の指定
@@ -76,12 +78,9 @@ mpc:
     size: 1000                 # 行動クローン用のバッファのひとつのファイルあたりのサイズ
     network_id: 1              # 行動クローンを行いたいネットワーク構造のID
   phases:
-    - num_roads: 3
-      num_phases: 4             # 4のみ
-    - num_roads: 4
-      num_phases: 17             # 4, 8, 17
-    - num_roads: 5
-      num_phases: 10            # 10のみ
+    3-road: 4  # 4のみ
+    4-road: 17 # 4, 8, 17
+    5-road: 10 # 10のみ
   objective_type: 2             # 目的関数のタイプ（1: 信号待ち自動車数, 2: 信号待ち自動車数＋信号変化ペナルティ）
   signal_change_weight: 10       # 信号変化ペナルティの重み
 
@@ -98,7 +97,7 @@ scoot:
 
 records:
   record_flg: true                # 記録を行うかどうか
-  save_folder: balanced_800_17_10 # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
+  save_folder: test # 記録するフォルダ名（results/metrics/{mpc, drl, scoot}配下に作成される，かぶりは許容しない）
   metric:
     queue_flg: true
     delay_flg: true
@@ -108,5 +107,13 @@ records:
   max_len: 20                  # 記録しない場合の一次的に記録するデータの数
 
 config:
-  change_handle_flg: false   # シミュレーション中にconfigurationの変更を反映するかどうか
+  
+
+save:
+  performance_metrics: 
+    queue: true
+    delay: true
+    phase: true
+    calc_time: true
+
 

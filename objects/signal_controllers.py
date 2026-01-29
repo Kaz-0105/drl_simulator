@@ -2,6 +2,7 @@ from libs.container import Container
 from libs.object import Object
 from objects.signal_heads import SignalHeads
 from collections import deque
+import pandas as pd
 
 class SignalControllers(Container):
     def __init__(self, network):
@@ -72,43 +73,43 @@ class SignalController(Object):
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = signal_controllers.config
         self.signal_controllers = signal_controllers
+        self.network = signal_controllers.network
         self.executor = signal_controllers.executor
 
         # comオブジェクトを取得
         self.com = com
 
-        # IDを取得
-        self.id = int(self.com.AttValue('No'))
+        # set properties
+        self._initProps()
 
         # 下位の紐づくオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
+        return
 
-        # phase_recordとfuture_phase_idsを初期化
-        self._initPhaseRecord()
-        self._initFuturePhaseIds()
+    def _initProps(self):
+        # set id
+        self.id = int(self.com.AttValue('No'))
 
-        # red_stepsを初期化
         simulation_info = self.config.get('simulator_info')
+
+        # set red_steps
         self.red_steps = simulation_info['red_steps']
-    
-    def _initPhaseRecord(self):
-        records_info = self.config.get('records_info')
-        if records_info['metric']['phase_flg'] == True:
-            self.phase_record = []
-        else:
-            self.phase_record = deque(maxlen=records_info['max_len'])
-    
-    def _initFuturePhaseIds(self):
-        simulator_info = self.config.get('simulator_info')
-        if simulator_info['control_method'] == 'drl' or simulator_info['control_method'] == 'bc':
+
+        # initialize future_phase_ids
+        if simulation_info['control_method'] in ['drl', 'bc']:
             drl_info = self.config.get('drl_info')
-            self.future_phase_ids = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
-        elif simulator_info['control_method'] == 'mpc':
+            self.future_phase_ids = deque(maxlen=drl_info['duration_steps'] + 1)
+        elif simulation_info['control_method'] == 'mpc':
             mpc_info = self.config.get('mpc_info')
-            self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps']) 
-        elif simulator_info['control_method'] == 'scoot':
+            self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
+        elif simulation_info['control_method'] == 'scoot':
             scoot_info = self.config.get('scoot_info')
             self.future_phase_ids = deque(maxlen=scoot_info['max_cycle'] - 3 * scoot_info['min_split'])
+        else:
+            raise NotImplementedError(f"Not supported control method: {simulation_info['control_method']}")
+
+        # initialize phase_record_df
+        self.phase_record_df = pd.DataFrame(columns=['time', 'phase'])
         return
         
     def setNextPhases(self, phase_ids):
@@ -133,11 +134,19 @@ class SignalController(Object):
         return
     
     def setNextPhaseToVissim(self):
-        # Vissimにフェーズをセット
+        # set next phase to vissim
         self.signal_groups.setNextPhaseToVissim()
 
-        # phase_recordに追加して、future_phase_idsから削除
-        self.phase_record.append(self.future_phase_ids.popleft())
+        # update phase_record_df
+        self.phase_record_df.loc[len(self.phase_record_df)] = [self.current_time, self.future_phase_ids[0]]
+
+        # remove the first phase from future_phase_ids
+        self.future_phase_ids.popleft()
+        return
+
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
     
     @property
     def next_phase_id(self):
@@ -149,10 +158,11 @@ class SignalController(Object):
 
     @property
     def current_phase_id(self):
-        if self.phase_record:
-            return self.phase_record[-1]
-        else:
-            return None # レコードがない場合はNoneを返す
+        if self.phase_record_df.shape[0] == 0:
+            raise Exception("No phase record found.")
+        
+        phase_record_row = self.phase_record_df.iloc[-1]
+        return phase_record_row['phase']
 
     @property
     def signal_change_flg(self):
