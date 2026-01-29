@@ -80,6 +80,8 @@ class Config(Common):
 
             # config自身に対する設定
             self.config_info = data['config']
+
+            self.save_info = data['save']
             return
 
     def _getNumRoadTurnRatioMap(self):

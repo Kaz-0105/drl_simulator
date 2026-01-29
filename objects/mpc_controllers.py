@@ -105,13 +105,9 @@ class MpcController(Object):
         self._makeBcNumLanesList()
 
     def _makePhases(self):
-        # フェーズ情報を取得
+        # set num_phases and phases
         mpc_info = self.config.get('mpc_info')
-        for phase_info in mpc_info['phases']:
-            if phase_info['num_roads'] == self.num_roads:
-                break
-
-        self.num_phases = int(phase_info['num_phases'])
+        self.num_phases = mpc_info['phases'][f"{self.num_roads}-road"]
     
         phases = self.signal_controller.get('phases')
         self.phases = {}
@@ -120,6 +116,7 @@ class MpcController(Object):
                 break
 
             self.phases[phase_order_id] = phase_list
+        return
 
     def _initMPCParameters(self):
         simulator_info = self.config.get('simulator_info')

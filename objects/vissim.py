@@ -16,37 +16,46 @@ import shutil
 from pathlib import Path
 
 class Vissim(Common):
-    def __init__(self):
+    def __init__(self, root_dir_path):
         # 継承
         super().__init__()
+
+        # set root_dir_path
+        self.root_dir_path = root_dir_path
 
         # 設定オブジェクトと非同期オブジェクトを設定    
         self.config = Config(self)
         self.executor = Executor(self)
         self.shared_resources = SharedResources(self)
 
-        # シミュレーションのカウントを設定
-        self.simulation_count = 1
+        # init properties
+        self._initProps()
 
-        # 設定ファイルの変更を監視するためのイベントハンドラを設定
-        if self.config.get('config_info')['change_handle_flg']:
+        # set config change handler
+        if self.config_change_flg:
             self.config_change_handler = ConfigChangeHandler(self)
 
         return
 
-    def _activate(self):
-        # VissimのCOMオブジェクトを取得
-        self._getVissimCom()
-
-        # 下位のオブジェクトを初期化
-        self.simulation = Simulation(self)
-        self.network = Network(self)
-
-        return
-
-    def _getVissimCom(self):
+    def _initProps(self):
+        # set layout file path map
         simulator_info = self.config.get('simulator_info')
         network_name = simulator_info['network_name']
+        self.layout_file_path_map = {
+            'inpx': self.root_dir_path / 'layout' / network_name / 'network.inpx',
+            'layx': self.root_dir_path / 'layout' / network_name / 'network.layx'
+        }
+        self.layout_dir_path = self.root_dir_path / 'layout' / network_name
+
+        # set change_handle_flg
+        self.config_change_flg = simulator_info['config_change']['flg']
+
+        # set simulation count
+        self.simulation_count = 1
+        return
+
+    def _activate(self):
+        # set com object
         while True:
             try:
                 self.com = win32com.client.Dispatch('Vissim.Vissim')
@@ -55,16 +64,21 @@ class Vissim(Common):
                 print('failed to connect to Vissim COM server. Retrying...')
                 time.sleep(1)
         
-        self.com.LoadNet(os.getcwd() + '\\layout\\' + network_name + '\\network.inpx')
-        self.com.LoadLayout(os.getcwd() + '\\layout\\' + network_name + '\\network.layx')
+        # load network and layout
+        self.com.LoadNet(self.layout_file_path_map['inpx'])
+        self.com.LoadLayout(self.layout_file_path_map['layx'])
 
-        # クイックモードについて
+        # quick mode
         self.com.Graphics.SetAttValue('QuickMode', True)
+
+        # set simulation and network objects
+        self.simulation = Simulation(self)
+        self.network = Network(self)
         return
 
     def _deactivate(self):
         self.com.Exit()
-        if self.config.get('config_info')['change_handle_flg']:
+        if self.config_change_flg:
             self.config_change_handler.stop()
         return
 

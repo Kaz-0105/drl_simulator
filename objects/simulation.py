@@ -38,6 +38,8 @@ class Simulation(Common):
         else:
             self.random_seed = seed_info['value']
         
+        return
+        
     def _setParametersToVissim(self):
         # Vissimにパラメータを設定
         self.com.SetAttValue('RandSeed', self.random_seed)
