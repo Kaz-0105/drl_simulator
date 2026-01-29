@@ -238,6 +238,10 @@ class MpcController(Object):
                             from_link_id = from_link.get('id')
                             params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
+                    # vissimが引っかかるから5m手前にする(TODO: 根本的な解決をしたい)
+                    for lane_str in combinations:
+                        params['D_b'][lane_str] -= 5
+                        
                 combination_params_map[combination_order_id] = params
 
             road_combination_params_map[road_order_id] = combination_params_map
@@ -468,14 +472,14 @@ class MpcController(Object):
             if vehicle_data.shape[0] == 0:
                 vehicle_data_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
-                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
+                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
                 road_vehicle_data_map[road_order_id] = vehicle_data_map
                 continue
 
             # 距離を道路の入口空の距離に変換
             vehicle_data = self._transformPositionData(road_order_id, vehicle_data)
             # 必要ない情報を削除
-            vehicle_data = vehicle_data.drop(columns=['in_queue', 'speed', 'road_id']).copy()
+            vehicle_data = vehicle_data.drop(columns=['in_queue', 'road_id']).copy()
         
             # 新たに信号待ちする車線に関する情報および従う信号機を追加するために配列を初期化
             wait_link_ids = []
@@ -547,12 +551,34 @@ class MpcController(Object):
         
         self.road_vehicle_data_map = road_vehicle_data_map
 
+        # make road_max_queue_map
+        self.road_max_queue_map = {}
+        max_queue = 0
+        for road_order_id in range(1, self.num_roads + 1):
+            combination_vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            for combination_order_id, vehicles_df in combination_vehicle_data_map.items():
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                v = self.road_combination_params_map[road_order_id][combination_order_id]['v_max']
+                p_s = self.road_combination_params_map[road_order_id][combination_order_id]['p_s'][combinations[combination_order_id]]
+                gaps = vehicles_df['position'].shift(1) - vehicles_df['position']
+                for vehicle_order_id, vehicle_row in reversed(list(vehicles_df.iterrows())):
+                    # if the gap from the vehicle ahead is more than 10m, skip
+                    if vehicle_order_id > 0 and gaps[vehicle_order_id] > 10:
+                        continue
+                        
+                    # if the vehicle is stopped, calculate the queue length
+                    if vehicle_row['speed'] < v/3:
+                        max_queue = max(max_queue, p_s - vehicle_row['position'])
+                        break
+            self.road_max_queue_map[road_order_id] = max_queue
+            
+        return
+
     def _updateDt(self):
-        max_queue_length = self.intersection.get('max_queue_length')
         for road_order_id in range(1, self.num_roads + 1):
             # combinations_mapを取得
             combination_params_map = self.road_combination_params_map[road_order_id]
-
+            max_queue_length = self.road_max_queue_map[road_order_id]
             for combination_order_id, params in combination_params_map.items():
                 params = combination_params_map[combination_order_id]
                 params['D_t'] = max_queue_length if max_queue_length > params['D_s'] else params['D_s']
@@ -1301,6 +1327,7 @@ class MpcController(Object):
                                 'idx': -1,
                                 'rows': [-2, -1],
                                 'col': -1,
+                                'pos': float('inf'),
                             }
                         last_vehs_map[lane_str] = tmp_last_vehs_map
 
@@ -1462,14 +1489,34 @@ class MpcController(Object):
 
                             # delta_t3(10)の定義
                             target_idx = -1
+                            target_pos = float('inf')
                             target_direction_id = None
                             for direction_id in range(1, self.num_roads):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
-                                
-                                if last_vehs_map[lane_str][direction_id]['idx'] > target_idx:
-                                    target_idx = last_vehs_map[lane_str][direction_id]['idx']
+
+                                last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                if last_vehs_info['pos'] < target_pos:
+                                    target_idx = last_vehs_info['idx']
+                                    target_pos = last_vehs_info['pos']
                                     target_direction_id = direction_id
+
+                                # if vehicle['position'] > p_s - D_b:
+                                #     last_veh_info = last_vehs_map[lane_str][direction_id]
+                                #     if last_veh_info['pos'] < target_pos:
+                                #         target_idx = last_veh_info['idx']
+                                #         target_pos = last_veh_info['pos']
+                                #         target_direction_id = direction_id
+                                # else:
+                                #     for tmp_lane_str in combinations:
+                                #         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                #         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                #             continue
+
+                                #         if last_veh_info['pos'] < target_pos:
+                                #             target_idx = last_veh_info['idx']
+                                #             target_pos = last_veh_info['pos']
+                                #             target_direction_id = direction_id
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
@@ -1504,6 +1551,7 @@ class MpcController(Object):
                             'idx': idx,
                             'rows': [row + row_D3 for row in rows_delta_t3],
                             'col': col_delta_t2 + col_D3,
+                            'pos': vehicle['position'],
                         }
 
                         # D3_matrixにd3を追加
@@ -1660,11 +1708,15 @@ class MpcController(Object):
                         first_end_flg[lane_str] = False
 
                     # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
-                    last_veh_indices = {}
+                    last_vehs_map = {}
                     for lane_str in combinations:
-                        last_veh_indices[lane_str] = {}
+                        tmp_last_vehs_map = {}
                         for direction_id in range(1, self.num_roads):
-                            last_veh_indices[lane_str][direction_id] = -1
+                            tmp_last_vehs_map[direction_id] = {
+                                'idx': -1,
+                                'pos': float('inf'),
+                            }
+                        last_vehs_map[lane_str] = tmp_last_vehs_map
 
                     for idx, vehicle in vehicle_data.iterrows():
                         lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
@@ -1783,11 +1835,31 @@ class MpcController(Object):
 
                             # delta_t3の定義
                             target_idx = -1
+                            target_pos = float('inf')
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
                                     continue
+                                
+                                last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                if last_vehs_info['pos'] < target_pos:
+                                    target_idx = last_vehs_info['idx']
+                                    target_pos = last_vehs_info['pos']
+                                
+                                # if vehicle['position'] > p_s - D_b:
+                                #     last_veh_info = last_vehs_map[lane_str][direction_id]
+                                #     if last_veh_info['pos'] < target_pos:
+                                #         target_idx = last_veh_info['idx']
+                                #         target_pos = last_veh_info['pos']
+                                # else:
+                                #     for tmp_lane_str in combinations:
+                                #         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
 
-                                target_idx = max(target_idx, last_veh_indices[lane_str][direction_id])
+                                #         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                #             continue
+
+                                #         if last_veh_info['pos'] < target_pos:
+                                #             target_idx = last_veh_info['idx']
+                                #             target_pos = last_veh_info['pos']
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
@@ -1808,9 +1880,12 @@ class MpcController(Object):
 
                             # z_5の定義
                             e[38:42, 0] = [0, 0, p_max, -p_min]
-
-                        # last_veh_indicesを更新
-                        last_veh_indices[lane_str][int(vehicle['direction_id'])] = idx
+                        
+                        # last_vehs_mapを更新
+                        last_vehs_map[lane_str][int(vehicle['direction_id'])] = {
+                            'idx': idx,
+                            'pos': vehicle['position'],
+                        }
 
                         # E_matrixに追加
                         E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e

@@ -500,31 +500,37 @@ class LocalAgent(Object):
             return
         
         if self.reward_id == 1:
-            # 信号待ちしていない自動車 - 信号待ちしている自動車
-            self.current_reward = 0
-            for _, vehicle_data in self.lane_str_vehicle_data_map.items():
-                if vehicle_data.shape[0] == 0:
+            # (the number of not waiting vehicles) - (the number of waiting vehicles)
+            reward = 0
+            num_vehs = 0
+
+            for _, vehicles_df in self.lane_str_vehicle_data_map.items():
+                # skip if there is no vehicle in the lane
+                if vehicles_df.shape[0] == 0:
                     continue
 
-                for _, row in vehicle_data.iterrows():
-                    if not row['wait_flg']:
-                        self.current_reward += 1
-                    else:
-                        self.current_reward -= 1
+                num_vehs += vehicles_df.shape[0]
+                reward += (~vehicles_df['wait_flg']).sum()
+                reward -= vehicles_df['wait_flg'].sum()
+
+            # normalize the reward
+            self.current_reward = reward / num_vehs if num_vehs > 0 else 0
         
         elif self.reward_id == 2:
-            # 信号待ちしていない自動車 - 信号待ちしている自動車 + データ収集点での通過車両数
-            self.current_reward = 0
-            for _, vehicle_data in self.lane_str_vehicle_data_map.items():
-                if vehicle_data.shape[0] == 0:
+            # (the number of not-waiting vehicles) - (the number of waiting vehicles) + (the number of passing vehicles)
+            reward = 0
+            num_vehs = 0
+
+            # the number of waiting and not-waiting vehicles
+            for _, vehicles_df in self.lane_str_vehicle_data_map.items():
+                if vehicles_df.shape[0] == 0:
                     continue
 
-                for _, row in vehicle_data.iterrows():
-                    if not row['wait_flg']:
-                        self.current_reward += 1
-                    else:
-                        self.current_reward -= 1
+                num_vehs += vehicles_df.shape[0]
+                reward += (~vehicles_df['wait_flg']).sum()
+                reward -= vehicles_df['wait_flg'].sum()
 
+            # the number of passing vehicles
             for road in self.roads.getAll():
                 for data_collection_point in road.data_collection_points.getAll():
                     if data_collection_point.get('type') != 'intersection':
@@ -535,10 +541,12 @@ class LocalAgent(Object):
                             continue
                         
                         num_vehs_record = data_collection_measurement.get('num_vehs_record')
-                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                        self.current_reward += sum(num_vehs_list)
+                        num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
+                        reward += num_pass_vehs
+                        num_vehs += num_pass_vehs
             
-            self.current_reward /= 10  # 報酬のスケールを調整
+            # normalize the reward
+            self.current_reward = reward / num_vehs if num_vehs > 0 else 0
         
         elif self.reward_id == 3:
             # 一定速度以上の自動車台数 + 通過自動車台数

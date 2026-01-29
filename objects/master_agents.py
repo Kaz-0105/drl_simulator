@@ -536,7 +536,7 @@ class MasterAgent(Object):
         max_loss = np.max(losses)
         std_loss = np.std(losses)
         print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}]")
-        print(f"Average Loss: {mean_loss:.2f}, Min Loss: {min_loss:.2f}, Max Loss: {max_loss:.2f}, Std Loss: {std_loss:.2f}")
+        print(f"Average Loss: {mean_loss:.3f}, Min Loss: {min_loss:.3f}, Max Loss: {max_loss:.3f}, Std Loss: {std_loss:.3f}")
 
         if epoch == 0:
             self.replay_buffer.set('initial_priority', max_loss)
