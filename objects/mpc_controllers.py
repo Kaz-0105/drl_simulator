@@ -239,8 +239,8 @@ class MpcController(Object):
                             params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
 
                     # vissimが引っかかるから5m手前にする(TODO: 根本的な解決をしたい)
-                    # for lane_str in combinations:
-                    #     params['D_b'][lane_str] -= 5
+                    for lane_str in combinations:
+                        params['D_b'][lane_str] -= 5
                         
                 combination_params_map[combination_order_id] = params
 
@@ -551,17 +551,24 @@ class MpcController(Object):
         
         self.road_vehicle_data_map = road_vehicle_data_map
 
-        # road_max_queue_mapを作成
+        # make road_max_queue_map
         self.road_max_queue_map = {}
         max_queue = 0
         for road_order_id in range(1, self.num_roads + 1):
             combination_vehicle_data_map = self.road_vehicle_data_map[road_order_id]
             for combination_order_id, vehicles_df in combination_vehicle_data_map.items():
+                combinations = self.road_combinations_map[road_order_id][combination_order_id]
                 v = self.road_combination_params_map[road_order_id][combination_order_id]['v_max']
-                for _, vehicle_row in reversed(list(vehicles_df.iterrows())):
-                    if vehicle_row['speed'] < v/2:
-                        tmp_queue = vehicle_row['position']
-                        max_queue = max(max_queue, tmp_queue)
+                p_s = self.road_combination_params_map[road_order_id][combination_order_id]['p_s'][combinations[combination_order_id]]
+                gaps = vehicles_df['position'].shift(1) - vehicles_df['position']
+                for vehicle_order_id, vehicle_row in reversed(list(vehicles_df.iterrows())):
+                    # if the gap from the vehicle ahead is more than 10m, skip
+                    if vehicle_order_id > 0 and gaps[vehicle_order_id] > 10:
+                        continue
+                        
+                    # if the vehicle is stopped, calculate the queue length
+                    if vehicle_row['speed'] < v/3:
+                        max_queue = max(max_queue, p_s - vehicle_row['position'])
                         break
             self.road_max_queue_map[road_order_id] = max_queue
             
@@ -569,10 +576,9 @@ class MpcController(Object):
 
     def _updateDt(self):
         for road_order_id in range(1, self.num_roads + 1):
-            max_queue_length = self.road_max_queue_map[road_order_id]
             # combinations_mapを取得
             combination_params_map = self.road_combination_params_map[road_order_id]
-
+            max_queue_length = self.road_max_queue_map[road_order_id]
             for combination_order_id, params in combination_params_map.items():
                 params = combination_params_map[combination_order_id]
                 params['D_t'] = max_queue_length if max_queue_length > params['D_s'] else params['D_s']
@@ -1489,21 +1495,28 @@ class MpcController(Object):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
 
-                                if vehicle['position'] > p_s - D_b:
-                                    if last_vehs_map[lane_str][direction_id]['pos'] < target_pos:
-                                        target_idx = last_vehs_map[lane_str][direction_id]['idx']
-                                        target_pos = last_vehs_map[lane_str][direction_id]['pos']
-                                        target_direction_id = direction_id
-                                else:
-                                    for tmp_lane_str in combinations:
-                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                            continue
+                                last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                if last_vehs_info['pos'] < target_pos:
+                                    target_idx = last_vehs_info['idx']
+                                    target_pos = last_vehs_info['pos']
+                                    target_direction_id = direction_id
 
-                                        if last_veh_info['pos'] < target_pos:
-                                            target_idx = last_veh_info['idx']
-                                            target_pos = last_veh_info['pos']
-                                            target_direction_id = direction_id
+                                # if vehicle['position'] > p_s - D_b:
+                                #     last_veh_info = last_vehs_map[lane_str][direction_id]
+                                #     if last_veh_info['pos'] < target_pos:
+                                #         target_idx = last_veh_info['idx']
+                                #         target_pos = last_veh_info['pos']
+                                #         target_direction_id = direction_id
+                                # else:
+                                #     for tmp_lane_str in combinations:
+                                #         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                #         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                #             continue
+
+                                #         if last_veh_info['pos'] < target_pos:
+                                #             target_idx = last_veh_info['idx']
+                                #             target_pos = last_veh_info['pos']
+                                #             target_direction_id = direction_id
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
@@ -1826,23 +1839,27 @@ class MpcController(Object):
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
                                     continue
-
-                                last_veh_info = last_vehs_map[lane_str][direction_id]
                                 
-                                if vehicle['position'] > p_s - D_b:
-                                    if last_veh_info['pos'] < target_pos:
-                                        target_idx = last_veh_info['idx']
-                                        target_pos = last_veh_info['pos']
-                                else:
-                                    for tmp_lane_str in combinations:
-                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                if last_vehs_info['pos'] < target_pos:
+                                    target_idx = last_vehs_info['idx']
+                                    target_pos = last_vehs_info['pos']
+                                
+                                # if vehicle['position'] > p_s - D_b:
+                                #     last_veh_info = last_vehs_map[lane_str][direction_id]
+                                #     if last_veh_info['pos'] < target_pos:
+                                #         target_idx = last_veh_info['idx']
+                                #         target_pos = last_veh_info['pos']
+                                # else:
+                                #     for tmp_lane_str in combinations:
+                                #         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
 
-                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                            continue
+                                #         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                #             continue
 
-                                        if last_veh_info['pos'] < target_pos:
-                                            target_idx = last_veh_info['idx']
-                                            target_pos = last_veh_info['pos']
+                                #         if last_veh_info['pos'] < target_pos:
+                                #             target_idx = last_veh_info['idx']
+                                #             target_pos = last_veh_info['pos']
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]

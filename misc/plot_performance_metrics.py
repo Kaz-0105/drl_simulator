@@ -41,6 +41,7 @@ simulation_list = [
     ['mpc/balanced_600_8_10'],
     ['mpc/balanced_600_17_10']
 ]
+# row_names = ['SCOOT', '4-phase MPC', '8-phase MPC']
 row_names = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
 if len(simulation_list) != len(row_names):
     raise ValueError("The length of simulation_list and row_names must be the same.")
