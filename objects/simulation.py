@@ -24,29 +24,25 @@ class Simulation(Common):
         self.current_time = self.com.AttValue('SimSec')
 
         # set other parameters
-        simulation_info = self.config.get('simulator_info')
-        self.control_method = simulation_info['control_method']
-        self.layout_name = simulation_info['layout_name']
-        self.inflow_name = simulation_info['inflow_name']
+        simulator_info = self.config.get('simulator_info')
+        self.control_method = simulator_info['control_method']
+        self.layout_name = simulator_info['layout_name']
+        self.inflow_name = simulator_info['inflow_name']
 
         if self.control_method in ['drl', 'bc']:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.end_time = simulation_info['simulation_time']
-        self.time_step = simulation_info['time_step']
+        self.end_time = simulator_info['simulation_time']
+        self.time_step = simulator_info['time_step']
         
-        self.debug_flg = simulation_info['debug']['flg']
+        self.debug_flg = simulator_info['debug']['flg']
         
-        # set random_seed
-        if simulation_info['seed']['is_random']:
-            self.random_seed = random.randint(100 + 1, 10000)
-        else:
-            self.random_seed = simulation_info['seed']['value'] 
+        self.seed = simulator_info['random_seed']
         return
         
     def _setParametersToVissim(self):
         # Vissimにパラメータを設定
-        self.com.SetAttValue('RandSeed', self.random_seed)
+        self.com.SetAttValue('RandSeed', self.seed)
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
         # シミュレーションの速度について
@@ -178,8 +174,8 @@ class Simulation(Common):
             
             self.network.updateData()
 
-        # 評価指標の保存
-        self.network.saveData()
+        # save performance metrics
+        self.network.save()
         return
 
     def _runSingleStep(self):
@@ -213,3 +209,7 @@ class Simulation(Common):
         for signal_controller in self.network.signal_controllers.getAll():
             for signal_group in signal_controller.signal_groups.getAll():
                 signal_group.com.SetAttValue('SigState', 1)
+
+    @property
+    def network(self):
+        return self.vissim.network

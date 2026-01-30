@@ -1,9 +1,9 @@
 simulator :
-  control_method : mpc              # mpc, drl, scoot
+  control_method : scoot            # mpc, drl, scoot
   layout_name : 1-4-1               # layout folder name
-  inflow_name : balanced_700        # inflow file name
+  inflow_name : balanced_600        # inflow file name
   num_simulations: 1                # number of simulations to run
-  simulation_time: 10              # simulation time for each simulation (seconds)
+  simulation_time: 10               # simulation time for each simulation (seconds)
   seed:
     is_random: false                # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
     value: 1                        # if is_random is false, this value is used (you should select from 1 to 100.)
@@ -80,7 +80,7 @@ mpc:
     network_id: 1              # 行動クローンを行いたいネットワーク構造のID
   phases:
     3-road: 4                   # only 4
-    4-road: 4                   # 4, 8, or 17
+    4-road: 17                  # 4, 8, or 17
     5-road: 10                  # only 10
   objective_type: 2             # objective function type (1: minimize waiting vehicles, 2: minimize waiting vehicles with signal change penalty)
   signal_change_weight: 10      # signal change penalty weight
@@ -93,8 +93,8 @@ scoot:
     cycle: 1                   # サイクル時間の変更時の1フェーズあたりに変化量（ステップ数）
     split: 1                   # スプリット変更時のフェーズの仕切りの変化量（ステップ数）
   max_cycle: 60                # サイクル時間の最大値（ステップ数）
-  min_split: 5                 # 1スプリットの最小値（ステップ数）
-  spacing_threshold: 40        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
+  min_split: 4                 # 1スプリットの最小値（ステップ数）
+  spacing_threshold: 20        # サイクル時間変更の閾値：何メートルに1台自動車が存在するか（密度の逆数）[m/veh]
     
 save:
   performance_metrics: 
