@@ -43,7 +43,6 @@ class MpcControllers(Container):
 
         for mpc_controller in self.getAll():
             mpc_controller.showOptimizationResult()
-
     
     def updateBcData(self):
         for mpc_controller in self.getAll():
@@ -53,31 +52,26 @@ class MpcControllers(Container):
     
 class MpcController(Object):
     def __init__(self, mpc_controllers, intersection):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
+        # set config and executor object
         self.config = mpc_controllers.config
         self.executor = mpc_controllers.executor
 
-        # 上位の紐づくオブジェクトを取得
+        # set mpc_controllers and network
         self.mpc_controllers = mpc_controllers
         self.network = mpc_controllers.network
 
-        # intersectionオブジェクトと紐づける
+        # connect to intersection object
         self.intersection = intersection
         self.intersection.set('mpc_controller', self)
 
-        # roadsオブジェクトを取得
+        # set roads and signal_controller object
         self.roads = self.intersection.input_roads
-        self.num_roads = self.roads.count()
-
-        # signal_controllerオブジェクトを取得
         self.signal_controller = self.intersection.signal_controller
-        self.num_signals = self.signal_controller.signal_groups.count()
 
-        # IDを設定
-        self.id = intersection.get('id')
+        self._initProps()
+        
 
         # フェーズの一覧を取得
         self._makePhases()
@@ -103,19 +97,24 @@ class MpcController(Object):
         # BCバッファのデータ集めに必要な情報を作成
         self._makeBcRoadLanesMap()
         self._makeBcNumLanesList()
+        return
+
+    def _initProps(self):
+        self.id = self.intersection.get('id')
+        self.num_roads = self.roads.count()
+        self.num_signals = self.signal_controller.signal_groups.count()
+        
+        # set num_phases
+        mpc_info = self.config.get('mpc_info')
+        self.num_phases = mpc_info['phases'][f"{self.num_roads}-road"]
+
+        # set phases
+        self.phases = {phase_id: phase_list for phase_id, phase_list in self.signal_controller.get('phases').items() if phase_id <= self.num_phases}
+        return
 
     def _makePhases(self):
         # set num_phases and phases
-        mpc_info = self.config.get('mpc_info')
-        self.num_phases = mpc_info['phases'][f"{self.num_roads}-road"]
     
-        phases = self.signal_controller.get('phases')
-        self.phases = {}
-        for phase_order_id, phase_list in phases.items():
-            if phase_order_id > self.num_phases:
-                break
-
-            self.phases[phase_order_id] = phase_list
         return
 
     def _initMPCParameters(self):
@@ -246,8 +245,8 @@ class MpcController(Object):
         self.road_combination_params_map = road_combination_params_map
 
     def _initCalcTimeRecord(self):
-        records_info = self.config.get('records_info')
-        self.calc_time_flg = records_info['metric']['calc_time_flg']
+        save_info = self.config.get('save_info')
+        self.calc_time_flg = save_info['performance_metrics']['calc_time']
         if self.calc_time_flg:
             self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
         return

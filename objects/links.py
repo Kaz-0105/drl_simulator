@@ -57,10 +57,17 @@ class Links(Container):
             self.add(Link(link_com, self))
     
     def setInputs(self):
-        tags = self.config.get('link_input_tags')
-        for _, tag in tags.iterrows():
-            link = self[int(tag['link_id'])]
-            link.set('input_volume', int(tag['input_volume']))
+        # get inflows_df
+        inflow_name = self.network.simulation.get('inflow_name')
+        link_input_tags_map = self.config.get('link_input_tags_map')
+        inflows_df = link_input_tags_map[inflow_name]
+
+        # set input_volume to each link object
+        for _, inflow_row in inflows_df.iterrows():
+            link = self[int(inflow_row['link_id'])]
+            link.set('input_volume', int(inflow_row['input_volume']))
+
+        return
     
     def makeLinkConnections(self):
         for link in self.getAll():

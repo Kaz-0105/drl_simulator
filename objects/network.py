@@ -18,8 +18,6 @@ from objects.bc_agent import BcAgent
 from objects.scoot_controllers import ScootControllers
 
 import numpy as np
-from pathlib import Path
-import pickle
 import torch
 import copy
 import yaml
@@ -55,67 +53,29 @@ class Network(Common):
 
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
+        self.inflow_name = simulator_info['inflow_name']
         self.num_simulations = simulator_info['num_simulations']
 
-        if self.control_method == 'mpc':
-            save_info = self.config.get('save_info')
-            self.queue_flg = save_info['performance_metrics']['queue']
-            self.delay_flg = save_info['performance_metrics']['delay']
-            self.calc_time_flg = save_info['performance_metrics']['calc_time']
-            self.phase_flg = save_info['performance_metrics']['phase']
-        else:
-            records_info = self.config.get('records_info')
-            self.record_flg = records_info['record_flg']
-            self.queue_flg = records_info['metric']['queue_flg']
-            self.delay_flg = records_info['metric']['delay_flg']
-            self.calc_time_flg = records_info['metric']['calc_time_flg']
-            self.phase_flg = records_info['metric']['phase_flg']
-            self.old_definition_flg = records_info['old_definition_flg']
-        
-            if self.record_flg:
-                # データ保存用のフォルダを取得
-                if self.control_method == 'drl':
-                    drl_info = self.config.get('drl_info')
-                    drl_method = drl_info['method']
-                    self.save_path = Path('results') / 'metrics' / self.control_method / drl_method / records_info['save_folder']
-                else:
-                    self.save_path = Path.cwd() / 'results' / 'metrics'/ self.control_method / records_info['save_folder']
-                if self.save_path.exists():
-                    raise FileExistsError(f"The folder '{self.save_path}' already exists. Please change the folder name or disable the record flag.")
-                
-                # シミュレーション回数を1回にしているかどうかの確認
-                if self.num_simulations != 1:
-                    raise ValueError("When the record flag is set to True, the num_simulations must be 1. Please change the num_simulations to 1 in the config file.")
+        save_info = self.config.get('save_info')
+        self.queue_flg = save_info['performance_metrics']['queue']
+        self.delay_flg = save_info['performance_metrics']['delay']
+        self.calc_time_flg = save_info['performance_metrics']['calc_time']
+        self.phase_flg = save_info['performance_metrics']['phase']
         return
     
     def _initSaveDirPath(self):
-        if self.control_method != 'mpc':
-            return
-
         common_save_dir_path = self.root_dir_path / 'data' / 'performance_metrics'
         common_save_dir_path /= self.layout_dir_path.name
-        common_save_dir_path /= 'mpc'
-        common_save_dir_path /= f"seed_{self.simulation.get('random_seed')}"
+        common_save_dir_path /= self.inflow_name
         common_save_dir_path.mkdir(parents=True, exist_ok=True)
 
-        mpc_info = copy.deepcopy(self.config.get('mpc_info'))
-        del mpc_info['bc_buffer']
-
-        num_roads_set = set()
-        for intersection in self.intersections.getAll():
-            num_roads_set.add(intersection.get('num_roads'))
-        
-        for intersection_type in copy.deepcopy(mpc_info['phases']).keys():
-            num_roads = int(re.match(rf"(\d+)-road", intersection_type)[1])
-            if num_roads not in num_roads_set:
-                del mpc_info['phases'][intersection_type]
-
+        # if the setting of simulator_info is same as the existing one, use the existing save_dir_path
         simulator_info = copy.deepcopy(self.config.get('simulator_info'))
-        for remove_name in ['network_name', 'control_method', 'seed', 'num_simulations', 'max_workers', 'debug', 'backup', 'config_change']:
-            del simulator_info[remove_name]
-
-        self.save_dir_path = None
-        for tmp_dir_path in common_save_dir_path.glob('config_*'):
+        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step']}
+        simulator_info['seed'] = self.simulation.get('random_seed')
+        
+        simulation_dir_path = None
+        for tmp_dir_path in common_save_dir_path.glob('simulator_*'):
             config_file_path = tmp_dir_path / 'config.yaml'
             if not config_file_path.exists():
                 continue
@@ -123,30 +83,72 @@ class Network(Common):
             with config_file_path.open('rb') as f:  
                 config_yaml = yaml.safe_load(f)
             
-            if config_yaml['mpc'] == mpc_info and config_yaml['simulator'] == simulator_info:
-                self.save_dir_path = tmp_dir_path
+            if config_yaml == simulator_info:
+                simulation_dir_path = tmp_dir_path
                 break
-
-        if self.save_dir_path is None:
+        
+        if simulation_dir_path is None:
             config_idx = 1
             while True:
-                tmp_dir_path = common_save_dir_path / f"config_{config_idx}"
+                tmp_dir_path = common_save_dir_path / f"simulator_{config_idx}"
                 if not tmp_dir_path.exists():
-                    self.save_dir_path = tmp_dir_path
-                    self.save_dir_path.mkdir(parents=True, exist_ok=False)
+                    simulation_dir_path = tmp_dir_path
+                    simulation_dir_path.mkdir(parents=True, exist_ok=False)
 
-                    with open(self.save_dir_path / 'config.yaml', 'w') as f:
-                        config_yaml = {
-                            'mpc': mpc_info,
-                            'simulator': simulator_info,
-                        }
-                        yaml.dump(config_yaml, f)
+                    with open(simulation_dir_path / 'config.yaml', 'w') as f:
+                        yaml.dump(simulator_info, f)
                     break
+
                 config_idx += 1
+
+        control_method_dir_path = simulation_dir_path / self.control_method
+        if self.control_method == 'mpc':
+            mpc_info = copy.deepcopy(self.config.get('mpc_info'))
+            del mpc_info['bc_buffer']
+
+            num_roads_set = set()
+            for intersection in self.intersections.getAll():
+                num_roads_set.add(intersection.get('num_roads'))
+            
+            for intersection_type in copy.deepcopy(mpc_info['phases']).keys():
+                num_roads = int(re.match(rf"(\d+)-road", intersection_type)[1])
+                if num_roads not in num_roads_set:
+                    del mpc_info['phases'][intersection_type]
+
+            self.save_dir_path = None
+            for tmp_dir_path in control_method_dir_path.glob('config_*'):
+                config_file_path = tmp_dir_path / 'config.yaml'
+                if not config_file_path.exists():
+                    continue
+
+                with config_file_path.open('rb') as f:  
+                    config_yaml = yaml.safe_load(f)
+                
+                if config_yaml == mpc_info:
+                    self.save_dir_path = tmp_dir_path
+                    break
+
+            if self.save_dir_path is None:
+                config_idx = 1
+                while True:
+                    tmp_dir_path = control_method_dir_path / f"config_{config_idx}"
+                    if not tmp_dir_path.exists():
+                        self.save_dir_path = tmp_dir_path
+                        self.save_dir_path.mkdir(parents=True, exist_ok=False)
+
+                        with open(self.save_dir_path / 'config.yaml', 'w') as f:
+                            config_yaml = mpc_info
+                            yaml.dump(config_yaml, f)
+                        break
+                    config_idx += 1
+            
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
+        
         return
     
     def _makeLowerObjects(self):
-        # 下位の紐づくオブジェクトを初期化
+        # make and set vissim objects
         self.roads = Roads(self)
         self.intersections = Intersections(self)
         self.links = Links(self)
@@ -161,15 +163,13 @@ class Network(Common):
         self.data_collection_measurements = DataCollectionMeasurements(self)
 
         if self.control_method == 'drl':
-            # PyTorchのデバイスを設定
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-            # マスターエージェントとローカルエージェントを初期化
+            # set master_agents and local_agents objects
+            device = self.simulation.get('device')
             self.master_agents = MasterAgents(self, device)
             self.local_agents = LocalAgents(self, device)
             
         elif self.control_method == 'mpc':
-            # MPCコントローラを初期化
+            # set mpc_controllers object
             self.mpc_controllers = MpcControllers(self)
 
             # 行動クローンのデータ集めをする場合はBCバッファを初期化
@@ -180,13 +180,16 @@ class Network(Common):
                 self.bc_buffers = BcBuffers(self)
         
         elif self.control_method == 'bc':
+            # set bc_agent object
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-            # 行動クローンエージェントを初期化
             self.bc_agent = BcAgent(self, device)
         
         elif self.control_method == 'scoot':
+            # set scoot_controllers object
             self.scoot_controllers = ScootControllers(self)
+
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
         
         return
     
@@ -333,150 +336,6 @@ class Network(Common):
                 if self.calc_time_flg:
                     calc_time_df = controller.get('calc_time_record')
                     calc_time_df.to_csv(tmp_save_dir_path / 'calc_time.csv', index=False)
-
-        else:
-            # データを保存するフラグが立っていない場合は何もしない
-            if not self.record_flg:
-                return
-            
-            # 保存用のフォルダを作成
-            self.save_path.mkdir(parents=True, exist_ok=False)
-
-            # 交差点を走査
-            for intersection_id in self.intersections.getKeys(container_flg=True, sorted_flg=True): 
-                intersection = self.intersections[intersection_id]
-
-                input_roads = intersection.input_roads
-
-                # セーブするデータをまとめる
-                save_data = {
-                    'max_queue': None,
-                    'average_queue': None,
-                    'max_delay': None,  
-                    'average_delay': None,
-                    'phase': None,
-                    'calc_time': None,
-                }
-
-                # キューの最大長と平均長を計算
-                if self.queue_flg:
-                    queue_length_record = None
-                    for road_order_id in range(1, input_roads.count() + 1):
-                        road = input_roads[road_order_id]
-
-                        for queue_counter in road.queue_counters.getAll():
-                            tmp_queue_length_record = queue_counter.get('queue_length_record')
-
-                            if queue_length_record is None:
-                                queue_length_record = tmp_queue_length_record
-                                continue
-                            
-                            queue_length_record['queue_length'] = np.maximum(
-                                queue_length_record['queue_length'].to_numpy(),
-                                tmp_queue_length_record['queue_length'].to_numpy(),
-                            )
-                    
-                    save_data['max_queue'] = queue_length_record.copy()
-
-                    road_queue_length_record_map = {}
-                    for road_order_id in range(1, input_roads.count() + 1):
-                        road = input_roads[road_order_id]
-                        queue_length_record = None
-                        for queue_counter in road.queue_counters.getAll():
-                            tmp_queue_length_record = queue_counter.get('queue_length_record')
-                            if queue_length_record is None:
-                                queue_length_record = tmp_queue_length_record
-                                continue
-                            queue_length_record['queue_length'] += tmp_queue_length_record['queue_length']
-                        
-                        # 古い定義では，各道路ごとでは平均化しない（現在の定義では平均化する）
-                        if not self.old_definition_flg:
-                            queue_length_record['queue_length'] /= road.queue_counters.count()
-
-                        road_queue_length_record_map[road_order_id] = queue_length_record
-                    
-                    queue_length_record = None
-                    for road_order_id in range(1, input_roads.count() + 1):
-                        tmp_queue_length_record = road_queue_length_record_map[road_order_id]
-                        if queue_length_record is None:
-                            queue_length_record = tmp_queue_length_record
-                            continue
-                        queue_length_record['queue_length'] += tmp_queue_length_record['queue_length']
-
-                    queue_length_record['queue_length'] /= input_roads.count()
-                    save_data['average_queue'] = queue_length_record.copy()
-
-                # 遅延を計算
-                if self.delay_flg:
-                    delay_record = None
-                    for road_order_id in range(1, input_roads.count() + 1):
-                        road = input_roads[road_order_id]
-
-                        for delay_measurement in road.delay_measurements.getAll():
-                            tmp_delay_record = delay_measurement.get('delay_record')
-                            
-                            if delay_record is None:
-                                delay_record = tmp_delay_record
-                                continue
-
-                            delay_record['delay'] = np.maximum(
-                                delay_record['delay'].to_numpy(),
-                                tmp_delay_record['delay'].to_numpy(),
-                            )
-                    
-                    save_data['max_delay'] = delay_record.copy()
-
-                    road_delay_record_map = {}
-                    for road_order_id in range(1, input_roads.count() + 1):
-                        road = input_roads[road_order_id]
-                        delay_record = None
-                        for delay_measurement in road.delay_measurements.getAll():
-                            tmp_delay_record = delay_measurement.get('delay_record')
-                            if delay_record is None:
-                                delay_record = tmp_delay_record
-                                continue
-                            delay_record['delay'] += tmp_delay_record['delay']
-                        
-                        delay_record['delay'] /= road.delay_measurements.count()
-                        road_delay_record_map[road_order_id] = delay_record
-                    
-                    delay_record = None
-                    for road_order_id in range(1, input_roads.count() + 1):
-                        tmp_delay_record = road_delay_record_map[road_order_id]
-                        if delay_record is None:
-                            delay_record = tmp_delay_record
-                            continue
-                        delay_record['delay'] += tmp_delay_record['delay']
-
-                    delay_record['delay'] /= input_roads.count()
-                    save_data['average_delay'] = delay_record.copy()
-
-                # フェーズを記録
-                if self.phase_flg:
-                    signal_controller = intersection.signal_controller
-                    phase_record = signal_controller.get('phase_record')
-                    save_data['phase'] = phase_record
-                
-                # 計算時間を記録
-                if self.calc_time_flg and self.control_method in ['drl', 'mpc']:
-                    if intersection.has('local_agent'):
-                        local_agent = intersection.local_agent
-                        calc_time_record = local_agent.get('calc_time_record')
-            
-                    elif intersection.has('mpc_controller'):
-                        mpc_controller = intersection.mpc_controller
-                        calc_time_record = mpc_controller.get('calc_time_record')
-                    
-                    save_data['calc_time'] = calc_time_record
-
-                # DRLの場合はエピソード数も保存
-                if self.config.get('simulator_info')['control_method'] == 'drl':
-                    save_data['episode'] = intersection.local_agent.master_agent.get('episode')
-
-                # データを保存
-                save_path = self.save_path / f"metric_{intersection_id}.pkl"
-                with save_path.open('wb') as f:
-                    pickle.dump(save_data, f)
         return
 
 
