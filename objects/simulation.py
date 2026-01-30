@@ -1,43 +1,47 @@
 from libs.common import Common
 
 import random
+import torch
 
 class Simulation(Common):
     def __init__(self, vissim):
         # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set config and vissim object
         self.config = vissim.config
         self.vissim = vissim
 
-        # comオブジェクトを取得
+        # set com object
         self.com = self.vissim.com.Simulation
 
-        # 現在時刻を取得
+        self._initProps()
+        self._setParametersToVissim()
+        return
+    
+    def _initProps(self):
+        # set current_time
         self.current_time = self.com.AttValue('SimSec')
 
-        # 各種設定情報を取得
+        # set other parameters
         simulation_info = self.config.get('simulator_info')
+        self.control_method = simulation_info['control_method']
+        self.layout_name = simulation_info['layout_name']
+        self.inflow_name = simulation_info['inflow_name']
+
+        if self.control_method in ['drl', 'bc']:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         self.end_time = simulation_info['simulation_time']
         self.time_step = simulation_info['time_step']
-        self.control_method = simulation_info['control_method']
+        
         self.debug_flg = simulation_info['debug']['flg']
-
-        # シード値を設定
-        self._makeRandomSeed(simulation_info)
-
-        # vissimに反映
-        self._setParametersToVissim()
-
-    def _makeRandomSeed(self, simulation_info):
-        seed_info = simulation_info['seed']
-
-        if seed_info['is_random']:
+        
+        # set random_seed
+        if simulation_info['seed']['is_random']:
             self.random_seed = random.randint(100 + 1, 10000)
         else:
-            self.random_seed = seed_info['value']
-        
+            self.random_seed = simulation_info['seed']['value'] 
         return
         
     def _setParametersToVissim(self):

@@ -6,7 +6,6 @@ from objects.network import Network
 from objects.simulation import Simulation
 
 import win32com.client
-import os
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import pandas as pd
@@ -14,6 +13,7 @@ import time
 from datetime import datetime
 import shutil
 from pathlib import Path
+
 
 class Vissim(Common):
     def __init__(self, root_dir_path):
@@ -40,12 +40,11 @@ class Vissim(Common):
     def _initProps(self):
         # set layout file path map
         simulator_info = self.config.get('simulator_info')
-        network_name = simulator_info['network_name']
         self.layout_file_path_map = {
-            'inpx': self.root_dir_path / 'layout' / network_name / 'network.inpx',
-            'layx': self.root_dir_path / 'layout' / network_name / 'network.layx'
+            'inpx': self.root_dir_path / 'layout' / simulator_info['layout_name'] / 'network.inpx',
+            'layx': self.root_dir_path / 'layout' / simulator_info['layout_name'] / 'network.layx'
         }
-        self.layout_dir_path = self.root_dir_path / 'layout' / network_name
+        self.layout_dir_path = self.root_dir_path / 'layout' / simulator_info['layout_name']
 
         # set change_handle_flg
         self.config_change_flg = simulator_info['config_change']['flg']

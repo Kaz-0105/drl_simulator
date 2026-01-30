@@ -3,6 +3,7 @@ from libs.object import Object
 from objects.signal_heads import SignalHeads
 from collections import deque
 import pandas as pd
+import copy
 
 class SignalControllers(Container):
     def __init__(self, network):
@@ -17,49 +18,11 @@ class SignalControllers(Container):
         # comオブジェクトを取得
         self.com = self.network.com.SignalControllers
 
-        # 下位の紐づくオブジェクトを初期化
-        self._makeElements()
-
-        # intersectionオブジェクトと紐づける
-        self._makeIntersectionConnections()
-
-        # phasesを作成する
-        self._makePhases()
-
-    def _makeElements(self):
+        # initialize signal_controller objects
         for signal_controller_com in self.com.GetAll():
             self.add(SignalController(signal_controller_com, self))
-    
-    def _makeIntersectionConnections(self):
-        for signal_controller in self.getAll():
-            input_road_ids = []
-            for signal_group in signal_controller.signal_groups.getAll():
-                input_road_ids.append(signal_group.road.get('id'))
-            input_road_ids = list(set(input_road_ids))
-            
-            success_flg = False
-            for intersection in self.network.intersections.getAll():
-                if sorted(input_road_ids) == sorted(intersection.input_roads.getMultiAttValues('id')):
-                    signal_controller.set('intersection', intersection)
-                    intersection.set('signal_controller', signal_controller)
-                    success_flg = True
-                    break
-
-            if success_flg == False:
-                raise Exception(f"SignalController {signal_controller.get('id')} has input roads {input_road_ids}, but no matching intersection found.")
-
-    def _makePhases(self):
-        num_roads_phases_map = self.config.get('num_roads_phases_map')
-
-        for signal_controller in self.getAll():
-            num_roads = signal_controller.intersection.get('num_roads')
-            phases = num_roads_phases_map[num_roads]
-
-            formatted_phases = {}
-            for _, phase in phases.iterrows():
-                formatted_phases[int(phase['id'])] = [int(phase['signal_group' + str(i)]) for i in range(1, num_roads + 1)]
         
-            signal_controller.set('phases', formatted_phases)
+        return
     
     def setNextPhaseToVissim(self):
         for signal_controller in self.getAll():
@@ -76,14 +39,20 @@ class SignalController(Object):
         self.network = signal_controllers.network
         self.executor = signal_controllers.executor
 
-        # comオブジェクトを取得
+        # set com
         self.com = com
 
         # set properties
         self._initProps()
 
-        # 下位の紐づくオブジェクトを初期化
+        # set signal_groups object
         self.signal_groups = SignalGroups(self)
+        
+        # set intersection object
+        self._initIntersection()
+
+        # set phases
+        self._initPhases()
         return
 
     def _initProps(self):
@@ -92,8 +61,8 @@ class SignalController(Object):
 
         simulation_info = self.config.get('simulator_info')
 
-        # set red_steps
-        self.red_steps = simulation_info['red_steps']
+        # set num_red_steps
+        self.num_red_steps = simulation_info['num_red_steps']
 
         # initialize future_phase_ids
         if simulation_info['control_method'] in ['drl', 'bc']:
@@ -110,6 +79,45 @@ class SignalController(Object):
 
         # initialize phase_record_df
         self.phase_record_df = pd.DataFrame(columns=['time', 'phase'])
+        return
+
+    def _initIntersection(self):
+        # set intersection object
+        input_road_list = []
+        for signal_group in self.signal_groups.getAll():
+            input_road_list.append(signal_group.road.get('id'))
+        input_road_list = sorted(list(set(input_road_list)))
+
+        found_flg = False
+        for self.intersection in self.network.intersections.getAll():
+            tmp_input_roads = self.intersection.input_roads
+            if input_road_list == sorted(tmp_input_roads.getMultiAttValues('id')):
+                found_flg = True
+                break
+        
+        if not found_flg:
+            raise Exception(f"SignalController {self.get('id')} could not find a matching intersection for input roads {input_road_list}.")
+        
+        # set signal_controller object to intersection object
+        self.intersection.set('signal_controller', self)
+        return
+
+    def _initPhases(self):
+        # get phases_df
+        num_roads_phases_map = self.config.get('num_roads_phases_map')
+        num_roads = self.intersection.get('num_roads')
+        phases_df = num_roads_phases_map[num_roads]
+
+        # initialize phases
+        self.phases = {}
+        for _, phase_row in phases_df.iterrows():
+            tmp_signal_group_ids = []
+            for signal_group_order in range(1, num_roads + 1):
+                tmp_signal_group_ids.append(int(phase_row[f"signal_group{signal_group_order}"]))
+            
+            self.phases[int(phase_row['id'])] = tmp_signal_group_ids
+        
+        self.num_phases = len(self.phases)
         return
         
     def setNextPhases(self, phase_ids):
@@ -151,10 +159,6 @@ class SignalController(Object):
     @property
     def next_phase_id(self):
         return self.future_phase_ids[0] if self.future_phase_ids else None
-    
-    @property
-    def num_phases(self):
-        return len(self.phases)
 
     @property
     def current_phase_id(self):
@@ -252,18 +256,18 @@ class SignalGroups(Container):
         phases = self.signal_controller.get('phases')
         
         # 各フェーズに対応するSignalGroupの値を計算
-        sig_value_list = []
+        sig_color_list = []
         for phase_id in phase_ids:
             signal_group_ids = phases[phase_id]
-            tmp_sig_value_list = [1] * self.count()  # 1は赤信号を示す
+            tmp_sig_color_list = [1] * self.count()  # 1は赤信号を示す
             for signal_group_id in signal_group_ids:
-                tmp_sig_value_list[signal_group_id - 1] = 3
-            sig_value_list.append(tmp_sig_value_list)
+                tmp_sig_color_list[signal_group_id - 1] = 3
+            sig_color_list.append(tmp_sig_color_list)
 
         # 将来の信号現示を保存する（赤➡青の変化時は全赤の時間があるため，赤を１ステップ追加する）
         for signal_group in self.getAll():
-            tmp_sig_value_list = [tmp_row[signal_group.get('id') - 1] for tmp_row in sig_value_list]
-            signal_group.setNextPhases(tmp_sig_value_list)
+            tmp_sig_color_list = [tmp_row[signal_group.get('id') - 1] for tmp_row in sig_color_list]
+            signal_group.setNextPhases(tmp_sig_color_list)
     
     def deletePhases(self, type, steps):
         for signal_group in self.getAll():
@@ -277,100 +281,118 @@ class SignalGroups(Container):
             
             
 class SignalGroup(Object):
+    # signal color to value mapping
+    RED = 1
+    GREEN = 3
     def __init__(self, com, signal_groups):
-        # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = signal_groups.config
         self.executor = signal_groups.executor
         self.signal_groups = signal_groups
+        self.signal_controller = signal_groups.signal_controller
 
-        # comオブジェクトを取得
+        # set com object
         self.com = com
+        
+        # set properties
+        self._initProps()
 
-        # IDを取得
+        # set signal_heads object
+        self.signal_heads = SignalHeads(self)
+        return
+
+    def _initProps(self):
+        # set id
         self.id = int(self.com.AttValue('No'))
 
-        # signal_headを格納するコンテナを初期化
-        self.signal_heads = SignalHeads(self)
+        # set signal_colors_df
+        self.signal_colors_df = pd.DataFrame(columns=['time', 'signal_color'])
 
-        # future_valuesとvalue_recordを初期化
-        self.initFutureValues()
-        self.initValueRecord()
-
-        # 現在の値を初期化
-        self.current_value = None
-    
-    def initValueRecord(self):
-        records_info = self.config.get('records_info')
-        if records_info['metric']['phase_flg'] == True:
-            self.value_record = []
-        else:
-            self.value_record = deque(maxlen=records_info['max_len'])
-    
-    def initFutureValues(self):
-        simulator_info = self.config.get('simulator_info')
-        if simulator_info['control_method'] == 'drl' or simulator_info['control_method'] == 'bc':
+        # set future_signal_colors
+        simulatior_info = self.config.get('simulator_info')
+        if simulatior_info['control_method'] in ['drl', 'bc']:
             drl_info = self.config.get('drl_info')
-            self.future_values = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
-        elif simulator_info['control_method'] == 'mpc':
+            self.future_signal_colors = deque(maxlen=drl_info['duration_steps'] + 1) # +1は現在のフェーズを含むため
+        elif simulatior_info['control_method'] == 'mpc':
             mpc_info = self.config.get('mpc_info')
-            self.future_values = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
-        elif simulator_info['control_method'] == 'scoot':
+            self.future_signal_colors = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
+        elif simulatior_info['control_method'] == 'scoot':
             scoot_info = self.config.get('scoot_info')
-            self.future_values = deque(maxlen=scoot_info['max_cycle'] - 3 * scoot_info['min_split'])
-        return
-            
-    def setNextPhases(self, sig_value_list):
-        # 赤から青に変化するときは全赤の時間があるため，赤に変更する（複数ステップ赤には対応していない）
-        fixed_sig_value_list = sig_value_list.copy()
-        for idx in range(len(sig_value_list)):
-            if idx == 0:
-                if self.future_values:
-                    if self.future_values[-1] == 1 and sig_value_list[0] == 3:
-                        fixed_sig_value_list[idx] = 1
-                elif self.value_record:
-                    if self.value_record[-1] == 1 and sig_value_list[0] == 3:
-                        fixed_sig_value_list[idx] = 1
-
-            else:
-                if sig_value_list[idx - 1] == 1 and sig_value_list[idx] == 3:
-                    fixed_sig_value_list[idx] = 1
+            self.future_signal_colors = deque(maxlen=scoot_info['max_cycle'] - 3 * scoot_info['min_split'])
+        else:
+            raise NotImplementedError(f"Not supported control method: {simulatior_info['control_method']}")
         
-        self.future_values.extend(fixed_sig_value_list)
+        return
+
+    def setNextPhases(self, sig_color_list):
+        # make a copy
+        sig_color_list = copy.deepcopy(sig_color_list)
+
+        # get previous signal color
+        if self.future_signal_colors:
+            previous_signal_color = self.future_signal_colors[-1]
+        elif self.signal_colors_df.shape[0] > 0:
+            previous_signal_color = self.signal_colors_df.iloc[-1]['value']
+        else:
+            previous_signal_color = None
+
+        for step, signal_color in enumerate(copy.deepcopy(sig_color_list)):
+            # if no records, no need to change signal color
+            if previous_signal_color is None:
+                continue
+            
+            # if red to green transition, insert a red phase before green
+            if previous_signal_color == self.RED and signal_color == self.GREEN:
+                sig_color_list[step] = self.RED
+            
+            # update previous signal color
+            previous_signal_color = signal_color
+
+        # add to future_signal_colors
+        self.future_signal_colors.extend(sig_color_list)
         return
 
     def deletePhases(self, type, steps):
         if type == 'end':
             for _ in range(steps):
-                self.future_values.pop()
+                self.future_signal_colors.pop()
         elif type == 'start':
             for _ in range(steps):
-                self.future_values.popleft()
+                self.future_signal_colors.popleft()
         return
 
     def setNextPhaseToVissim(self):
-        # 現在の値と同じ場合は何もしない
-        if (self.current_value is not None) and (self.current_value == self.future_values[0]):
-            self.current_value = self.future_values.popleft()
-            self.value_record.append(self.current_value)
+        # update signal_colors_df
+        self.signal_colors_df.loc[len(self.signal_colors_df)] = [self.current_time, self.future_signal_colors.popleft()]
+
+        # no need to set the new signal color to vissim
+        if self.signal_colors_df.shape[0] > 1 and self.signal_colors_df.iloc[-2]['signal_color'] != self.current_signal_color:
             return
         
-        # Vissimに信号現示をセット（最初はうまく行かないのでtryで囲む）
-        self.com.SetAttValue('SigState', self.future_values[0])
-        
-        # future_valuesから1つ削除
-        self.current_value = self.future_values.popleft()
-        self.value_record.append(self.current_value)
-    
+        self.com.SetAttValue('SigState', self.current_signal_color)
+        return
+
+    @property
+    def current_signal_color(self):
+        if self.signal_colors_df.shape[0] == 0:
+            raise Exception("No signal color record found.")
+
+        return  self.signal_colors_df.iloc[-1]['signal_color']
+
+    @property
+    def current_time(self):
+        return self.signal_controller.get('current_time')
+
     @property
     def direction_id(self):
-        possible_direction_ids = []
+        direction_ids = []
         for signal_head in self.signal_heads.getAll():
-            possible_direction_ids.append(signal_head.get('direction_id'))
+            direction_ids.append(signal_head.get('direction_id'))
         
-        if len(set(possible_direction_ids)) == 1:
-            return possible_direction_ids[0]
-        else:
-            raise Exception(f"SignalGroup {self.get('id')} has multiple possible direction IDs: {possible_direction_ids}. Please check the signal head connections.")
+        if len(set(direction_ids)) != 1:
+            raise Exception(f"SignalGroup {self.get('id')} has multiple direction IDs: {direction_ids}. Please check the signal head connections.")
+        
+        return direction_ids[0]
+        

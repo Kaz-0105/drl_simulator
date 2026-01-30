@@ -8,18 +8,14 @@ class Config(Common):
         super().__init__()
 
         self.vissim = vissim
+        self.root_dir_path = self.vissim.get('root_dir_path')
 
         # config.yamlを読み込む
         self.readConfigFile()
 
         # ネットワークのパラメータをcsvから読み込む
-        self.roads = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/roads.csv', index_col=False)
-        self.road_link_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/road_link_tags.csv', index_col=False)
-        self.intersections = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersections.csv', index_col=False)
-        self.intersection_road_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_road_tags.csv', index_col=False)
-        self.link_input_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/link_input_tags.csv', index_col=False)
-        self.intersection_turn_ratio_tags = pd.read_csv('layout/' + self.simulator_info['network_name'] + '/intersection_turn_ratio_tags.csv', index_col=False)
-
+        self._initNetworkProps()
+        
         # 旋回率のテンプレートを取得する
         self._getNumRoadTurnRatioMap()
 
@@ -61,10 +57,8 @@ class Config(Common):
             if type(data['apex']['weight_decay']) == str:
                 self.apex_info['weight_decay'] = float(data['apex']['weight_decay'])  # 文字列になってしまうのでfloatに変換
 
-            # MPCに関する情報について
             self.mpc_info = data['mpc']
 
-            # 行動クローンに関する情報について
             self.bc_info = data['bc']
             if type(self.bc_info['weight_decay']) == str:
                 self.bc_info['weight_decay'] = float(self.bc_info['weight_decay'])  # 文字列になってしまうのでfloatに変換
@@ -72,32 +66,59 @@ class Config(Common):
             if type(self.bc_info['learning_rate']) == str:
                 self.bc_info['learning_rate'] = float(self.bc_info['learning_rate'])  # 文字列になってしまうのでfloatに変換
 
-            # scootについて
             self.scoot_info = data['scoot']
-
-            # 記録する情報について
-            self.records_info = data['records']
-
-            # config自身に対する設定
-            self.config_info = data['config']
-
             self.save_info = data['save']
             return
 
+    def _initNetworkProps(self):
+        common_dir_path = self.root_dir_path / 'layout' / self.simulator_info['layout_name']
+        with open(common_dir_path / 'roads.csv', 'r', encoding='utf-8') as f:
+            self.roads = pd.read_csv(f, index_col=False)
+        
+        with open(common_dir_path / 'road_link_tags.csv', 'r', encoding='utf-8') as f:
+            self.road_link_tags = pd.read_csv(f, index_col=False)
+        
+        with open(common_dir_path / 'intersections.csv', 'r', encoding='utf-8') as f:
+            self.intersections = pd.read_csv(f, index_col=False)
+
+        with open(common_dir_path / 'intersection_road_tags.csv', 'r', encoding='utf-8') as f:
+            self.intersection_road_tags = pd.read_csv(f, index_col=False)
+
+        with open(common_dir_path / 'intersection_turn_ratio_tags.csv', 'r', encoding='utf-8') as f:
+            self.intersection_turn_ratio_tags = pd.read_csv(f, index_col=False) 
+
+        link_input_tags_dir_path = common_dir_path / 'link_input_tags'
+        if not link_input_tags_dir_path.exists():
+            raise FileNotFoundError(f"Not found: {link_input_tags_dir_path}")
+        
+        self.link_input_tags_map = {}
+        for link_input_tags_file_path in link_input_tags_dir_path.glob('*.csv'):
+            with open(link_input_tags_file_path, 'r', encoding='utf-8') as f:
+                self.link_input_tags_map[link_input_tags_file_path.stem] = pd.read_csv(f, index_col=False)
+        return
+    
     def _getNumRoadTurnRatioMap(self):
         self.num_roads_turn_ratio_map = {}
         for num_roads in [3, 4, 5]:
-            self.num_roads_turn_ratio_map[num_roads] = pd.read_csv('layout/turn_ratio_templates' + str(num_roads) + '.csv', index_col=False)
+            turn_ration_file_path = self.root_dir_path / 'layout' / f"turn_ratio_templates{num_roads}.csv"
+            if not turn_ration_file_path.exists():
+                continue
+            self.num_roads_turn_ratio_map[num_roads] = pd.read_csv(turn_ration_file_path, index_col=False)
+        
+        return
 
     def _getNumRoadPhasesMap(self):
         self.num_roads_phases_map = {}
         for num_roads in [3, 4, 5]:
-
-            # 3車線と5車線は後で実装する
             if num_roads == 3 or num_roads == 5:
                 continue
 
-            self.num_roads_phases_map[num_roads] = pd.read_csv('layout/phases' + str(num_roads) + '.csv', index_col=False)
+            phase_file_path = self.root_dir_path / 'layout' / f"phases{num_roads}.csv"
+            if not phase_file_path.exists():
+                continue
+            self.num_roads_phases_map[num_roads] = pd.read_csv(phase_file_path, index_col=False)
+        
+        return
 
     def _validateBcEnvironment(self):
         if self.simulator_info['control_method'] != 'bc':
@@ -110,14 +131,17 @@ class Config(Common):
         if not self.apex_info['epsilon']['schedule_flg']:
             return
         
-        self.epsilon_schedule = pd.read_csv('layout/epsilon_schedule.csv', index_col=False)
+        eps_schedule_file_path = self.root_dir_path / 'layout' / 'epsilon_schedule.csv'
+        if not eps_schedule_file_path.exists():
+            raise FileNotFoundError(f"Not found: {eps_schedule_file_path}")
+        self.epsilon_schedule = pd.read_csv(eps_schedule_file_path, index_col=False)
         return
 
     def _getNetworkStateMap(self):
         self.network_state_map = {}
 
         for network_id in [1]:
-            self.network_state_map[network_id] = pd.read_csv(f"layout/state_template{network_id}.csv", index_col=False)
+            self.network_state_map[network_id] = pd.read_csv(self.root_dir_path / 'layout' / f"state_template{network_id}.csv", index_col=False)
         return
     
     def reshapeDrlInfo(self):
