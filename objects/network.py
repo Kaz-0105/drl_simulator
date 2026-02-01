@@ -34,15 +34,11 @@ class Network(Common):
         self.shared_resources = vissim.shared_resources
 
         self.vissim = vissim
+        self.simulation = self.vissim.simulation
         self.com = self.vissim.com.Net
 
         self._initProps()
-
-        self.simulation = self.vissim.simulation
-        self.simulation.set('network', self)
-
-        self._makeLowerObjects()
-        self._initSaveDirPath()
+        self._initVissimObjects()
         
         self._setParametersToVissim()
         return
@@ -61,122 +57,12 @@ class Network(Common):
         self.delay_flg = save_info['performance_metrics']['delay']
         self.calc_time_flg = save_info['performance_metrics']['calc_time']
         self.phase_flg = save_info['performance_metrics']['phase']
+
+        save_dir_path_map = self.config.get('save_dir_path_map')
+        self.save_dir_path = save_dir_path_map['metrics']
         return
     
-    def _initSaveDirPath(self):
-        common_save_dir_path = self.root_dir_path / 'data' / 'performance_metrics'
-        common_save_dir_path /= self.layout_dir_path.name
-        common_save_dir_path /= self.inflow_name
-        common_save_dir_path.mkdir(parents=True, exist_ok=True)
-
-        # if the setting of simulator_info is same as the existing one, use the existing save_dir_path
-        simulator_info = copy.deepcopy(self.config.get('simulator_info'))
-        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step']}
-        simulator_info['seed'] = self.simulation.get('random_seed')
-        
-        simulation_dir_path = None
-        for tmp_dir_path in common_save_dir_path.glob('simulator_*'):
-            config_file_path = tmp_dir_path / 'config.yaml'
-            if not config_file_path.exists():
-                continue
-
-            with config_file_path.open('rb') as f:  
-                config_yaml = yaml.safe_load(f)
-            
-            if config_yaml == simulator_info:
-                simulation_dir_path = tmp_dir_path
-                break
-        
-        if simulation_dir_path is None:
-            config_idx = 1
-            while True:
-                tmp_dir_path = common_save_dir_path / f"simulator_{config_idx}"
-                if not tmp_dir_path.exists():
-                    simulation_dir_path = tmp_dir_path
-                    simulation_dir_path.mkdir(parents=True, exist_ok=False)
-
-                    with open(simulation_dir_path / 'config.yaml', 'w') as f:
-                        yaml.dump(simulator_info, f)
-                    break
-
-                config_idx += 1
-
-        control_method_dir_path = simulation_dir_path / self.control_method
-        if self.control_method == 'mpc':
-            mpc_info = copy.deepcopy(self.config.get('mpc_info'))
-            del mpc_info['bc_buffer']
-
-            num_roads_set = set()
-            for intersection in self.intersections.getAll():
-                num_roads_set.add(intersection.get('num_roads'))
-            
-            for intersection_type in copy.deepcopy(mpc_info['phases']).keys():
-                num_roads = int(re.match(rf"(\d+)-road", intersection_type)[1])
-                if num_roads not in num_roads_set:
-                    del mpc_info['phases'][intersection_type]
-
-            self.save_dir_path = None
-            for tmp_dir_path in control_method_dir_path.glob('config_*'):
-                config_file_path = tmp_dir_path / 'config.yaml'
-                if not config_file_path.exists():
-                    continue
-
-                with config_file_path.open('rb') as f:  
-                    config_yaml = yaml.safe_load(f)
-                
-                if config_yaml == mpc_info:
-                    self.save_dir_path = tmp_dir_path
-                    break
-
-            if self.save_dir_path is None:
-                config_idx = 1
-                while True:
-                    tmp_dir_path = control_method_dir_path / f"config_{config_idx}"
-                    if not tmp_dir_path.exists():
-                        self.save_dir_path = tmp_dir_path
-                        self.save_dir_path.mkdir(parents=True, exist_ok=False)
-
-                        with open(self.save_dir_path / 'config.yaml', 'w') as f:
-                            config_yaml = mpc_info
-                            yaml.dump(config_yaml, f)
-                        break
-                    config_idx += 1
-
-        elif self.control_method == 'scoot':
-            scoot_info = copy.deepcopy(self.config.get('scoot_info'))
-
-            self.save_dir_path = None
-            for tmp_dir_path in control_method_dir_path.glob('config_*'):
-                config_file_path = tmp_dir_path / 'config.yaml'
-                if not config_file_path.exists():
-                    continue
-
-                with config_file_path.open('rb') as f:  
-                    config_yaml = yaml.safe_load(f)
-                
-                if config_yaml == scoot_info:
-                    self.save_dir_path = tmp_dir_path
-                    break
-            
-            if self.save_dir_path is None:
-                config_idx = 1
-                while True:
-                    tmp_dir_path = control_method_dir_path / f"config_{config_idx}"
-                    if not tmp_dir_path.exists():
-                        self.save_dir_path = tmp_dir_path
-                        self.save_dir_path.mkdir(parents=True, exist_ok=False)
-
-                        with open(self.save_dir_path / 'config.yaml', 'w') as f:
-                            yaml.dump(scoot_info, f)
-                        break
-                    config_idx += 1
-
-        else:
-            raise NotImplementedError(f"Not supported control method: {self.control_method}")
-        
-        return
-    
-    def _makeLowerObjects(self):
+    def _initVissimObjects(self):
         # make and set vissim objects
         self.roads = Roads(self)
         self.intersections = Intersections(self)

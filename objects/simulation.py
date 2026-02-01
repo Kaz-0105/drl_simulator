@@ -37,7 +37,7 @@ class Simulation(Common):
         
         self.debug_flg = simulator_info['debug']['flg']
         
-        self.seed = simulator_info['random_seed']
+        self.seed = simulator_info['seed']
         return
         
     def _setParametersToVissim(self):

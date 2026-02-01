@@ -173,11 +173,11 @@ class Config(Common):
     
         
     def _initSaveDirPathMap(self):
-        self.save_dir_path_maps = {}
+        self.save_dir_path_map = {}
 
         common_save_dir_path = self.root_dir_path / 'data' / 'performance_metrics'
         common_save_dir_path /= self.layout_dir_path.name
-        common_save_dir_path /= self.inflow_name
+        common_save_dir_path /= self.simulator_info['inflow_name']
         common_save_dir_path.mkdir(parents=True, exist_ok=True)
 
         # if the setting of simulator_info is same as the existing one, use the existing save_dir_path
@@ -217,15 +217,15 @@ class Config(Common):
             del mpc_info['bc_buffer']
 
             num_roads_set = set()
-            for intersection in self.intersections.getAll():
-                num_roads_set.add(intersection.get('num_roads'))
+            for _, intersection_row in self.intersections.iterrows():
+                num_roads_set.add(intersection_row['num_roads'])
             
             for intersection_type in copy.deepcopy(mpc_info['phases']).keys():
                 num_roads = int(re.match(rf"(\d+)-road", intersection_type)[1])
                 if num_roads not in num_roads_set:
                     del mpc_info['phases'][intersection_type]
 
-            self.save_dir_path = None
+            save_dir_path = None
             for tmp_dir_path in control_method_dir_path.glob('config_*'):
                 config_file_path = tmp_dir_path / 'config.yaml'
                 if not config_file_path.exists():
@@ -235,27 +235,29 @@ class Config(Common):
                     config_yaml = yaml.safe_load(f)
                 
                 if config_yaml == mpc_info:
-                    self.save_dir_path = tmp_dir_path
+                    save_dir_path = tmp_dir_path
                     break
 
-            if self.save_dir_path is None:
+            if save_dir_path is None:
                 config_idx = 1
                 while True:
                     tmp_dir_path = control_method_dir_path / f"config_{config_idx}"
                     if not tmp_dir_path.exists():
-                        self.save_dir_path = tmp_dir_path
-                        self.save_dir_path.mkdir(parents=True, exist_ok=False)
+                        save_dir_path = tmp_dir_path
+                        save_dir_path.mkdir(parents=True, exist_ok=False)
 
-                        with open(self.save_dir_path / 'config.yaml', 'w') as f:
+                        with open(save_dir_path / 'config.yaml', 'w') as f:
                             config_yaml = mpc_info
                             yaml.dump(config_yaml, f)
                         break
                     config_idx += 1
 
+            self.save_dir_path_map['metrics'] = save_dir_path
+
         elif self.simulator_info['control_method'] == 'scoot':
             scoot_info = copy.deepcopy(self.scoot_info)
 
-            self.save_dir_path = None
+            save_dir_path = None
             for tmp_dir_path in control_method_dir_path.glob('config_*'):
                 config_file_path = tmp_dir_path / 'config.yaml'
                 if not config_file_path.exists():
@@ -265,21 +267,23 @@ class Config(Common):
                     config_yaml = yaml.safe_load(f)
                 
                 if config_yaml == scoot_info:
-                    self.save_dir_path = tmp_dir_path
+                    save_dir_path = tmp_dir_path
                     break
             
-            if self.save_dir_path is None:
+            if save_dir_path is None:
                 config_idx = 1
                 while True:
                     tmp_dir_path = control_method_dir_path / f"config_{config_idx}"
                     if not tmp_dir_path.exists():
-                        self.save_dir_path = tmp_dir_path
-                        self.save_dir_path.mkdir(parents=True, exist_ok=False)
+                        save_dir_path = tmp_dir_path
+                        save_dir_path.mkdir(parents=True, exist_ok=False)
 
-                        with open(self.save_dir_path / 'config.yaml', 'w') as f:
+                        with open(save_dir_path / 'config.yaml', 'w') as f:
                             yaml.dump(scoot_info, f)
                         break
                     config_idx += 1
+
+            self.save_dir_path_map['metrics'] = save_dir_path
 
         else:
             raise NotImplementedError(f"Not supported control method: {self.simulator_info['control_method']}")
