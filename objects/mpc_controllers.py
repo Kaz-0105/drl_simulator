@@ -34,6 +34,7 @@ class MpcControllers(Container):
         for intersection_order_id in self.network.intersections.getKeys(container_flg=True, sorted_flg=True):
             intersection = self.network.intersections[intersection_order_id]
             self.add(MpcController(self, intersection))
+        return
         
     def optimize(self):
         for mpc_controller in self.getAll():
@@ -69,32 +70,14 @@ class MpcController(Object):
         # set roads and signal_controller object
         self.roads = self.intersection.input_roads
         self.signal_controller = self.intersection.signal_controller
-
-        self._initProps()
         
-
-        # フェーズの一覧を取得
-        self._makePhases()
-
-        # MPCパラメータを取得
-        self._initMPCParameters()
-
-        # 長さ情報を計算
-        self._makeRoadLengthInfoMap()
-
-        # 車線の組み合わせを取得
-        self._makeRoadCombinationsMap()
-
-        # 道路パラメータを取得
+        # set properties for mpc
+        self._initProps()
+        self._initRoadLengthInfoMap()
+        self._initRoadCombinationMap()
         self._initRoadParameters()
 
-        # 計算時間の記録を初期化
-        self._initCalcTimeRecord()
-
-        # 過去の信号機変化の有無を保存するリストを初期化
-        self.phi_record = deque([np.float64(0)] * self.min_successive_steps, maxlen=self.min_successive_steps)
-
-        # BCバッファのデータ集めに必要な情報を作成
+        # set properties for behavior cloning
         self._makeBcRoadLanesMap()
         self._makeBcNumLanesList()
         return
@@ -110,145 +93,100 @@ class MpcController(Object):
 
         # set phases
         self.phases = {phase_id: phase_list for phase_id, phase_list in self.signal_controller.get('phases').items() if phase_id <= self.num_phases}
-        return
-
-    def _makePhases(self):
-        # set num_phases and phases
-    
-        return
-
-    def _initMPCParameters(self):
+        
+        # set time_step
         simulator_info = self.config.get('simulator_info')
         self.time_step = simulator_info['time_step']
 
-        # MPCのパラメータを取得
+        # set parameters regarding mpc
         mpc_info = self.config.get('mpc_info')
         self.horizon = mpc_info['horizon']
         self.utilize_steps = mpc_info['utilize_steps']
         self.remained_steps = mpc_info['remained_steps']
         self.min_successive_steps = mpc_info['min_successive_steps']
         self.num_max_changes = mpc_info['num_max_changes']
-        self.objective_type = mpc_info['objective_type']
-        self.signal_change_weight = mpc_info['signal_change_weight']
 
-        # 行動クローンを行うかどうかのフラグを取得
+        # set properties regarding objective function
+        self.objective_function_type = mpc_info['objective_function']['type']
+        if self.objective_function_type == 'waiting_vehicles':
+            self.range_type = mpc_info['objective_function']['waiting_vehicles']['range_type']
+            self.queue_measurement_type = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['type']
+        else:
+            raise NotImplementedError(f"Not supported objective_function_type: {self.objective_function_type}")
+        
+        self.signal_change_penalty_type = mpc_info['objective_function']['signal_change']['type']
+        self.signal_change_penalty_weight = mpc_info['objective_function']['signal_change']['weight']
+
+        # set phi_record
+        self.phi_record = deque([np.float64(0)] * self.min_successive_steps, maxlen=self.min_successive_steps)
+
+        # set parameters regarding behavior cloning
         bc_buffer_info = mpc_info['bc_buffer']
         self.bc_flg = bc_buffer_info['flg']
-
-        # 行動クローンのデータ集めをするとき自動車の特徴量群を取得
         if self.bc_flg:
             drl_info = self.config.get('drl_info')
             self.bc_features_info = drl_info['features']
             self.bc_num_vehicles = drl_info['num_vehicles']
 
-    def _initRoadParameters(self):
-        road_combination_params_map = {}
-        for road_order_id in range(1, self.num_roads + 1):
-            # roadオブジェクトを取得
-            road = self.roads[road_order_id]
-
-            # combinations_mapを取得
-            combinations_map = self.road_combinations_map[road_order_id]
-            
-            # 対応する長さ情報を取得
-            length_info = self.road_length_info_map[road_order_id]
-
-            # 法定速度を取得
-            max_speed = road.get('max_speed')
-
-            combination_params_map = {}
-
-            # 組み合わせごとに操作
-            for combination_order_id, combinations in combinations_map.items():
-                # 道路パラメータを初期化
-                if len(combinations) == 1:
-                    params = {'p_s': {}}                
-                else:
-                    params = {'p_s': {}, 'D_b': {}}
-
-                # 信号機の位置p_sを取得
-                for lane_str in combinations:
-                    lane_info = lane_str.split('-')
-                    link_id = int(lane_info[0])
-
-                    link = road.links[link_id]
-                    link_type = link.get('type')
-
-                    if link_type == 'main':
-                        params['p_s'][lane_str] = length_info[link_id]['length']
-                    
-                    else:
-                        params['p_s'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
-
-                # 法定速度v_maxを取得
-                params['v_max'] = max_speed * 1000 / 3600
-
-                # 信号の影響圏内に入る距離を定義
-                params['D_s'] = max_speed
-
-                # 停止線から信号までの距離を定義
-                params['d_s'] = 0
-
-                # 先行車の影響圏に入る距離を定義
-                params['D_f'] = max_speed if max_speed > 60 else max_speed - 15
-
-                # 先行車と最接近したときの距離
-                params['d_f'] = 5
-
-                # モデルで使う定数を定義k_s, k_f
-                params['k_s'] = 1 / (params['D_s'] - params['d_s'])
-                params['k_f'] = 1 / (params['D_f'] - params['d_f'])
-
-                # 目的関数で見る信号機付近の範囲
-                params['D_t'] = params['D_s']
-
-                # 車線分岐点から信号までの距離を取得
-                if len(combinations) != 1:
-                    link_lane_str_map = {}
-                    for lane_str in combinations:
-                        lane_info = lane_str.split('-')
-                        link_id = int(lane_info[0])
-
-                        link = road.links[link_id]
-                        link_type = link.get('type')
-
-                        if link_type == 'main':
-                            link_lane_str_map[link_id] = lane_str
-                        
-                    for lane_str in combinations:
-                        lane_info = lane_str.split('-')
-                        link_id = int(lane_info[0])
-
-                        link = road.links[link_id]
-                        link_type = link.get('type')
-
-                        if link_type == 'main':
-                            params['D_b'][lane_str] = params['D_b'][lane_str] + length_info[link_id]['length'] if lane_str in params['D_b'] else length_info[link_id]['length']
-                        
-                        else:
-                            from_connector = link.from_links.getAll()[0]
-                            from_connector_id = from_connector.get('id')
-                            params['D_b'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length'] - length_info[from_connector_id]['start_pos']
-
-                            from_link = from_connector.from_links.getAll()[0]
-                            from_link_id = from_link.get('id')
-                            params['D_b'][link_lane_str_map[from_link_id]] = params['D_b'][link_lane_str_map[from_link_id]] - length_info[from_connector_id]['start_pos'] if from_link_id in params['D_b'] else - length_info[from_connector_id]['start_pos']
-
-                    # vissimが引っかかるから5m手前にする(TODO: 根本的な解決をしたい)
-                    for lane_str in combinations:
-                        params['D_b'][lane_str] -= 5
-                        
-                combination_params_map[combination_order_id] = params
-
-            road_combination_params_map[road_order_id] = combination_params_map
-        
-        self.road_combination_params_map = road_combination_params_map
-
-    def _initCalcTimeRecord(self):
+        # set calc_time_record if needed
         save_info = self.config.get('save_info')
         self.calc_time_flg = save_info['performance_metrics']['calc_time']
         if self.calc_time_flg:
             self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
+        
+        return
+
+    def _initRoadParameters(self):
+        self.road_combination_params_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            # get information to be used for parameter calculation
+            road = self.roads[road_order_id]
+            lane_combinations_map = self.road_combinations_map[road_order_id]
+            length_info = self.road_length_info_map[road_order_id]
+
+            # set lane_combination_params_map
+            lane_combination_params_map = {}
+            for lane_list_id, lane_list in lane_combinations_map.items():
+                # set p_s for each lane
+                params = {}
+                params['p_s'] = {}
+                for lane_str in lane_list:
+                    link_id = int(lane_str.split('-')[0])
+                    link = road.links[link_id]
+                    if link.get('type') == 'main':
+                        params['p_s'][lane_str] = length_info[link_id]['length']
+                    else:
+                        params['p_s'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
+
+                # set D_b for each lane (p_s - branching_point, if exists)
+                if len(lane_list) != 1: 
+                    params['D_b'] = {}
+                    for lane_str in lane_list:
+                        link = road.links[int(lane_str.split('-')[0])]
+                        if link.get('type') == 'main':
+                            continue
+                        from_connector = link.from_links.getAll()[0]
+                        branching_point = length_info[from_connector.get('id')]['start_pos']
+                    
+                    for lane_str in lane_list:
+                        link_id = int(lane_str.split('-')[0])
+                        params['D_b'][lane_str] = params['p_s'][lane_str] - branching_point
+                    
+                # set other parameters
+                params['v_max'] = road.get('max_speed') * 1000 / 3600
+                params['D_s'] = road.get('max_speed')
+                params['d_s'] = 0
+                params['D_f'] = road.get('max_speed') if road.get('max_speed') > 60 else road.get('max_speed') - 15
+                params['d_f'] = 5
+                params['k_s'] = 1 / (params['D_s'] - params['d_s'])
+                params['k_f'] = 1 / (params['D_f'] - params['d_f'])
+                params['D_t'] = params['D_s']
+
+                # push to map        
+                lane_combination_params_map[lane_list_id] = params
+            
+            # push to map
+            self.road_combination_params_map[road_order_id] = lane_combination_params_map        
         return
     
     def _makeBcRoadLanesMap(self):
@@ -294,11 +232,11 @@ class MpcController(Object):
         return
 
     def _makeBcNumLanesList(self):
-        # 行動クローンのデータ集めをしない場合はスキップ
+        # skip if bc_flg is False
         if not self.bc_flg:
             return
 
-        # 道路のIDから車線数へのマップを初期化
+        # get bc_num_lanes_list
         self.bc_num_lanes_list = []
         for road_order_id in range(1, self.num_roads + 1):  
             road = self.roads[road_order_id]
@@ -313,8 +251,9 @@ class MpcController(Object):
         
         return
     
-    def _makeRoadLengthInfoMap(self):
-        road_length_info_map = {}
+    def _initRoadLengthInfoMap(self):
+        # set road_length_info_map
+        self.road_length_info_map = {}
         for road_order_id in range(1, self.num_roads + 1):
             road = self.roads[road_order_id]
             length_info = {}
@@ -338,10 +277,10 @@ class MpcController(Object):
                         'start_pos': from_connector.get('from_pos') + from_connector.get('length') - from_connector.get('to_pos'),
                     }
             
-            road_length_info_map[road_order_id] = length_info
-        self.road_length_info_map = road_length_info_map
+            self.road_length_info_map[road_order_id] = length_info
+        return
 
-    def _makeRoadCombinationsMap(self):
+    def _initRoadCombinationMap(self):
         road_combinations_map = {}
 
         for road_order_id in range(1, self.num_roads + 1):
@@ -403,6 +342,7 @@ class MpcController(Object):
 
         # 自動車のデータを更新
         self._updateVehicleData()
+        self._updateRoadMaxQueueMap()
 
         # D_tを更新
         self._updateDt()
@@ -546,38 +486,44 @@ class MpcController(Object):
             road_vehicle_data_map[road_order_id] = vehicle_data_map
         
         self.road_vehicle_data_map = road_vehicle_data_map
-
-        # make road_max_queue_map
+        return
+    
+    def _updateRoadMaxQueueMap(self):
+        # skip if objective function is not waiting vehicles
+        if self.objective_function_type != 'waiting_vehicles':
+            return
+        
+        # update road_max_queue_map
         self.road_max_queue_map = {}
-        max_queue = 0
-        for road_order_id in range(1, self.num_roads + 1):
-            combination_vehicle_data_map = self.road_vehicle_data_map[road_order_id]
-            for combination_order_id, vehicles_df in combination_vehicle_data_map.items():
-                combinations = self.road_combinations_map[road_order_id][combination_order_id]
-                v = self.road_combination_params_map[road_order_id][combination_order_id]['v_max']
-                p_s = self.road_combination_params_map[road_order_id][combination_order_id]['p_s'][combinations[combination_order_id]]
-                gaps = vehicles_df['position'].shift(1) - vehicles_df['position']
-                for vehicle_order_id, vehicle_row in reversed(list(vehicles_df.iterrows())):
-                    # if the gap from the vehicle ahead is more than 10m, skip
-                    if vehicle_order_id > 0 and gaps[vehicle_order_id] > 10:
-                        continue
-                        
-                    # if the vehicle is stopped, calculate the queue length
-                    if vehicle_row['speed'] < v/3:
-                        max_queue = max(max_queue, p_s - vehicle_row['position'])
-                        break
-            self.road_max_queue_map[road_order_id] = max_queue
-            
+        if self.queue_measurement_type == 'vissim':
+            for road_order_id in range(1, self.num_roads + 1):
+                road = self.roads[road_order_id]
+                self.road_max_queue_map[road_order_id] = road.get('max_queue_length')
+        elif self.queue_measurement_type == 'original':
+            raise NotImplementedError("original queue measurement is not implemented yet")          
+        else:
+            raise NotImplementedError(f"Not supported queue_measurement_type: {self.queue_measurement_type}")
         return
 
-    def _updateDt(self):
-        for road_order_id in range(1, self.num_roads + 1):
-            # combinations_mapを取得
-            combination_params_map = self.road_combination_params_map[road_order_id]
-            max_queue_length = self.road_max_queue_map[road_order_id]
-            for combination_order_id, params in combination_params_map.items():
-                params = combination_params_map[combination_order_id]
-                params['D_t'] = max_queue_length if max_queue_length > params['D_s'] else params['D_s']
+    def _updateDt(self):  
+        if self.range_type == 'common':
+            max_queue_length = max(self.road_max_queue_map.values())
+            for road_order_id in range(1, self.num_roads + 1):
+                # combinations_mapを取得
+                combination_params_map = self.road_combination_params_map[road_order_id]
+                for combination_order_id, params in combination_params_map.items():
+                    params = combination_params_map[combination_order_id]
+                    params['D_t'] = max(max_queue_length, params['D_s'])
+        elif self.range_type == 'separate':
+            for road_order_id in range(1, self.num_roads + 1):
+                # combinations_mapを取得
+                combination_params_map = self.road_combination_params_map[road_order_id]
+                max_queue_length = self.road_max_queue_map[road_order_id]
+                for combination_order_id, params in combination_params_map.items():
+                    params = combination_params_map[combination_order_id]
+                    params['D_t'] = max(max_queue_length, params['D_s'])
+        else:
+            raise NotImplementedError(f"Not supported range_type: {self.range_type}")
         return
 
     def _updateTrafficFlowModel(self):
@@ -1917,11 +1863,11 @@ class MpcController(Object):
         return
 
     def _updateVariableListMap(self):
-        # 自動車が存在しない場合はスキップ
+        # if no vehicle exists, skip update
         if not self.vehicle_exist_flg:
             return
         
-        # 変数リストマップを初期化（現状必要ないのはコメントアウト）
+        # reset variable list map
         variable_list_map = {
             'z_1': [],
             'z_2': [],
@@ -1943,6 +1889,11 @@ class MpcController(Object):
             'delta_c': [],
             'phi': [],
         }
+
+        # if signal change penalty is local, add phi variables for each signal
+        if self.signal_change_penalty_type == 'local':
+            for signal_id in range(1, self.num_signals + 1):
+                variable_list_map[f"phi_{signal_id}"] = []
 
         # フェーズの変数リストを追加
         for phase_order_id in range(1, self.num_phases + 1):
@@ -2141,14 +2092,21 @@ class MpcController(Object):
 
         # phiに関して変数リストを更新
         v_length = variable_length_map['v']
+        const_part = v_length * self.horizon + self.num_phases * self.horizon
         for step in range(1, self.horizon):
-            variable_list_map['phi'].append(v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1)
+            variable_list_map['phi'].append(const_part + (self.num_signals + 1) * step - 1)
+
+        if self.signal_change_penalty_type == 'local':
+            for signal_id in range(1, self.num_signals + 1):
+                for step in range(1, self.horizon):
+                    variable_list_map[f"phi_{signal_id}"].append(const_part + signal_id + (self.num_signals + 1) * (step - 1) - 1)
 
         # フェーズの変数リストを更新
+        const_part = v_length * self.horizon
         for phase_order_id in range(1, self.num_phases + 1):
-            phase_str = 'p_' + str(phase_order_id)
+            phase_str = f"p_{phase_order_id}"
             for step in range(1, self.horizon + 1):
-                variable_list_map[phase_str].append(v_length * self.horizon + self.num_phases * (step - 1) + phase_order_id - 1)
+                variable_list_map[phase_str].append(const_part + self.num_phases * (step - 1) + phase_order_id - 1)
 
         # 変数リストマップをインスタンスとして保持
         self.variable_list_map = variable_list_map
@@ -2158,23 +2116,24 @@ class MpcController(Object):
         return
                     
     def _updateOptimizationProblem(self):
-        # 最適化問題の係数をまとめるための辞書を初期化
+        # set optimization_problem to empty
         self.optimization_problem = {}
 
-        # 自動車が存在しない場合はスキップ
+        # if no vehicle exist, skip update
         if not self.vehicle_exist_flg:
             return
 
-        # 不等式制約と等式制約を更新
+        # update constraints
         self._updateConstraints()
 
-        # 目的関数の更新
+        # update objective function
+        self._updateSignalChangePenaltyFlg()
         self._updateObjectiveFunction()
 
-        # 変数の上限・下限を更新
+        # update bounds of variables
         self._updateBounds()
 
-        # バイナリ変数のタイプを更新
+        # update integrality of variables
         self._updateIntegrality()
         return 
     
@@ -2373,72 +2332,66 @@ class MpcController(Object):
         return P_matrix, q_matrix, Peq_matrix, qeq_matrix
         
     def _updateObjectiveFunction(self):
-        # 目的関数の係数を初期化
+        # set f_matrix to zero matrix
         f_matrix = np.zeros(self.num_variables)
 
-        if (self.objective_type == 1):
-            # 信号待ち自動車の最小化
-            # delta_t2とdelta_t3のリストを取得
+        if self.objective_function_type == 'waiting_vehicles':
             delta_t2_list = self.variable_list_map['delta_t2']
             delta_t3_list = self.variable_list_map['delta_t3']
-
-            # 交通流モデルの変数の長さを取得
             v_length = self.variable_length_map['v']
 
-            # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
+            # number of waiting vehicles = sum of delta_t2 + delta_t3
             for step in range(1, self.horizon + 1):
                 for idx in range(len(delta_t2_list)):
                     f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
 
                 for idx in range(len(delta_t3_list)):
                     f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
-        
-        elif (self.objective_type == 2):
-            # 信号待ち自動車の最小化 + 信号変化ペナルティ
-
-            # delta_t2とdelta_t3とphiのリストを取得
-            delta_t2_list = self.variable_list_map['delta_t2']
-            delta_t3_list = self.variable_list_map['delta_t3']
+        else:
+            raise NotImplementedError(f"Not implemented objective_function_type: {self.objective_function_type}")
+            
+        # add signal change penalty to f_matrix
+        if self.signal_change_penalty_type == 'global':
             phi_list = self.variable_list_map['phi']
-
-            # 交通流モデルの変数の長さを取得
-            v_length = self.variable_length_map['v']
-
-            # 信号変化ペナルティを目的関数に加えるかのフラグを取得
-            signal_change_penalty_flg = self._getSignalChangePenaltyFlg()
-
-            # 目的関数を定義（delta_t2とdelta_t3の累積和とする）
-            for step in range(1, self.horizon + 1):
-                for idx in range(len(delta_t2_list)):
-                    f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
-
-                for idx in range(len(delta_t3_list)):
-                    f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
-                
-            # 信号変化ペナルティを目的関数に加える
-            if signal_change_penalty_flg:
+            if self.signal_change_penalty_flg:
                 for idx in range(len(phi_list)):
-                    f_matrix[phi_list[idx]] = self.signal_change_weight
+                    f_matrix[phi_list[idx]] = self.signal_change_penalty_weight
+        elif self.signal_change_penalty_type == 'local':
+            weight = self.signal_change_penalty_weight / 2
+            for signal_id in range(1, self.num_signals + 1):
+                phi_list = self.variable_list_map[f"phi_{signal_id}"]
+                if self.signal_change_penalty_flg:
+                    for idx in range(len(phi_list)):
+                        f_matrix[phi_list[idx]] = weight
+        else:
+            raise NotImplementedError(f"Not implemented signal_change_penalty_type: {self.signal_change_penalty_type}")
 
-        # 目的関数の係数をインスタンスとして保持
+        # set f to optimization_problem
         self.optimization_problem['f'] = f_matrix
         return
 
-    def _getSignalChangePenaltyFlg(self):
-        # 信号変化ペナルティを目的関数に加えるかのフラグを定義
+    def _updateSignalChangePenaltyFlg(self):
+        # update signal_change_penalty_flg
+        if self.signal_change_penalty_type == 'global':
+            threshold = self.signal_change_penalty_weight
+        elif self.signal_change_penalty_type == 'local':
+            threshold = self.signal_change_penalty_weight * 2 * self.num_roads
+        else:
+            raise NotImplementedError(f"Not implemented signal_change_penalty_type: {self.signal_change_penalty_type}")
+        
+        self.signal_change_penalty_flg = False
         for road_order_id in range(1, self.num_roads + 1):
-                vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+                vehicles_df_map = self.road_vehicle_data_map[road_order_id]
 
                 tmp_num_vehs = 0
-                for _, vehicle_data in vehicle_data_map.items():
-                    tmp_num_vehs += vehicle_data.shape[0]
+                for _, vehicles_df in vehicles_df_map.items():
+                    tmp_num_vehs += vehicles_df.shape[0]
                 
-                # 道路内の自動車台数に実際に適用するステップをかけたものが信号変化ペナルティの重みを超える場合はペナルティ項を使う
-                if tmp_num_vehs * self.utilize_steps > self.signal_change_weight:
-                    return True
-            
-        # すべての道路で条件を満たさなかった場合ペナルティ項は使わない
-        return False
+                # if there are enough vehicles on the road, set true
+                if tmp_num_vehs * self.utilize_steps > threshold:
+                    self.signal_change_penalty_flg = True
+                    return
+        return
 
     def _updateBounds(self):
         # 変数の下限と上限を初期化

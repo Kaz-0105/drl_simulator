@@ -1,9 +1,0 @@
-horizon: 5
-min_successive_steps: 4
-num_max_changes: 1
-objective_type: 2
-phases:
-  4-road: 8
-remained_steps: 2
-signal_change_weight: 10
-utilize_steps: 2

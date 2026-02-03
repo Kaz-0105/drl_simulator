@@ -8,9 +8,12 @@ objective_function:
   type: waiting_vehicles
   waiting_vehicles:
     queue_measurement:
-      type: vissim
+      original:
+        gap: 10
+        speed: 20
+      type: original
     range_type: common
 phases:
-  4-road: 4
+  4-road: 17
 remained_steps: 2
 utilize_steps: 2
