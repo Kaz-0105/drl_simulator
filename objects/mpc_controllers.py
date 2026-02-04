@@ -1447,8 +1447,8 @@ class MpcController(Object):
                                 else:
                                     for tmp_lane_str in combinations:
                                         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                            continue
+                                        # if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                        #     continue
 
                                         if last_veh_info['pos'] < target_pos:
                                             target_idx = last_veh_info['idx']
@@ -1791,8 +1791,8 @@ class MpcController(Object):
                                     for tmp_lane_str in combinations:
                                         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
 
-                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                            continue
+                                        # if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                        #     continue
 
                                         if last_veh_info['pos'] < target_pos:
                                             target_idx = last_veh_info['idx']

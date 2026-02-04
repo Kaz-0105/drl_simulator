@@ -1,8 +1,9 @@
-comparison:
-  mpc:
-    flg: true
-  scoot: 
-    flg: true
+figure:
+  performance_metric: average_queue # average_queue, average_delay, max_queue, max_delay, calc_time
+  wild_card_type: num_phases
+  plot_flg:
+    mpc: true
+    scoot: true
 
 mpc:
   horizon: 5                   # predictive horizon
