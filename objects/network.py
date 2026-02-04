@@ -158,7 +158,7 @@ class Network(Common):
                     
                     # update max_queue_df
                     if max_queue_df is None:
-                        max_queue_df = tmp_queue_df
+                        max_queue_df = copy.deepcopy(tmp_queue_df)
                     else:
                         max_queue_df['queue_length'] = np.maximum(
                             max_queue_df['queue_length'].to_numpy(),
@@ -167,7 +167,7 @@ class Network(Common):
                     
                     # update average_queue_df
                     if average_queue_df is None:
-                        average_queue_df = tmp_queue_df
+                        average_queue_df = copy.deepcopy(tmp_queue_df)
                     else:
                         average_queue_df['queue_length'] += tmp_queue_df['queue_length']
                 
@@ -209,7 +209,7 @@ class Network(Common):
 
                     # update max_delay_df
                     if max_delay_df is None:
-                        max_delay_df = tmp_max_delay_df
+                        max_delay_df = copy.deepcopy(tmp_max_delay_df)
                     else:
                         max_delay_df['delay'] = np.maximum(
                             max_delay_df['delay'].to_numpy(),
@@ -218,7 +218,7 @@ class Network(Common):
 
                     # update average_delay_df
                     if average_delay_df is None:
-                        average_delay_df = tmp_average_delay_df
+                        average_delay_df = copy.deepcopy(tmp_average_delay_df)
                     else:
                         average_delay_df['delay'] += tmp_average_delay_df['delay']
                 
