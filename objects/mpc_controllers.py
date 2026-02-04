@@ -52,6 +52,7 @@ class MpcControllers(Container):
         self.executor.wait()
     
 class MpcController(Object):
+    GAP = 15 # バイナリを正しく評価するためのマージン（単位：m）
     def __init__(self, mpc_controllers, intersection):
         super().__init__()
 
@@ -1438,7 +1439,7 @@ class MpcController(Object):
                                 #     target_pos = last_vehs_info['pos']
                                 #     target_direction_id = direction_id
 
-                                if vehicle['position'] > p_s - D_b:
+                                if vehicle['position'] > p_s - D_b - self.GAP:
                                     last_veh_info = last_vehs_map[lane_str][direction_id]
                                     if last_veh_info['pos'] < target_pos:
                                         target_idx = last_veh_info['idx']
@@ -1782,7 +1783,7 @@ class MpcController(Object):
                                     target_idx = last_vehs_info['idx']
                                     target_pos = last_vehs_info['pos']
                                 
-                                if vehicle['position'] > p_s - D_b:
+                                if vehicle['position'] > p_s - D_b - self.GAP:
                                     last_veh_info = last_vehs_map[lane_str][direction_id]
                                     if last_veh_info['pos'] < target_pos:
                                         target_idx = last_veh_info['idx']
