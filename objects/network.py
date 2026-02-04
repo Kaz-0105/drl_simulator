@@ -146,41 +146,30 @@ class Network(Common):
                 for road_order_id in range(1, roads.count() + 1):
                     road = roads[road_order_id]
                     
-                    tmp_max_queue_df = None
-                    tmp_average_queue_df = None
+                    tmp_queue_df = None
                     for queue_counter in road.queue_counters.getAll():
-                        tmp_queue_df = queue_counter.get('queue_length_record')
-
-                        if tmp_max_queue_df is None:
-                            tmp_max_queue_df = copy.deepcopy(tmp_queue_df)
+                        if tmp_queue_df is None:
+                            tmp_queue_df = copy.deepcopy(queue_counter.get('queue_length_record'))
                         else:
-                            tmp_max_queue_df['queue_length'] = np.maximum(
-                                tmp_max_queue_df['queue_length'].to_numpy(),
+                            tmp_queue_df['queue_length'] = np.maximum(
                                 tmp_queue_df['queue_length'].to_numpy(),
+                                queue_counter.get('queue_length_record')['queue_length'].to_numpy(),
                             )
-
-                        if tmp_average_queue_df is None:
-                            tmp_average_queue_df = copy.deepcopy(tmp_queue_df)
-                        else:
-                            tmp_average_queue_df['queue_length'] += tmp_queue_df['queue_length']
-                    
-                    # sum to average
-                    tmp_average_queue_df['queue_length'] /= road.queue_counters.count()
                     
                     # update max_queue_df
                     if max_queue_df is None:
-                        max_queue_df = tmp_max_queue_df
+                        max_queue_df = tmp_queue_df
                     else:
                         max_queue_df['queue_length'] = np.maximum(
                             max_queue_df['queue_length'].to_numpy(),
-                            tmp_max_queue_df['queue_length'].to_numpy(),
+                            tmp_queue_df['queue_length'].to_numpy(),
                         )
                     
                     # update average_queue_df
                     if average_queue_df is None:
-                        average_queue_df = tmp_average_queue_df
+                        average_queue_df = tmp_queue_df
                     else:
-                        average_queue_df['queue_length'] += tmp_average_queue_df['queue_length']
+                        average_queue_df['queue_length'] += tmp_queue_df['queue_length']
                 
                 # sum to average
                 average_queue_df['queue_length'] /= roads.count()
@@ -200,10 +189,10 @@ class Network(Common):
                     tmp_max_delay_df = None
                     tmp_average_delay_df = None
                     for delay_measurement in road.delay_measurements.getAll():
-                        tmp_delay_df = copy.deepcopy(delay_measurement.get('delay_record'))
+                        tmp_delay_df = delay_measurement.get('delay_record')
 
                         if tmp_max_delay_df is None:
-                            tmp_max_delay_df = tmp_delay_df
+                            tmp_max_delay_df = copy.deepcopy(tmp_delay_df)
                         else:
                             tmp_max_delay_df['delay'] = np.maximum(
                                 tmp_max_delay_df['delay'].to_numpy(),
@@ -211,7 +200,7 @@ class Network(Common):
                             )
                         
                         if tmp_average_delay_df is None:
-                            tmp_average_delay_df = tmp_delay_df
+                            tmp_average_delay_df = copy.deepcopy(tmp_delay_df)
                         else:
                             tmp_average_delay_df['delay'] += tmp_delay_df['delay']
                     
