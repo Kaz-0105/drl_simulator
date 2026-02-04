@@ -217,12 +217,31 @@ for keys, bar_graph_df in bar_graph_df_map.items():
     # set figure and axis
     fig, ax = plt.subplots()
 
+    # set figure_title    
+    figure_title = f"Performance Metric Comparison: {performance_metric.replace('_', ' ').title()}"
+
+    # set x_axis_label
+    if keys[0] == '7-4-1':
+        x_axis_label = 'Turning Rate (Left, Straight, Right)'
+    else:
+        x_axis_label = 'Intersection Name'
+
+    # set y_axis_label
+    y_axis_label = performance_metric.replace('_', ' ').title()
+    if performance_metric in ['average_queue', 'max_queue']:
+        y_axis_label = f"{y_axis_label} [m]"
+    elif performance_metric in ['average_delay', 'max_delay', 'calc_time']:
+        y_axis_label = f"{y_axis_label} [s]" 
+    else:
+        raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+    
+    # set legend_title
     if config_yaml['figure']['wild_card_type'] == 'num_phases':
         legend_title = 'Control Method'
-        y_axis_label = performance_metric.replace('_', ' ').title()
     else:
         raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
     
+    # set plot_df
     plot_df = bar_graph_df.melt(
         id_vars=['intersection_name'],
         value_vars=[col for col in bar_graph_df.columns if col not in ['intersection_id', 'intersection_name']],
@@ -230,6 +249,7 @@ for keys, bar_graph_df in bar_graph_df_map.items():
         value_name=y_axis_label,
     )
 
+    # set method_order_list
     if config_yaml['figure']['wild_card_type'] == 'num_phases':
         method_order_list = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
         for method in copy.deepcopy(method_order_list):
@@ -238,17 +258,19 @@ for keys, bar_graph_df in bar_graph_df_map.items():
             method_order_list.remove(method)
     else:
         raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
+    
+    # plot bar graph
     ax = sns.barplot(
         data=plot_df,
         x='intersection_name',
-        y=performance_metric.replace('_', ' ').title(),
+        y=y_axis_label,
         hue=legend_title,
         hue_order=method_order_list,
     )
 
-    ax.set_title('Performance Metric Bars')
+    ax.set_title(figure_title)
+    ax.set_xlabel(x_axis_label)
     ax.set_ylabel(y_axis_label)
-    ax.set_xlabel('Intersection Name')
     ax.legend(title=legend_title, loc='best')
     
     fig.tight_layout()

@@ -149,10 +149,10 @@ class Network(Common):
                     tmp_max_queue_df = None
                     tmp_average_queue_df = None
                     for queue_counter in road.queue_counters.getAll():
-                        tmp_queue_df = copy.deepcopy(queue_counter.get('queue_length_record'))
+                        tmp_queue_df = queue_counter.get('queue_length_record')
 
                         if tmp_max_queue_df is None:
-                            tmp_max_queue_df = tmp_queue_df
+                            tmp_max_queue_df = copy.deepcopy(tmp_queue_df)
                         else:
                             tmp_max_queue_df['queue_length'] = np.maximum(
                                 tmp_max_queue_df['queue_length'].to_numpy(),
@@ -160,7 +160,7 @@ class Network(Common):
                             )
 
                         if tmp_average_queue_df is None:
-                            tmp_average_queue_df = tmp_queue_df
+                            tmp_average_queue_df = copy.deepcopy(tmp_queue_df)
                         else:
                             tmp_average_queue_df['queue_length'] += tmp_queue_df['queue_length']
                     

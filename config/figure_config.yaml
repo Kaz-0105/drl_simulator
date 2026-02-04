@@ -9,10 +9,10 @@ font:
 axes:
   title:
     size: 24
-    weight: bold # normal, bold
+    weight: normal # normal, bold
   label:
     size: 20
-    weight: bold # normal, bold
+    weight: normal # normal, bold
   linewidth: 3
   grid:
     flg: true
@@ -22,11 +22,11 @@ axes:
     top: true
     right: true
 legend: 
-  fontsize: 16
+  fontsize: 20
 ticks: 
   label:
-    size: 16
-  direction: out # in, out, inout
+    size: 20
+  direction: in # in, out, inout
   major:
     width: 3
     size: 8
