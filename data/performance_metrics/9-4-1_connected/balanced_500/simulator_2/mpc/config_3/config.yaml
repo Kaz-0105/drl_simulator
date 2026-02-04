@@ -1,0 +1,16 @@
+horizon: 5
+min_successive_steps: 4
+num_max_changes: 1
+objective_function:
+  signal_change:
+    type: global
+    weight: 10
+  type: waiting_vehicles
+  waiting_vehicles:
+    queue_measurement:
+      type: vissim
+    range_type: common
+phases:
+  4-road: 4
+remained_steps: 2
+utilize_steps: 2

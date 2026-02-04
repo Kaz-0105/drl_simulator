@@ -157,21 +157,16 @@ class MpcController(Object):
                         params['p_s'][lane_str] = length_info[link_id]['length']
                     else:
                         params['p_s'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
-
-                # set D_b for each lane (p_s - branching_point, if exists)
+                
+                # set D_b
+                params['D_b'] = 0
                 if len(lane_list) != 1: 
-                    params['D_b'] = {}
                     for lane_str in lane_list:
                         link = road.links[int(lane_str.split('-')[0])]
                         if link.get('type') == 'main':
                             continue
-                        from_connector = link.from_links.getAll()[0]
-                        branching_point = length_info[from_connector.get('id')]['start_pos']
-                    
-                    for lane_str in lane_list:
-                        link_id = int(lane_str.split('-')[0])
-                        params['D_b'][lane_str] = params['p_s'][lane_str] - branching_point
-                    
+                        params['D_b'] = max(params['D_b'], link.get('length'))
+
                 # set other parameters
                 params['v_max'] = road.get('max_speed') * 1000 / 3600
                 params['D_s'] = road.get('max_speed')
@@ -1110,6 +1105,7 @@ class MpcController(Object):
                 d_s = params['d_s']
                 D_f = params['D_f']
                 D_t = params['D_t']
+                D_b = params['D_b']
                 h3_min = - p_max + p_min + D_f
                 h3_max = - p_min + p_max + D_f
                 h4_min = - p_max + p_min + D_s
@@ -1278,7 +1274,6 @@ class MpcController(Object):
                         
                         # 必要なパラメータを取得
                         p_s = params['p_s'][lane_str]
-                        D_b = params['D_b'][lane_str]
                         h1_min = - p_max + p_s - D_s
                         h1_max = - p_min + p_s - D_s
                         h2_min = p_min - p_s + d_s
@@ -1437,28 +1432,28 @@ class MpcController(Object):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
 
-                                last_vehs_info = last_vehs_map[lane_str][direction_id]
-                                if last_vehs_info['pos'] < target_pos:
-                                    target_idx = last_vehs_info['idx']
-                                    target_pos = last_vehs_info['pos']
-                                    target_direction_id = direction_id
+                                # last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                # if last_vehs_info['pos'] < target_pos:
+                                #     target_idx = last_vehs_info['idx']
+                                #     target_pos = last_vehs_info['pos']
+                                #     target_direction_id = direction_id
 
-                                # if vehicle['position'] > p_s - D_b:
-                                #     last_veh_info = last_vehs_map[lane_str][direction_id]
-                                #     if last_veh_info['pos'] < target_pos:
-                                #         target_idx = last_veh_info['idx']
-                                #         target_pos = last_veh_info['pos']
-                                #         target_direction_id = direction_id
-                                # else:
-                                #     for tmp_lane_str in combinations:
-                                #         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                #         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                #             continue
+                                if vehicle['position'] > p_s - D_b:
+                                    last_veh_info = last_vehs_map[lane_str][direction_id]
+                                    if last_veh_info['pos'] < target_pos:
+                                        target_idx = last_veh_info['idx']
+                                        target_pos = last_veh_info['pos']
+                                        target_direction_id = direction_id
+                                else:
+                                    for tmp_lane_str in combinations:
+                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                            continue
 
-                                #         if last_veh_info['pos'] < target_pos:
-                                #             target_idx = last_veh_info['idx']
-                                #             target_pos = last_veh_info['pos']
-                                #             target_direction_id = direction_id
+                                        if last_veh_info['pos'] < target_pos:
+                                            target_idx = last_veh_info['idx']
+                                            target_pos = last_veh_info['pos']
+                                            target_direction_id = direction_id
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
@@ -1546,6 +1541,7 @@ class MpcController(Object):
                 d_s = params['d_s']
                 D_f = params['D_f']  
                 D_t = params['D_t']
+                D_b = params['D_b']
                 h3_min = - p_max + p_min + D_f
                 h4_min = - p_max + p_min + D_f    
 
@@ -1665,7 +1661,6 @@ class MpcController(Object):
                         
                         # 必要なパラメータの取得
                         p_s = params['p_s'][lane_str]
-                        D_b = params['D_b'][lane_str]
                         h1_min = - p_max + p_s - D_s
                         h2_min = p_min - p_s + d_s
                         h5_min = -p_max + p_s - D_b
@@ -1787,21 +1782,21 @@ class MpcController(Object):
                                     target_idx = last_vehs_info['idx']
                                     target_pos = last_vehs_info['pos']
                                 
-                                # if vehicle['position'] > p_s - D_b:
-                                #     last_veh_info = last_vehs_map[lane_str][direction_id]
-                                #     if last_veh_info['pos'] < target_pos:
-                                #         target_idx = last_veh_info['idx']
-                                #         target_pos = last_veh_info['pos']
-                                # else:
-                                #     for tmp_lane_str in combinations:
-                                #         last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                if vehicle['position'] > p_s - D_b:
+                                    last_veh_info = last_vehs_map[lane_str][direction_id]
+                                    if last_veh_info['pos'] < target_pos:
+                                        target_idx = last_veh_info['idx']
+                                        target_pos = last_veh_info['pos']
+                                else:
+                                    for tmp_lane_str in combinations:
+                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
 
-                                #         if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                #             continue
+                                        if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                            continue
 
-                                #         if last_veh_info['pos'] < target_pos:
-                                #             target_idx = last_veh_info['idx']
-                                #             target_pos = last_veh_info['pos']
+                                        if last_veh_info['pos'] < target_pos:
+                                            target_idx = last_veh_info['idx']
+                                            target_pos = last_veh_info['pos']
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
