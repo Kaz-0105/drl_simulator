@@ -21,6 +21,8 @@ mpc:
       range_type: separate         # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
         type: vissim             # only vissim, vissim: use vissim's built-in function
+      leader_detection:
+        type: mix                 # same_lane: detect leader vehicle from the lane which the car go out, all_routes: detect leader vehicle from all routes if the car is before branching point, mix: combination of same_lane and all_routes 
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
       weight: 10                  # weights for the term of signal change penalty
