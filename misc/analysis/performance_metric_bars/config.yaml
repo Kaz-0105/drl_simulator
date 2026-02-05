@@ -22,7 +22,7 @@ mpc:
   objective_function:
     type: waiting_vehicles       # only waiting_vehicles
     waiting_vehicles:
-      range_type: common         # common: use common range for all roads, separate: use separate range for each route 
+      range_type: separate         # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
         type: vissim             # only vissim, vissim: use vissim's built-in function
     signal_change:

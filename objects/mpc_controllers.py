@@ -52,7 +52,6 @@ class MpcControllers(Container):
         self.executor.wait()
     
 class MpcController(Object):
-    GAP = 15 # バイナリを正しく評価するためのマージン（単位：m）
     def __init__(self, mpc_controllers, intersection):
         super().__init__()
 
@@ -112,6 +111,7 @@ class MpcController(Object):
         if self.objective_function_type == 'waiting_vehicles':
             self.range_type = mpc_info['objective_function']['waiting_vehicles']['range_type']
             self.queue_measurement_type = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['type']
+            self.leader_detection_type = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['type']
         else:
             raise NotImplementedError(f"Not supported objective_function_type: {self.objective_function_type}")
         
@@ -1432,29 +1432,32 @@ class MpcController(Object):
                             for direction_id in range(1, self.num_roads):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
-
-                                # last_vehs_info = last_vehs_map[lane_str][direction_id]
-                                # if last_vehs_info['pos'] < target_pos:
-                                #     target_idx = last_vehs_info['idx']
-                                #     target_pos = last_vehs_info['pos']
-                                #     target_direction_id = direction_id
-
-                                if vehicle['position'] > p_s - D_b - self.GAP:
-                                    last_veh_info = last_vehs_map[lane_str][direction_id]
-                                    if last_veh_info['pos'] < target_pos:
-                                        target_idx = last_veh_info['idx']
-                                        target_pos = last_veh_info['pos']
+                                
+                                if self.leader_detection_type == 'same_lane':
+                                    last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                    if last_vehs_info['pos'] < target_pos:
+                                        target_idx = last_vehs_info['idx']
+                                        target_pos = last_vehs_info['pos']
                                         target_direction_id = direction_id
-                                else:
-                                    for tmp_lane_str in combinations:
-                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                        # if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                        #     continue
-
+                                elif self.leader_detection_type == 'all_lane':
+                                    if vehicle['position'] > p_s - D_b:
+                                        last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
                                             target_idx = last_veh_info['idx']
                                             target_pos = last_veh_info['pos']
                                             target_direction_id = direction_id
+                                    else:
+                                        for tmp_lane_str in combinations:
+                                            last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                            if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                                continue
+
+                                            if last_veh_info['pos'] < target_pos:
+                                                target_idx = last_veh_info['idx']
+                                                target_pos = last_veh_info['pos']
+                                                target_direction_id = direction_id
+                                elif self.leader_detection_type == 'mix':
+                                    print('test')
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
