@@ -1,7 +1,7 @@
 simulator :
   control_method : mpc              # mpc, drl, scoot
-  layout_name : 9-4-1_connected     # layout folder name
-  inflow_name : balanced_600        # inflow file name
+  layout_name : 1-4-1     # layout folder name
+  inflow_name : balanced_700        # inflow file name
   num_simulations: 1                # number of simulations to run
   simulation_time: 500              # simulation time for each simulation (seconds)
   seed:
@@ -89,7 +89,7 @@ mpc:
       queue_measurement:
         type: vissim              # only vissim, vissim: use vissim's built-in function
       leader_detection:
-        type: all_routes          # same_lane: detect leader vehicle from the lane which the car go out, all_routes: detect leader vehicle from all routes if the car is before branching point, mix: combination of same_lane and all_routes 
+        type: mix          # same_lane: detect leader vehicle from the lane which the car go out, all_routes: detect leader vehicle from all routes if the car is before branching point, mix: combination of same_lane and all_routes 
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
       weight: 10                  # weights for the term of signal change penalty

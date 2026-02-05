@@ -9,6 +9,7 @@ from collections import deque
 from scipy.optimize import milp, LinearConstraint, Bounds
 import torch
 import time
+import re
 
 class MpcControllers(Container):
     def __init__(self, upper_object):
@@ -145,8 +146,8 @@ class MpcController(Object):
             lane_combinations_map = self.road_combinations_map[road_order_id]
             length_info = self.road_length_info_map[road_order_id]
 
-            # set lane_combination_params_map
-            lane_combination_params_map = {}
+            # set combination_params_map
+            combination_params_map = {}
             for lane_list_id, lane_list in lane_combinations_map.items():
                 # set p_s for each lane
                 params = {}
@@ -159,14 +160,20 @@ class MpcController(Object):
                     else:
                         params['p_s'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
                 
-                # set D_b
-                params['D_b'] = 0
-                if len(lane_list) != 1: 
+                # set D_b 
+                if len(lane_list) != 1:
                     for lane_str in lane_list:
-                        link = road.links[int(lane_str.split('-')[0])]
+                        link = road.links[int(re.match(rf"(\d+)-(\d+)", lane_str).group(1))]
                         if link.get('type') == 'main':
                             continue
-                        params['D_b'] = max(params['D_b'], link.get('length'))
+                        
+                        connector = link.from_links.getAll()[0]
+                        branching_point = length_info[connector.get('id')]['start_pos']
+                        break
+                    
+                    params['D_b'] = {}
+                    for lane_str in lane_list:
+                        params['D_b'][lane_str] = params['p_s'][lane_str] - branching_point
 
                 # set other parameters
                 params['v_max'] = road.get('max_speed') * 1000 / 3600
@@ -179,10 +186,10 @@ class MpcController(Object):
                 params['D_t'] = params['D_s']
 
                 # push to map        
-                lane_combination_params_map[lane_list_id] = params
+                combination_params_map[lane_list_id] = params
             
             # push to map
-            self.road_combination_params_map[road_order_id] = lane_combination_params_map        
+            self.road_combination_params_map[road_order_id] = combination_params_map        
         return
     
     def _makeBcRoadLanesMap(self):
@@ -277,59 +284,55 @@ class MpcController(Object):
         return
 
     def _initRoadCombinationMap(self):
-        road_combinations_map = {}
-
+        self.road_combinations_map = {}
         for road_order_id in range(1, self.num_roads + 1):
             road = self.roads[road_order_id]
             combinations_map = {}
-
-            left_right_flgs = [False] * 2
+            
+            # combinations with branch links
+            branch_exist_flg_map = {'left': False, 'right': False}
             for link in road.links.getAll():
-                # リンクタイプを取得
-                link_type = link.get('type')
-
-                # リンクタイプが右左折リンクでない場合はスキップ
-                if link_type not in ['right', 'left']:
+                # if link is not branch, skip
+                if link.get('type') not in ['right', 'left']:
                     continue
 
-                # 車線の組み合わせを初期化
+                # set combinations
                 combinations = []
-
-                # 右左折リンクの車線情報を追加
-                link_id = link.get('id')
-                for lane in link.lanes.getAll():
-                    lane_id = lane.get('id')
-                    combinations.append(str(link_id) + '-' + str(lane_id))
                 
-                # メインリンクの車線情報を追加
+                # push branch link information
+                if link.lanes.count() > 1:
+                    raise NotImplementedError(f"Not supported multiple lanes in branch link.")
+                combinations.append(f"{link.get('id')}-{link.lanes.getAll()[0].get('id')}")
+                
+                # push main link information
                 main_link = road.get('main_link')
-                link_id = main_link.get('id')
+                if link.get('type') == 'right':
+                    combinations.append(f"{main_link.get('id')}-{main_link.lanes[1].get('id')}")
+                    branch_exist_flg_map['right'] = True
+                elif link.get('type') == 'left':
+                    combinations.append(f"{main_link.get('id')}-{main_link.lanes[main_link.lanes.count()].get('id')}")
+                    branch_exist_flg_map['left'] = True
+                else:
+                    raise ValueError(f"Invalid link type: {link.get('type')}")
 
-                if link_type == 'right':
-                    lane = main_link.lanes[1]
-                    left_right_flgs[0] = True
-                elif link_type == 'left':
-                    lane = main_link.lanes[main_link.lanes.count()]
-                    left_right_flgs1 = True
-                lane_id = lane.get('id')
-
-                combinations.append(str(link_id) + '-' + str(lane_id))
+                # push to combinations_map
                 combinations_map[len(combinations_map) + 1] = combinations
             
-            # メインリンクについて
+            # main link only combinations
             main_link = road.get('main_link')
-            main_link_id = main_link.get('id')
-
-            from_lane_id = 2 if left_right_flgs[0] else 1
-            to_lane_id = (main_link.lanes.count() - 1) if left_right_flgs[1] else main_link.lanes.count()
-
-            for lane_id in range(from_lane_id, to_lane_id + 1):
-                combinations = [str(main_link_id) + '-' + str(lane_id)]
-                combinations_map[len(combinations_map) + 1] = combinations
+            for lane_id in range(1, main_link.lanes.count() + 1):
+                # skip if lane is already included when branch link exists
+                if lane_id == 1 and branch_exist_flg_map['right']:
+                    continue
+                if lane_id == main_link.lanes.count() and branch_exist_flg_map['left']:
+                    continue
+                
+                # push to combinations_map
+                combinations_map[len(combinations_map) + 1] = [f"{main_link.get('id')}-{lane_id}"]
             
-            road_combinations_map[road_order_id] = combinations_map
-        
-        self.road_combinations_map = road_combinations_map
+            # push to road_combinations_map
+            self.road_combinations_map[road_order_id] = combinations_map
+        return
 
     def optimize(self):
         # 残りのステップ数がfixed_stepsと等しくなるまではスキップ
@@ -339,6 +342,7 @@ class MpcController(Object):
         # 自動車のデータを更新
         self._updateVehicleData()
         self._updateRoadMaxQueueMap()
+        self._updateCombinationLeaderTypeMap()
 
         # D_tを更新
         self._updateDt()
@@ -501,6 +505,41 @@ class MpcController(Object):
             raise NotImplementedError(f"Not supported queue_measurement_type: {self.queue_measurement_type}")
         return
 
+    def _updateCombinationLeaderTypeMap(self):
+        # only consider when objective_function is waiting_vehicles and leader_detection_type is mix
+        if self.objective_function_type != 'waiting_vehicles':
+            return
+        if self.leader_detection_type != 'mix':
+            return
+        
+        # initialize road_combination_leader_type_map
+        self.road_combination_leader_type_map = {}
+        for road_id in range(1, self.num_roads + 1):
+            self.road_combination_leader_type_map[road_id] = {}
+            combinations_map = self.road_combinations_map[road_id]
+            for combination_id, lane_str_list in combinations_map.keys():
+                if len(lane_str_list) != 1:
+                    continue
+                self.road_combination_leader_type_map[road_id][combination_id] = {lane_str: 'all_routes' for lane_str in lane_str_list}
+        
+        # check we need to update leader_type to same_lane for each lane_str
+        for road_id in range(1, self.num_roads + 1):
+            # skip if no combination with branch
+            if len(self.road_combination_leader_type_map[road_id]) == 0:
+                continue
+            
+            # if any lane has queue length less than D_b, set leader_type to same_lane
+            for combination_id, leader_type_map in self.road_combination_leader_type_map[road_id].items():
+                for lane_str in leader_type_map.keys():
+                    match_obj = re.match(rf"(\d+)-(\d+)", lane_str)
+                    current_queue_length = self.network.links[int(match_obj.group(1))].get('queue_length')
+                    D_b = self.road_combination_params_map[road_id][combination_id]['D_b'][lane_str]
+
+                    if current_queue_length < D_b:
+                        leader_type_map[lane_str] = 'same_lane'
+                        break
+        return
+    
     def _updateDt(self):  
         if self.range_type == 'common':
             max_queue_length = max(self.road_max_queue_map.values())
@@ -1106,7 +1145,6 @@ class MpcController(Object):
                 d_s = params['d_s']
                 D_f = params['D_f']
                 D_t = params['D_t']
-                D_b = params['D_b']
                 h3_min = - p_max + p_min + D_f
                 h3_max = - p_min + p_max + D_f
                 h4_min = - p_max + p_min + D_s
@@ -1275,6 +1313,7 @@ class MpcController(Object):
                         
                         # 必要なパラメータを取得
                         p_s = params['p_s'][lane_str]
+                        D_b = params['D_b'][lane_str]
                         h1_min = - p_max + p_s - D_s
                         h1_max = - p_min + p_s - D_s
                         h2_min = p_min - p_s + d_s
@@ -1426,6 +1465,11 @@ class MpcController(Object):
                             col_delta_t2 = 9
 
                             # delta_t3(10)の定義
+                            if self.leader_detection_type == 'mix':
+                                leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id][lane_str]
+                            else:
+                                leader_detection_type = self.leader_detection_type
+
                             target_idx = -1
                             target_pos = float('inf')
                             target_direction_id = None
@@ -1433,13 +1477,13 @@ class MpcController(Object):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
                                 
-                                if self.leader_detection_type == 'same_lane':
+                                if leader_detection_type == 'same_lane':
                                     last_vehs_info = last_vehs_map[lane_str][direction_id]
                                     if last_vehs_info['pos'] < target_pos:
                                         target_idx = last_vehs_info['idx']
                                         target_pos = last_vehs_info['pos']
                                         target_direction_id = direction_id
-                                elif self.leader_detection_type == 'all_lane':
+                                elif leader_detection_type == 'all_lane':
                                     if vehicle['position'] > p_s - D_b:
                                         last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
@@ -1456,8 +1500,8 @@ class MpcController(Object):
                                                 target_idx = last_veh_info['idx']
                                                 target_pos = last_veh_info['pos']
                                                 target_direction_id = direction_id
-                                elif self.leader_detection_type == 'mix':
-                                    print('test')
+                                else:
+                                    raise NotImplementedError(f"Not supported leader_detection_type: {leader_detection_type}")
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
@@ -1545,7 +1589,6 @@ class MpcController(Object):
                 d_s = params['d_s']
                 D_f = params['D_f']  
                 D_t = params['D_t']
-                D_b = params['D_b']
                 h3_min = - p_max + p_min + D_f
                 h4_min = - p_max + p_min + D_f    
 
@@ -1665,6 +1708,7 @@ class MpcController(Object):
                         
                         # 必要なパラメータの取得
                         p_s = params['p_s'][lane_str]
+                        D_b = params['D_b'][lane_str]
                         h1_min = - p_max + p_s - D_s
                         h2_min = p_min - p_s + d_s
                         h5_min = -p_max + p_s - D_b
@@ -1775,32 +1819,41 @@ class MpcController(Object):
                             e[[18, 19], 0] = [3, -1]
 
                             # delta_t3の定義
+                            if self.leader_detection_type == 'mix':
+                                leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id][lane_str]
+                            else:
+                                leader_detection_type = self.leader_detection_type
+
                             target_idx = -1
                             target_pos = float('inf')
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
                                     continue
                                 
-                                last_vehs_info = last_vehs_map[lane_str][direction_id]
-                                if last_vehs_info['pos'] < target_pos:
-                                    target_idx = last_vehs_info['idx']
-                                    target_pos = last_vehs_info['pos']
+                                if leader_detection_type == 'same_lane':
+                                    last_vehs_info = last_vehs_map[lane_str][direction_id]
+                                    if last_vehs_info['pos'] < target_pos:
+                                        target_idx = last_vehs_info['idx']
+                                        target_pos = last_vehs_info['pos']
                                 
-                                if vehicle['position'] > p_s - D_b - self.GAP:
-                                    last_veh_info = last_vehs_map[lane_str][direction_id]
-                                    if last_veh_info['pos'] < target_pos:
-                                        target_idx = last_veh_info['idx']
-                                        target_pos = last_veh_info['pos']
-                                else:
-                                    for tmp_lane_str in combinations:
-                                        last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-
-                                        # if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
-                                        #     continue
-
+                                elif leader_detection_type == 'all_lane':
+                                    if vehicle['position'] > p_s - D_b:
+                                        last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
                                             target_idx = last_veh_info['idx']
                                             target_pos = last_veh_info['pos']
+                                    else:
+                                        for tmp_lane_str in combinations:
+                                            last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+
+                                            if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                                continue
+
+                                            if last_veh_info['pos'] < target_pos:
+                                                target_idx = last_veh_info['idx']
+                                                target_pos = last_veh_info['pos']
+                                else:
+                                    raise NotImplementedError(f"Not supported leader_detection_type: {leader_detection_type}")
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]

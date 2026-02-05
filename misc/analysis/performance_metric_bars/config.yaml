@@ -11,10 +11,6 @@ mpc:
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
   num_max_changes: 1           # maximum number of phase changes within a single optimization 
-  bc_buffer: 
-    flg: false                  # flg of saving data for behavioral cloning
-    size: 1000                  # size of dataset for each buffer file
-    network_id: 1               # network architecture id for behavioral cloning
   phases:
     3-road: 4                   # only 4
     4-road: null                  # 4, 8, or 17
