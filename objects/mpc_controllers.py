@@ -517,10 +517,10 @@ class MpcController(Object):
         for road_id in range(1, self.num_roads + 1):
             self.road_combination_leader_type_map[road_id] = {}
             combinations_map = self.road_combinations_map[road_id]
-            for combination_id, lane_str_list in combinations_map.keys():
-                if len(lane_str_list) != 1:
+            for combination_id, lane_str_list in combinations_map.items():
+                if len(lane_str_list) == 1:
                     continue
-                self.road_combination_leader_type_map[road_id][combination_id] = {lane_str: 'all_routes' for lane_str in lane_str_list}
+                self.road_combination_leader_type_map[road_id][combination_id] = 'all_routes'
         
         # check we need to update leader_type to same_lane for each lane_str
         for road_id in range(1, self.num_roads + 1):
@@ -528,16 +528,17 @@ class MpcController(Object):
             if len(self.road_combination_leader_type_map[road_id]) == 0:
                 continue
             
-            # if any lane has queue length less than D_b, set leader_type to same_lane
-            for combination_id, leader_type_map in self.road_combination_leader_type_map[road_id].items():
-                for lane_str in leader_type_map.keys():
+            # if any lane has queue length less than D_b, update leader_type to same_lane
+            for combination_id in self.road_combination_leader_type_map[road_id].keys():
+                for lane_str in self.road_combinations_map[road_id][combination_id]:
                     match_obj = re.match(rf"(\d+)-(\d+)", lane_str)
                     current_queue_length = self.network.links[int(match_obj.group(1))].get('queue_length')
                     D_b = self.road_combination_params_map[road_id][combination_id]['D_b'][lane_str]
 
                     if current_queue_length < D_b:
-                        leader_type_map[lane_str] = 'same_lane'
+                        self.road_combination_leader_type_map[road_id][combination_id] = 'same_lane'
                         break
+                    
         return
     
     def _updateDt(self):  
@@ -1290,6 +1291,12 @@ class MpcController(Object):
                             D3_matrix[target_rows, target_col] = [-1, 1]                    
                         
                 else:
+                    # set leader_detection_type
+                    if self.leader_detection_type == 'mix':
+                        leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id]
+                    else:
+                        leader_detection_type = self.leader_detection_type
+
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
                     for lane_str in combinations:
@@ -1465,11 +1472,6 @@ class MpcController(Object):
                             col_delta_t2 = 9
 
                             # delta_t3(10)の定義
-                            if self.leader_detection_type == 'mix':
-                                leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id][lane_str]
-                            else:
-                                leader_detection_type = self.leader_detection_type
-
                             target_idx = -1
                             target_pos = float('inf')
                             target_direction_id = None
@@ -1687,6 +1689,10 @@ class MpcController(Object):
                         E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
 
                 else:
+                    if self.leader_detection_type == 'mix':
+                        leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id]
+                    else:
+                        leader_detection_type = self.leader_detection_type
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
                     for lane_str in combinations:
@@ -1819,11 +1825,6 @@ class MpcController(Object):
                             e[[18, 19], 0] = [3, -1]
 
                             # delta_t3の定義
-                            if self.leader_detection_type == 'mix':
-                                leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id][lane_str]
-                            else:
-                                leader_detection_type = self.leader_detection_type
-
                             target_idx = -1
                             target_pos = float('inf')
                             for direction_id in range(1, self.num_roads):
