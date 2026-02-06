@@ -10,26 +10,25 @@ from scipy.optimize import milp, LinearConstraint, Bounds
 import torch
 import time
 import re
+import copy
+import random
 
 class MpcControllers(Container):
     def __init__(self, upper_object):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
-            # 上位の紐づくオブジェクトを取得
             self.network = upper_object
-
-            # 要素オブジェクトを初期化
             self._makeElements()
-        
         elif upper_object.__class__.__name__ == 'BcBuffer':
-            # 上位の紐づくオブジェクトを取得
             self.bc_buffer = upper_object
+        else:
+            raise NotImplementedError(f"Not supported upper_object class: {upper_object.__class__.__name__}")
+    
+        return
     
     def _makeElements(self):
         for intersection_order_id in self.network.intersections.getKeys(container_flg=True, sorted_flg=True):
@@ -45,12 +44,15 @@ class MpcControllers(Container):
 
         for mpc_controller in self.getAll():
             mpc_controller.showOptimizationResult()
+        
+        return
     
     def updateBcData(self):
         for mpc_controller in self.getAll():
             self.executor.submit(mpc_controller.updateBcData)
         
         self.executor.wait()
+        return
     
 class MpcController(Object):
     def __init__(self, mpc_controllers, intersection):
@@ -115,6 +117,9 @@ class MpcController(Object):
             self.leader_detection_type = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['type']
         else:
             raise NotImplementedError(f"Not supported objective_function_type: {self.objective_function_type}")
+        
+        if self.has('queue_measurement_type') and self.queue_measurement_type == 'ema':
+            self.ema_alpha = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['ema']['alpha']
         
         self.signal_change_penalty_type = mpc_info['objective_function']['signal_change']['type']
         self.signal_change_penalty_weight = mpc_info['objective_function']['signal_change']['weight']
@@ -374,118 +379,100 @@ class MpcController(Object):
     
         self.should_calculate = False
         return False
-    
-    def _transformPositionData(self, road_order_id, vehicle_data):
-        # 自動車情報のレコードを走査
-        for idx, vehicle in vehicle_data.iterrows():
-            # 長さ情報から流入時点での位置を取得し，自動車情報に反映
-            link_id = vehicle['link_id']
-            length_info = self.road_length_info_map[road_order_id][link_id]
-            vehicle_data.at[idx, 'position'] = vehicle['position'] + length_info['start_pos']
-
-        # 位置の降順でソート
-        vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-        vehicle_data.reset_index(drop=True, inplace=True)
-
-        return vehicle_data
 
     def _updateVehicleData(self):
-        # 道路ごとの自動車情報を格納する変数の初期化
-        road_vehicle_data_map = {}
-        
-        # 道路を走査
+        # initialize road_vehicle_data_map
+        self.road_vehicle_data_map = {}
         for road_order_id in range(1, self.num_roads + 1):
-            # 道路オブジェクトを取得
+            # get road object
             road = self.roads[road_order_id]
 
-            # 道路に紐づくリンクのIDのリストを取得
-            link_ids = road.links.getKeys()
+            # get vehicles_df
+            vehicles_df = road.get('vehicle_data').copy()
 
-            # 道路の車両データを取得
-            vehicle_data = road.get('vehicle_data')
-
-            # 車両データが存在しないとき
-            if vehicle_data.shape[0] == 0:
+            # if there is no vehicle, make empty dataframes
+            if vehicles_df.shape[0] == 0:
                 vehicle_data_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
                     vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
-                road_vehicle_data_map[road_order_id] = vehicle_data_map
+                self.road_vehicle_data_map[road_order_id] = vehicle_data_map
                 continue
+            
+            # recalculate position based on road start point and sort by position
+            position_list = []
+            for _, vehicle_row in vehicles_df.iterrows():
+                link_length_info = self.road_length_info_map[road_order_id][vehicle_row['link_id']]
+                position_list.append(vehicle_row['position'] + link_length_info['start_pos'])
+            
+            vehicles_df['position'] = position_list
+            vehicles_df = vehicles_df.sort_values(by='position', ascending=False)
+            vehicles_df = vehicles_df.reset_index(drop=True)
 
-            # 距離を道路の入口空の距離に変換
-            vehicle_data = self._transformPositionData(road_order_id, vehicle_data)
-            # 必要ない情報を削除
-            vehicle_data = vehicle_data.drop(columns=['in_queue', 'road_id']).copy()
+            # remove unnecessary columns
+            vehicles_df = vehicles_df.drop(columns=['in_queue', 'road_id'])
         
-            # 新たに信号待ちする車線に関する情報および従う信号機を追加するために配列を初期化
-            wait_link_ids = []
-            wait_lane_ids = []
-            signal_ids = []
-
-            # 車両データを走査
-            for _, vehicle in vehicle_data.iterrows():
-                # next_link_idを取得
-                next_link_id = vehicle['next_link_id']
-
-                # 信号機のIDを取得（まだコースが決まってないものの方向は1にしておく）
-                direction_id = vehicle['direction_id'] if vehicle['direction_id'] != 0 else 1
+            # make wait_link_id, wait_lane_id, signal_id columns
+            wait_link_id_list = []
+            wait_lane_id_list = []
+            signal_id_list = []
+            for _, vehicle_row in vehicles_df.iterrows():
+                # define signal_id
+                direction_id = vehicle_row['direction_id'] if vehicle_row['direction_id'] != 0 else random.choice(range(1, self.num_roads))
                 signal_id = (road_order_id - 1) * (self.num_roads - 1) + direction_id
-                signal_ids.append(int(signal_id))
+                signal_id_list.append(int(signal_id))
 
-                # 次のリンクが道路外の場合（交差点のコネクタの場合）
-                if next_link_id not in link_ids:
-                    # 今いる車線が信号待ちを行う車線
-                    wait_link_ids.append(int(vehicle['link_id']))
-                    wait_lane_ids.append(int(vehicle['lane_id']))
+                if vehicle_row['next_link_id'] not in road.links.getKeys():
+                    wait_link_id_list.append(int(vehicle_row['link_id']))
+                    wait_lane_id_list.append(int(vehicle_row['lane_id']))
                     continue
 
-                # 次のリンクが道路内の場合（右折レーン，左折レーンに入る場合）
-                next_link = road.links[next_link_id]
-                next_link_type = next_link.get('type')
-
-                # 次のリンクがコネクタか右左折リンクかで分岐
-                if next_link_type == 'connector':
-                    # コネクタリンクの場合はさらに次のリンクと車線が信号待ちするところ
-                    next_next_link = next_link.to_links.getAll()[0]
-                    next_next_lane = next_link.to_lane
-                    wait_link_ids.append(int(next_next_link.get('id')))
-                    wait_lane_ids.append(int(next_next_lane.get('id')))
+                # define wait_link_id and wait_lane_id
+                next_link = road.links[vehicle_row['next_link_id']]
+                if next_link.get('type') == 'connector':
+                    wait_link = next_link.to_links.getAll()[0]
+                    wait_lane = next_link.to_lane
+                elif next_link.get('type') in ['right', 'left']:
+                    wait_link = next_link
+                    wait_lane = road.links[vehicle_row['link_id']].to_lane
                 else:
-                    # 右左折リンクの場合はそこが信号待ちするところ
-                    wait_link_ids.append(int(next_link_id))
-                    current_link = road.links[vehicle['link_id']]
-                    wait_lane_ids.append(int(current_link.to_lane.get('id')))
+                    raise ValueError(f"Invalid next_link type: {next_link.get('type')}")
+                wait_link_id_list.append(int(wait_link.get('id')))
+                wait_lane_id_list.append(int(wait_lane.get('id')))
                 
-            # wait_link_idsとwait_lane_idsとsignal_idsをデータフレームに追加
-            vehicle_data['wait_link_id'] = wait_link_ids
-            vehicle_data['wait_lane_id'] = wait_lane_ids
-            vehicle_data['signal_id'] = signal_ids
+            # add wait_link_id, wait_lane_id, signal_id columns to vehicles_df
+            vehicles_df['wait_link_id'] = wait_link_id_list
+            vehicles_df['wait_lane_id'] = wait_lane_id_list
+            vehicles_df['signal_id'] = signal_id_list
             
-            # combinationsごとに分割していく
+            # devide vehicles_df by lane combinations
             vehicle_data_map = {}
             for combination_order_id, combinations in self.road_combinations_map[road_order_id].items():
-                # 車両データを取得
-                related_vehicle_data = None
-                for lane in combinations:
-                    wait_link_id, wait_lane_id = lane.split('-')
-                    tmp_vehicle_data = vehicle_data[(vehicle_data['wait_link_id'] == int(wait_link_id)) & (vehicle_data['wait_lane_id'] == int(wait_lane_id))].copy()
-                    
-                    if related_vehicle_data is None: 
-                        related_vehicle_data = tmp_vehicle_data.reset_index(drop=True)
-                    else:
-                        related_vehicle_data = pd.concat([related_vehicle_data, tmp_vehicle_data], ignore_index=True)
-                
-                # いらない列を削除
-                related_vehicle_data = related_vehicle_data.drop(columns=['next_link_id']).copy()
+                # make vehicles_df for the lane combination
+                vehicles_df_list = []
+                for lane_str in combinations:
+                    match_obj = re.match(rf"(\d+)-(\d+)", lane_str) 
+                    sub_vehicles_df = vehicles_df[
+                        (vehicles_df['wait_link_id'] == int(match_obj.group(1))) & 
+                        (vehicles_df['wait_lane_id'] == int(match_obj.group(2)))
+                    ]
+                    if sub_vehicles_df.shape[0] == 0:
+                        continue
 
-                # 位置の降順でソート
-                related_vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                related_vehicle_data.reset_index(drop=True, inplace=True)
-                vehicle_data_map[combination_order_id] = related_vehicle_data
+                    vehicles_df_list.append(sub_vehicles_df)
+                
+                if len(vehicles_df_list) == 0:
+                    column_list = vehicles_df.columns.tolist()
+                    column_list.remove('next_link_id')
+                    tmp_vehicles_df = pd.DataFrame(columns=column_list)
+                else:
+                    tmp_vehicles_df = pd.concat(vehicles_df_list, ignore_index=True)
+                    tmp_vehicles_df = tmp_vehicles_df.drop(columns=['next_link_id'])
+                    tmp_vehicles_df = tmp_vehicles_df.sort_values(by='position', ascending=False)
+                    tmp_vehicles_df = tmp_vehicles_df.reset_index(drop=True)
+
+                vehicle_data_map[combination_order_id] = tmp_vehicles_df
             
-            road_vehicle_data_map[road_order_id] = vehicle_data_map
-        
-        self.road_vehicle_data_map = road_vehicle_data_map
+            self.road_vehicle_data_map[road_order_id] = vehicle_data_map
         return
     
     def _updateRoadMaxQueueMap(self):
@@ -494,13 +481,13 @@ class MpcController(Object):
             return
         
         # update road_max_queue_map
-        self.road_max_queue_map = {}
-        if self.queue_measurement_type == 'vissim':
+        if self.queue_measurement_type == 'vissim' or (self.queue_measurement_type == 'ema' and not self.has('road_max_queue_map')):
+            self.road_max_queue_map = {}
             for road_order_id in range(1, self.num_roads + 1):
-                road = self.roads[road_order_id]
-                self.road_max_queue_map[road_order_id] = road.get('max_queue_length')
-        elif self.queue_measurement_type == 'original':
-            raise NotImplementedError("original queue measurement is not implemented yet")          
+                self.road_max_queue_map[road_order_id] = self.roads[road_order_id].get('max_queue_length')
+        elif self.queue_measurement_type == 'ema':
+            for road_order_id in range(1, self.num_roads + 1):  
+                self.road_max_queue_map[road_order_id] = self.ema_alpha * self.roads[road_order_id].get('max_queue_length') + (1 - self.ema_alpha) * self.road_max_queue_map[road_order_id] 
         else:
             raise NotImplementedError(f"Not supported queue_measurement_type: {self.queue_measurement_type}")
         return
@@ -1485,7 +1472,7 @@ class MpcController(Object):
                                         target_idx = last_vehs_info['idx']
                                         target_pos = last_vehs_info['pos']
                                         target_direction_id = direction_id
-                                elif leader_detection_type == 'all_lane':
+                                elif leader_detection_type == 'all_routes':
                                     if vehicle['position'] > p_s - D_b:
                                         last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
@@ -1837,7 +1824,7 @@ class MpcController(Object):
                                         target_idx = last_vehs_info['idx']
                                         target_pos = last_vehs_info['pos']
                                 
-                                elif leader_detection_type == 'all_lane':
+                                elif leader_detection_type == 'all_routes':
                                     if vehicle['position'] > p_s - D_b:
                                         last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
@@ -2256,12 +2243,12 @@ class MpcController(Object):
 
         # フェーズの変数の定義
         for phase_id in range(1, self.num_phases + 1):
-            signal_ids = self.phases[phase_id]
+            signal_id_list = self.phases[phase_id]
 
             for step in range(1, self.horizon + 1):
                 p = np.zeros((2, self.num_variables))
 
-                for signal_id in signal_ids:
+                for signal_id in signal_id_list:
                     p[:, v_length * (step - 1) + signal_id - 1] = [-1, 1]
                 
                 p[:, v_length * self.horizon + phase_id + self.num_phases * (step - 1) - 1] = [self.num_roads, -1]

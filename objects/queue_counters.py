@@ -25,7 +25,7 @@ class QueueCounters(Container):
             self.add(QueueCounter(queue_counter_com, self))
         return
     
-    def updateData(self):
+    def update(self):
         # get data from com object
         queue_counter_ids = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('No')]
         queue_lengths = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('QLen(Current, Last)')]
@@ -33,7 +33,7 @@ class QueueCounters(Container):
         # update queue_length_record for each queue counter
         for index, queue_counter_id in enumerate(queue_counter_ids):
             queue_counter = self[queue_counter_id]
-            self.executor.submit(queue_counter.updateData, queue_lengths[index])
+            self.executor.submit(queue_counter.update, queue_lengths[index])
         return
     
     @property
@@ -68,7 +68,7 @@ class QueueCounter(Object):
         self.road.queue_counters.add(self)
         return
 
-    def updateData(self, queue_length): 
+    def update(self, queue_length): 
         queue_length = 0.0 if queue_length is None else round(queue_length, 1)
         self.queue_length_record.loc[len(self.queue_length_record)] = [self.current_time, queue_length]
         return

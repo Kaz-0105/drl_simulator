@@ -81,7 +81,7 @@ class Simulation(Common):
             master_agents = self.network.master_agents
 
             # 最初のネットワーク更新と状態の取得
-            self.network.updateData()
+            self.network.update()
             local_agents.getState()
             
             while self.current_time < self.end_time:
@@ -92,7 +92,7 @@ class Simulation(Common):
                 self._runSingleStep()
 
                 # ネットワークの更新，状態・報酬の取得，学習データの作成
-                self.network.updateData()
+                self.network.update()
                 local_agents.getState()
                 local_agents.getReward()
                 local_agents.makeLearningData()
@@ -106,7 +106,7 @@ class Simulation(Common):
                     break
             
             # 最後のネットワーク更新
-            self.network.updateData()
+            self.network.update()
 
             # トータルの報酬を更新し，データを保存
             master_agents.updateSessionData()
@@ -120,7 +120,7 @@ class Simulation(Common):
 
             while self.current_time < self.end_time:
                 # ネットワークの更新
-                self.network.updateData()
+                self.network.update()
 
                 # MPCで最適な行動を計算
                 mpc_controllers.optimize()
@@ -138,7 +138,7 @@ class Simulation(Common):
                 bc_buffers.writeToFile()
             
             # 最後のネットワーク更新
-            self.network.updateData()
+            self.network.update()
         
         elif self.control_method == 'bc':
             # 行動クローンを行う
@@ -147,7 +147,7 @@ class Simulation(Common):
 
             while self.current_time < self.end_time:
                 # 最初のネットワークの更新
-                self.network.updateData()
+                self.network.update()
 
                 # 状態・報酬・行動を計算
                 bc_agent.updateState()
@@ -158,7 +158,7 @@ class Simulation(Common):
                 self._runSingleStep()
             
             # 最後のネットワーク更新
-            self.network.updateData()
+            self.network.update()
 
             # トータルの報酬を表示し、モデルを保存
             bc_agent.showTotalReward()
@@ -168,11 +168,11 @@ class Simulation(Common):
             scoot_controllers = self.network.scoot_controllers
 
             while self.current_time < self.end_time:
-                self.network.updateData()
+                self.network.update()
                 scoot_controllers.updateParameters()
                 self._runSingleStep()
             
-            self.network.updateData()
+            self.network.update()
 
         # save performance metrics
         self.network.save()

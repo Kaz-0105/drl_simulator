@@ -1,80 +1,104 @@
 from libs.container import Container
 from libs.object import Object
 from objects.roads import Roads
+import pandas as pd
 
 class Intersections(Container):
     def __init__(self, upper_object):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
-            # 上位クラスのオブジェクトを取得
             self.network = upper_object
-
-            # 要素オブジェクトを初期化
             self.makeElements()
         elif upper_object.__class__.__name__ == 'MasterAgent':
-            # 上位クラスのオブジェクトを取得
             self.master_agent = upper_object
+        else:
+            raise NotImplementedError(f"Not supported upper_object: {upper_object.__class__.__name__}")
+        
+        return
 
     def makeElements(self):
-        intersections = self.config.get('intersections')
-        for _, intersection in intersections.iterrows():
-            self.add(Intersection(intersection, self))
+        intersections_df = self.config.get('intersections')
+        for _, intersection_row in intersections_df.iterrows():
+            self.add(Intersection(intersection_row, self))
+        return
 
+    def update(self):
+        for intersection in self.getAll():
+            self.executor.submit(intersection.update)
+        self.executor.wait()
+        return
 class Intersection(Object):
-    def __init__(self, intersection, intersections):
+    def __init__(self, intersection_row, intersections):
         super().__init__()
         self.config = intersections.config
         self.executor = intersections.executor
         self.intersections = intersections
+        self.network = intersections.network
         
-        self.id = int(intersection['id'])
-        self.num_roads = int(intersection['num_roads'])
-
-        self.connectRoads()
-    
-    def connectRoads(self):
-        self.input_roads = Roads(self, {'type': 'input'})
-        self.output_roads = Roads(self, {'type': 'output'})
+        self._initProps(intersection_row)
         return
     
-    def getNetwork(self):
-        return self.intersections.network
-    
-    def getRoadOrderMap(self):
+    def _initProps(self, intersection_row):
+        self.id = int(intersection_row['id'])
+        self.num_roads = int(intersection_row['num_roads'])
+
+        self.input_roads = Roads(self, {'type': 'input'})
+        self.output_roads = Roads(self, {'type': 'output'})
+
+        self.speed_df = pd.DataFrame(columns=['time', 'value'])
+        return
+
+    def update(self):
+        speed_list = []
+        max_speed_list = []
+        for road in self.input_roads.getAll():
+            # update max_speed_list
+            max_speed_list.append(road.get('max_speed'))
+
+            # update speed_list
+            vehicles_df = road.get('vehicle_data')
+            if vehicles_df.shape[0] == 0:
+                continue
+            speed_list.expand(vehicles_df['speed'].tolist())
+        
+        # if there is no vehicle, use max speed of input roads
+        if len(speed_list) == 0:
+            speed = sum(max_speed_list) / len(max_speed_list)
+        else:
+            speed = sum(speed_list) / len(speed_list)
+        
+        self.speed_df.loc[self.speed_df.shape[0]] = [self.current_time, speed]
+        return
+
+    @property
+    def road_order_map(self):
         road_order_map = {}
         for order_id, road in self.input_roads.elements.items():
             road_order_map[road.get('id')] = order_id
-        
         for order_id, road in self.output_roads.elements.items():
             road_order_map[road.get('id')] = order_id
-
         return road_order_map
-
-    def getNumLanesTurple(self):
-        # 車線数のリストを初期化
+    
+    @property
+    def num_lanes_tuple(self):
         num_lanes_list = []
-
-        # 道路を走査
         for road_order_id in self.input_roads.getKeys(container_flg=True, sorted_flg=True):
             road = self.input_roads[road_order_id]
-
-            # 車線数を計算
             num_lanes = 0
             for link in road.links.getAll():
                 if link.get('type') == 'connector':
                     continue
-
                 num_lanes += link.lanes.count()
-            
             num_lanes_list.append(num_lanes)
-
         return tuple(num_lanes_list)
+
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
     
     @property
     def current_phase_id(self):

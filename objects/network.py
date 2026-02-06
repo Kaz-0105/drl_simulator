@@ -55,6 +55,7 @@ class Network(Common):
         save_info = self.config.get('save_info')
         self.queue_flg = save_info['performance_metrics']['queue']
         self.delay_flg = save_info['performance_metrics']['delay']
+        self.speed_flg = save_info['performance_metrics']['speed']
         self.calc_time_flg = save_info['performance_metrics']['calc_time']
         self.phase_flg = save_info['performance_metrics']['phase']
 
@@ -121,12 +122,13 @@ class Network(Common):
         
         return
     
-    def updateData(self):
+    def update(self):
         # ネットワークの更新
-        self.roads.updateData()
-        self.queue_counters.updateData()
-        self.delay_measurements.updateData()
-        self.data_collection_measurements.updateData()
+        self.roads.update()
+        self.intersections.update()
+        self.queue_counters.update()
+        self.delay_measurements.update()
+        self.data_collection_measurements.update()
 
         # 並列処理が終わるまで待機
         self.executor.wait()
@@ -229,6 +231,10 @@ class Network(Common):
                 max_delay_df.to_csv(tmp_save_dir_path / 'max_delay.csv', index=False)
                 average_delay_df.to_csv(tmp_save_dir_path / 'average_delay.csv', index=False)
 
+            if self.speed_flg:
+                speed_df = intersection.get('speed_df')
+                speed_df.to_csv(tmp_save_dir_path / 'speed.csv', index=False)
+            
             if self.phase_flg:
                 signal_controller = intersection.signal_controller
                 phase_df = signal_controller.get('phase_record_df')
