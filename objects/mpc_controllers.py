@@ -10,7 +10,6 @@ from scipy.optimize import milp, LinearConstraint, Bounds
 import torch
 import time
 import re
-import copy
 import random
 
 class MpcControllers(Container):
@@ -121,8 +120,8 @@ class MpcController(Object):
         if self.objective_function_type == 'waiting_vehicles' and self.queue_measurement_type == 'ema':
             self.ema_alpha = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['ema']['alpha']
         
-        if self.objective_function_type == 'waiting_vehicles' and self.leader_detection_type in ['all_routes', 'mix']:
-            self.gap = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['all_routes']['gap']
+        if self.objective_function_type == 'waiting_vehicles' and self.leader_detection_type == 'multiple':
+            self.gap = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['multiple']['gap']
 
         self.signal_change_penalty_type = mpc_info['objective_function']['signal_change']['type']
         self.signal_change_penalty_weight = mpc_info['objective_function']['signal_change']['weight']
@@ -182,6 +181,8 @@ class MpcController(Object):
                     params['D_b'] = {}
                     for lane_str in lane_list:
                         params['D_b'][lane_str] = params['p_s'][lane_str] - branching_point
+                        if self.leader_detection_type == 'multiple':
+                            params['D_b'][lane_str] -= self.gap if params['D_b'][lane_str] - self.gap > 0 else 0
 
                 # set other parameters
                 params['v_max'] = road.get('max_speed') * 1000 / 3600
@@ -295,38 +296,38 @@ class MpcController(Object):
         self.road_combinations_map = {}
         for road_order_id in range(1, self.num_roads + 1):
             road = self.roads[road_order_id]
-            combinations_map = {}
+            combination_lane_list_map = {}
             
-            # combinations with branch links
+            # combination with branch links
             branch_exist_flg_map = {'left': False, 'right': False}
             for link in road.links.getAll():
                 # if link is not branch, skip
                 if link.get('type') not in ['right', 'left']:
                     continue
 
-                # set combinations
-                combinations = []
+                # set lane_str_list
+                lane_str_list = []
                 
                 # push branch link information
                 if link.lanes.count() > 1:
                     raise NotImplementedError(f"Not supported multiple lanes in branch link.")
-                combinations.append(f"{link.get('id')}-{link.lanes.getAll()[0].get('id')}")
+                lane_str_list.append(f"{link.get('id')}-{link.lanes.getAll()[0].get('id')}")
                 
                 # push main link information
                 main_link = road.get('main_link')
                 if link.get('type') == 'right':
-                    combinations.append(f"{main_link.get('id')}-{main_link.lanes[1].get('id')}")
+                    lane_str_list.append(f"{main_link.get('id')}-{main_link.lanes[1].get('id')}")
                     branch_exist_flg_map['right'] = True
                 elif link.get('type') == 'left':
-                    combinations.append(f"{main_link.get('id')}-{main_link.lanes[main_link.lanes.count()].get('id')}")
+                    lane_str_list.append(f"{main_link.get('id')}-{main_link.lanes[main_link.lanes.count()].get('id')}")
                     branch_exist_flg_map['left'] = True
                 else:
                     raise ValueError(f"Invalid link type: {link.get('type')}")
 
-                # push to combinations_map
-                combinations_map[len(combinations_map) + 1] = combinations
+                # push to combination_lane_list_map
+                combination_lane_list_map[len(combination_lane_list_map) + 1] = lane_str_list
             
-            # main link only combinations
+            # main link only combination
             main_link = road.get('main_link')
             for lane_id in range(1, main_link.lanes.count() + 1):
                 # skip if lane is already included when branch link exists
@@ -335,11 +336,11 @@ class MpcController(Object):
                 if lane_id == main_link.lanes.count() and branch_exist_flg_map['left']:
                     continue
                 
-                # push to combinations_map
-                combinations_map[len(combinations_map) + 1] = [f"{main_link.get('id')}-{lane_id}"]
+                # push to combination_lane_list_map
+                combination_lane_list_map[len(combination_lane_list_map) + 1] = [f"{main_link.get('id')}-{lane_id}"]
             
             # push to road_combinations_map
-            self.road_combinations_map[road_order_id] = combinations_map
+            self.road_combinations_map[road_order_id] = combination_lane_list_map
         return
 
     def optimize(self):
@@ -350,7 +351,7 @@ class MpcController(Object):
         # 自動車のデータを更新
         self._updateVehicleData()
         self._updateRoadMaxQueueMap()
-        self._updateLeaderType()
+        self._updateFullFlgs()
 
         # D_tを更新
         self._updateDt()
@@ -449,10 +450,10 @@ class MpcController(Object):
             
             # devide vehicles_df by lane combinations
             vehicle_data_map = {}
-            for combination_order_id, combinations in self.road_combinations_map[road_order_id].items():
+            for combination_order_id, lane_str_list in self.road_combinations_map[road_order_id].items():
                 # make vehicles_df for the lane combination
                 vehicles_df_list = []
-                for lane_str in combinations:
+                for lane_str in lane_str_list:
                     match_obj = re.match(rf"(\d+)-(\d+)", lane_str) 
                     sub_vehicles_df = vehicles_df[
                         (vehicles_df['wait_link_id'] == int(match_obj.group(1))) & 
@@ -495,40 +496,25 @@ class MpcController(Object):
             raise NotImplementedError(f"Not supported queue_measurement_type: {self.queue_measurement_type}")
         return
 
-    def _updateLeaderType(self):
-        # only consider when objective_function is waiting_vehicles and leader_detection_type is mix
-        if self.objective_function_type != 'waiting_vehicles':
-            return
-        if self.leader_detection_type != 'mix':
+    def _updateFullFlgs(self):
+        if self.leader_detection_type == 'single':
             return
         
-        # initialize road_combination_leader_type_map
-        self.road_combination_leader_type_map = {}
+        # initialize road_combination_full_flg_map
+        self.road_combination_full_flg_map = {}
         for road_id in range(1, self.num_roads + 1):
-            self.road_combination_leader_type_map[road_id] = {}
-            combinations_map = self.road_combinations_map[road_id]
-            for combination_id, lane_str_list in combinations_map.items():
+            self.road_combination_full_flg_map[road_id] = {}
+            combination_lane_list_map = self.road_combinations_map[road_id]
+            for combination_id, lane_str_list in combination_lane_list_map.items():
                 if len(lane_str_list) == 1:
                     continue
-                self.road_combination_leader_type_map[road_id][combination_id] = 'all_routes'
-        
-        # check we need to update leader_type to same_lane for each lane_str
-        for road_id in range(1, self.num_roads + 1):
-            # skip if no combination with branch
-            if len(self.road_combination_leader_type_map[road_id]) == 0:
-                continue
-            
-            # if any lane has queue length less than D_b, update leader_type to same_lane
-            for combination_id in self.road_combination_leader_type_map[road_id].keys():
-                for lane_str in self.road_combinations_map[road_id][combination_id]:
+                
+                self.road_combination_full_flg_map[road_id][combination_id] = {}
+                for lane_str in lane_str_list:
                     match_obj = re.match(rf"(\d+)-(\d+)", lane_str)
                     current_queue_length = self.network.links[int(match_obj.group(1))].get('queue_length')
                     D_b = self.road_combination_params_map[road_id][combination_id]['D_b'][lane_str]
-
-                    if current_queue_length < D_b - self.gap:
-                        self.road_combination_leader_type_map[road_id][combination_id] = 'same_lane'
-                        break
-                    
+                    self.road_combination_full_flg_map[road_id][combination_id][lane_str] = (current_queue_length > D_b)                
         return
     
     def _updateDt(self):  
@@ -632,7 +618,7 @@ class MpcController(Object):
                     continue
 
                 # 車線の組み合わせとパラメータを取得
-                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
                 params = self.road_combination_params_map[road_order_id][combination_order_id]
                 
                 # 必要なパラメータを取得
@@ -640,7 +626,7 @@ class MpcController(Object):
                 k_s = params['k_s']
                 k_f = params['k_f']
                 
-                if len(combinations) == 1:
+                if len(lane_str_list) == 1:
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
                             b2 = np.array([-k_s]) * v * dt
@@ -650,7 +636,7 @@ class MpcController(Object):
                         B2_matrix = la.block_diag(B2_matrix, b2) if 'B2_matrix' in locals() else b2
                 else:
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     for idx, vehicle in vehicle_data.iterrows():
@@ -684,7 +670,7 @@ class MpcController(Object):
                     continue
 
                 # 車線の組み合わせとパラメータを取得
-                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
                 params = self.road_combination_params_map[road_order_id][combination_order_id]
 
                 # 必要なパラメータを取得
@@ -695,8 +681,8 @@ class MpcController(Object):
                 d_f = params['d_f']
                 
                 # 分岐車線があるかどうかで場合分け
-                if len(combinations) == 1:
-                    p_s = params['p_s'][combinations[0]]
+                if len(lane_str_list) == 1:
+                    p_s = params['p_s'][lane_str_list[0]]
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:    
                             b3 = np.array([0, 0, k_s * (p_s - d_s) - 1, 0, 0, 0, 1]) * v * dt
@@ -706,7 +692,7 @@ class MpcController(Object):
                         B3_matrix = la.block_diag(B3_matrix, b3) if 'B3_matrix' in locals() else b3
                 else:
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     for idx, vehicle in vehicle_data.iterrows():
@@ -744,9 +730,9 @@ class MpcController(Object):
                 tmp_C_matrix = None
 
                 # 車線の組み合わせとパラメータを取得
-                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
                 
-                if len(combinations) == 1:
+                if len(lane_str_list) == 1:
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
                             c = np.zeros((16, num_vehicles))
@@ -794,7 +780,7 @@ class MpcController(Object):
                 else:
                     # 車線ごとにモデル化を終えた車両の最後のインデックスを保持する辞書を初期化
                     last_veh_indices = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         last_veh_indices[lane_str] = -1
                     
                     for idx, vehicle in vehicle_data.iterrows():
@@ -916,10 +902,10 @@ class MpcController(Object):
                     continue
 
                 # 車線の組み合わせを取得
-                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
 
                 # 車線数を取得
-                num_lanes = len(combinations)
+                num_lanes = len(lane_str_list)
 
                 # 車線数が複数あるかどうか（分岐があるかどうか）で場合分け
                 if num_lanes == 1:
@@ -949,7 +935,7 @@ class MpcController(Object):
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     for idx, vehicle in vehicle_data.iterrows():
@@ -1014,10 +1000,10 @@ class MpcController(Object):
                     continue 
 
                 # 車線の組み合わせを取得
-                combinations = self.road_combinations_map[road_order_id][combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
 
                 # 車線数を取得
-                num_lanes = len(combinations)
+                num_lanes = len(lane_str_list)
 
                 # 車線数が複数あるかどうか（分岐があるかどうか）で場合分け
                 if num_lanes == 1:
@@ -1046,7 +1032,7 @@ class MpcController(Object):
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     for idx, vehicle in vehicle_data.iterrows():
@@ -1112,7 +1098,7 @@ class MpcController(Object):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
             # 道路に紐づく組み合わせのマップとパラメータのマップを取得
-            combinations_map = self.road_combinations_map[road_order_id]
+            combination_lane_list_map = self.road_combinations_map[road_order_id]
             combination_params_map = self.road_combination_params_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
@@ -1122,11 +1108,11 @@ class MpcController(Object):
                     continue
 
                 # 車線の組み合わせとパラメータを取得
-                combinations = combinations_map[combination_order_id]
+                lane_str_list = combination_lane_list_map[combination_order_id]
                 params = combination_params_map[combination_order_id]
 
                 # 車線数を取得
-                num_lanes = len(combinations)
+                num_lanes = len(lane_str_list)
 
                 # 必要なパラメータを取得
                 v = params['v_max']
@@ -1153,7 +1139,7 @@ class MpcController(Object):
                         }
                     
                     # 必要なパラメータを取得
-                    p_s = params['p_s'][combinations[0]]
+                    p_s = params['p_s'][lane_str_list[0]]
                     h1_min = - p_max + p_s - D_s
                     h1_max = - p_min + p_s - D_s
                     h2_min = p_min - p_s + d_s
@@ -1246,8 +1232,10 @@ class MpcController(Object):
                                 d3[14, 7] = -1
                                 d3[15, 7] = 1
                             else:
-                                d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
-                                d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+                                # d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
+                                # d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+                                d3[14, [5, 6, 7]] = [1, 1, 3]
+                                d3[15, [5, 6, 7]] = [-1, -1, -1]
                             
                             rows_delta_t3 = [14, 15]
                             
@@ -1281,20 +1269,18 @@ class MpcController(Object):
                             D3_matrix[target_rows, target_col] = [-1, 1]                    
                         
                 else:
-                    # set leader_detection_type
-                    if self.leader_detection_type == 'mix':
-                        leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id]
-                    else:
-                        leader_detection_type = self.leader_detection_type
-
+                    # set full_flg_map
+                    if self.leader_detection_type == 'multiple':
+                        full_flg_map = self.road_combination_full_flg_map[road_order_id][combination_order_id]
+                    
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
                     
                     # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
                     last_vehs_map = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         tmp_last_vehs_map = {}
                         for direction_id in range(1, self.num_roads):
                             tmp_last_vehs_map[direction_id] = {
@@ -1469,38 +1455,43 @@ class MpcController(Object):
                                 if direction_id == int(vehicle['direction_id']):
                                     continue
                                 
-                                if leader_detection_type == 'same_lane':
+                                if self.leader_detection_type == 'single':
                                     last_vehs_info = last_vehs_map[lane_str][direction_id]
                                     if last_vehs_info['pos'] < target_pos:
                                         target_idx = last_vehs_info['idx']
                                         target_pos = last_vehs_info['pos']
                                         target_direction_id = direction_id
-                                elif leader_detection_type == 'all_routes':
+                                elif self.leader_detection_type == 'multiple':
                                     if vehicle['position'] > p_s - D_b:
+                                        # when the vehicle reaches branching point, check only its own lane
                                         last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
                                             target_idx = last_veh_info['idx']
                                             target_pos = last_veh_info['pos']
                                             target_direction_id = direction_id
                                     else:
-                                        for tmp_lane_str in combinations:
-                                            last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                            if last_veh_info['pos'] > p_s - D_b + self.gap and tmp_lane_str != lane_str:
+                                        # when the vehicle doesn't reach branching point, check the lanes which is filled with vehicles in addition to its own lane
+                                        for tmp_lane_str in lane_str_list:
+                                            if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
                                                 continue
 
+                                            last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
                                             if last_veh_info['pos'] < target_pos:
                                                 target_idx = last_veh_info['idx']
                                                 target_pos = last_veh_info['pos']
                                                 target_direction_id = direction_id
+
                                 else:
-                                    raise NotImplementedError(f"Not supported leader_detection_type: {leader_detection_type}")
+                                    raise NotImplementedError(f"Not supported leader_detection_type: {self.leader_detection_type}")
                             
                             if target_idx == -1:
                                 d3[20, 10] = -1
                                 d3[21, 10] = 1
                             else:
-                                d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
-                                d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
+                                # d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
+                                # d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
+                                d3[20, [8, 9, 10]] = [1, 1, 3]
+                                d3[21, [8, 9, 10]] = [-1, -1, -1]
                             
                             rows_delta_t3 = [20, 21]
 
@@ -1557,7 +1548,7 @@ class MpcController(Object):
 
 
             # 道路に紐づく組み合わせのマップと道路パラメータのマップを取得
-            combinations_map = self.road_combinations_map[road_order_id]
+            combination_lane_list_map = self.road_combinations_map[road_order_id]
             combination_params_map = self.road_combination_params_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
@@ -1568,10 +1559,10 @@ class MpcController(Object):
                 
                 # 道路パラメータと車線の組み合わせを取得
                 params = combination_params_map[combination_order_id]
-                combinations = combinations_map[combination_order_id]
+                lane_str_list = combination_lane_list_map[combination_order_id]
 
                 # 車線数を取得
-                num_lanes = len(combinations)
+                num_lanes = len(lane_str_list)
 
                 # 必要なパラメータを取得
                 v = params['v_max']
@@ -1592,7 +1583,7 @@ class MpcController(Object):
                         last_veh_indices[direction_id] = -1
 
                     # 必要なパラメータの取得
-                    p_s = params['p_s'][combinations[0]]
+                    p_s = params['p_s'][lane_str_list[0]]
                     h1_min = - p_max + p_s - D_s
                     h2_min = p_min - p_s + d_s
                     h6_min = -p_max + p_s - D_t
@@ -1661,7 +1652,8 @@ class MpcController(Object):
                             if target_idx == -1:
                                 e[[14, 15], 0] = [0, 0]
                             else:
-                                e[[14, 15], 0] = [3, 0]
+                                # e[[14, 15], 0] = [3, 0]
+                                e[[14, 15], 0] = [2, 0]
                             
                             # z_1の定義
                             e[16:20, 0] = [0, 0, p_max, -p_min]
@@ -1679,18 +1671,18 @@ class MpcController(Object):
                         E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
 
                 else:
-                    if self.leader_detection_type == 'mix':
-                        leader_detection_type = self.road_combination_leader_type_map[road_order_id][combination_order_id]
-                    else:
-                        leader_detection_type = self.leader_detection_type
+                    # get full_flg_map
+                    if self.leader_detection_type == 'multiple':
+                        full_flg_map = self.road_combination_full_flg_map[road_order_id][combination_order_id]
+
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
                     last_vehs_map = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         tmp_last_vehs_map = {}
                         for direction_id in range(1, self.num_roads):
                             tmp_last_vehs_map[direction_id] = {
@@ -1820,36 +1812,39 @@ class MpcController(Object):
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
                                     continue
-                                
-                                if leader_detection_type == 'same_lane':
+
+                                if self.leader_detection_type == 'single':
                                     last_vehs_info = last_vehs_map[lane_str][direction_id]
                                     if last_vehs_info['pos'] < target_pos:
                                         target_idx = last_vehs_info['idx']
                                         target_pos = last_vehs_info['pos']
                                 
-                                elif leader_detection_type == 'all_routes':
+                                elif self.leader_detection_type == 'multiple':
                                     if vehicle['position'] > p_s - D_b:
+                                        # when the vehicle reaches branching point, check only its own lane
                                         last_veh_info = last_vehs_map[lane_str][direction_id]
                                         if last_veh_info['pos'] < target_pos:
                                             target_idx = last_veh_info['idx']
                                             target_pos = last_veh_info['pos']
                                     else:
-                                        for tmp_lane_str in combinations:
-                                            last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-
-                                            if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                        # when the vehicle doesn't reach branching point, check the lanes which is filled with vehicles in addition to its own lane
+                                        for tmp_lane_str in lane_str_list:
+                                            if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
                                                 continue
 
+                                            last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
                                             if last_veh_info['pos'] < target_pos:
                                                 target_idx = last_veh_info['idx']
                                                 target_pos = last_veh_info['pos']
+
                                 else:
-                                    raise NotImplementedError(f"Not supported leader_detection_type: {leader_detection_type}")
+                                    raise NotImplementedError(f"Not supported leader_detection_type: {self.leader_detection_type}")
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
                             else:
-                                e[[20, 21], 0] = [3, 0]
+                                # e[[20, 21], 0] = [3, 0]
+                                e[[20, 21], 0] = [2, 0]
                             
                             # z_1の定義
                             e[22:26, 0] = [0, 0, p_max, -p_min]
@@ -1958,7 +1953,7 @@ class MpcController(Object):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
             # 道路に紐づく組み合わせのマップを取得
-            combinations_map = self.road_combinations_map[road_order_id]
+            combination_lane_list_map = self.road_combinations_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
             for combination_order_id, vehicle_data in vehicle_data_map.items():
@@ -1967,9 +1962,9 @@ class MpcController(Object):
                     continue
 
                 # 組み合わせを取得
-                combinations = combinations_map[combination_order_id]
+                lane_str_list = combination_lane_list_map[combination_order_id]
 
-                if len(combinations) == 1:
+                if len(lane_str_list) == 1:
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
                             # 先頭車の変数を追加
@@ -1987,7 +1982,7 @@ class MpcController(Object):
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     for idx, vehicle in vehicle_data.iterrows():
@@ -2031,7 +2026,7 @@ class MpcController(Object):
             vehicle_data_map = self.road_vehicle_data_map[road_order_id]
 
             # 道路に紐づく組み合わせのマップを取得
-            combinations_map = self.road_combinations_map[road_order_id]
+            combination_lane_list_map = self.road_combinations_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
             for combination_order_id, vehicle_data in vehicle_data_map.items():
@@ -2040,9 +2035,9 @@ class MpcController(Object):
                     continue
 
                 # 組み合わせを取得
-                combinations = combinations_map[combination_order_id]
+                lane_str_list = combination_lane_list_map[combination_order_id]
 
-                if len(combinations) == 1:
+                if len(lane_str_list) == 1:
                     for idx, vehicle in vehicle_data.iterrows():
                         if idx == 0:
                             # 先頭車の変数を追加（現状必要ないのはコメントアウト）
@@ -2072,7 +2067,7 @@ class MpcController(Object):
                 else:
                     # 先頭車の処理が終わったかどうかを示すフラグを初期化
                     first_end_flg = {}
-                    for lane_str in combinations:
+                    for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
                     for idx, vehicle in vehicle_data.iterrows():

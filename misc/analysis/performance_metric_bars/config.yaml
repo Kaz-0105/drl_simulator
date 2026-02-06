@@ -17,7 +17,7 @@ mpc:
     network_id: 1               # network architecture id for behavioral cloning
   phases:
     3-road: 4                     # only 4
-    4-road: 8                     # 4, 8, or 17
+    4-road: 4                     # 4, 8, or 17
     5-road: 10                    # only 10
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
@@ -28,9 +28,9 @@ mpc:
         ema:  
           alpha: 0.3
       leader_detection:
-        type: mix                 # same_lane: detect leader vehicle from the lane which the car go out, all_routes: detect leader vehicle from all routes if the car is before branching point, mix: combination of same_lane and all_routes 
+        type: multiple                 # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
         all_routes:
-          gap: 5                  # from where the controller search all route for leader vehicle (meters)
+          gap: 5                 # from where the controller search all route for leader vehicle (meters)
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
       weight: 10                  # weights for the term of signal change penalty
