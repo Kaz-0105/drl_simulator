@@ -118,9 +118,12 @@ class MpcController(Object):
         else:
             raise NotImplementedError(f"Not supported objective_function_type: {self.objective_function_type}")
         
-        if self.has('queue_measurement_type') and self.queue_measurement_type == 'ema':
+        if self.objective_function_type == 'waiting_vehicles' and self.queue_measurement_type == 'ema':
             self.ema_alpha = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['ema']['alpha']
         
+        if self.objective_function_type == 'waiting_vehicles' and self.leader_detection_type in ['all_routes', 'mix']:
+            self.gap = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['all_routes']['gap']
+
         self.signal_change_penalty_type = mpc_info['objective_function']['signal_change']['type']
         self.signal_change_penalty_weight = mpc_info['objective_function']['signal_change']['weight']
 
@@ -347,7 +350,7 @@ class MpcController(Object):
         # 自動車のデータを更新
         self._updateVehicleData()
         self._updateRoadMaxQueueMap()
-        self._updateCombinationLeaderTypeMap()
+        self._updateLeaderType()
 
         # D_tを更新
         self._updateDt()
@@ -492,7 +495,7 @@ class MpcController(Object):
             raise NotImplementedError(f"Not supported queue_measurement_type: {self.queue_measurement_type}")
         return
 
-    def _updateCombinationLeaderTypeMap(self):
+    def _updateLeaderType(self):
         # only consider when objective_function is waiting_vehicles and leader_detection_type is mix
         if self.objective_function_type != 'waiting_vehicles':
             return
@@ -522,7 +525,7 @@ class MpcController(Object):
                     current_queue_length = self.network.links[int(match_obj.group(1))].get('queue_length')
                     D_b = self.road_combination_params_map[road_id][combination_id]['D_b'][lane_str]
 
-                    if current_queue_length < D_b:
+                    if current_queue_length < D_b - self.gap:
                         self.road_combination_leader_type_map[road_id][combination_id] = 'same_lane'
                         break
                     
@@ -1482,7 +1485,7 @@ class MpcController(Object):
                                     else:
                                         for tmp_lane_str in combinations:
                                             last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                            if last_veh_info['pos'] > p_s - D_b and tmp_lane_str != lane_str:
+                                            if last_veh_info['pos'] > p_s - D_b + self.gap and tmp_lane_str != lane_str:
                                                 continue
 
                                             if last_veh_info['pos'] < target_pos:

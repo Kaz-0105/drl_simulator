@@ -63,7 +63,7 @@ class Intersection(Object):
             vehicles_df = road.get('vehicle_data')
             if vehicles_df.shape[0] == 0:
                 continue
-            speed_list.expand(vehicles_df['speed'].tolist())
+            speed_list.extend(vehicles_df['speed'].tolist())
         
         # if there is no vehicle, use max speed of input roads
         if len(speed_list) == 0:
