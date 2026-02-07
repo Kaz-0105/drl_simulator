@@ -112,6 +112,7 @@ class MpcController(Object):
         # set properties regarding objective function
         self.objective_function_type = mpc_info['objective_function']['type']
         if self.objective_function_type == 'waiting_vehicles':
+            self.definition = mpc_info['objective_function']['waiting_vehicles']['definition']
             self.range_type = mpc_info['objective_function']['waiting_vehicles']['range_type']
             self.queue_measurement_type = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['type']
             self.leader_detection_type = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['type']
@@ -742,7 +743,7 @@ class MpcController(Object):
                             # delta_pの定義
                             c[[2, 3], idx] = [-1, 1]  
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             c[[6, 7], idx] = [1, -1]
 
                             # z_1の定義
@@ -761,7 +762,7 @@ class MpcController(Object):
                             c[[4, 5], idx-1] = [1, -1]
                             c[[4, 5], idx] = [-1, 1]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             c[[10, 11], idx] = [1, -1]
 
                             # z_1の定義
@@ -794,7 +795,7 @@ class MpcController(Object):
                             # delta_pの定義
                             c[[2, 3], idx] = [-1, 1]
                             
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             c[[6, 7], idx] = [1, -1]
 
                             # z_1の定義
@@ -817,7 +818,7 @@ class MpcController(Object):
                             # delta_bの定義
                             c[[6, 7], idx] = [1, -1]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             c[[12, 13], idx] = [1, -1]
 
                             # z_1の定義
@@ -853,7 +854,7 @@ class MpcController(Object):
                             # delta_bの定義
                             c[[8, 9], idx] = [1, -1]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             c[[16, 17], idx] = [1, -1]
 
                             # z_1の定義
@@ -916,7 +917,7 @@ class MpcController(Object):
                             # delta_1の定義
                             d1[[4, 5], int(vehicle['signal_id']) - 1] = [1, -1]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             d1[[8, 9], int(vehicle['signal_id']) - 1] = [1, -1]
 
                         else:
@@ -926,7 +927,7 @@ class MpcController(Object):
                             # delta_1の定義
                             d1[[6, 7], int(vehicle['signal_id']) - 1] = [1, -1]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             d1[[12, 13], int(vehicle['signal_id']) - 1] = [1, -1]
                     
                         # D1_matrixに追加
@@ -946,7 +947,7 @@ class MpcController(Object):
                             # delta_1の定義
                             d1[[4, 5], int(vehicle['signal_id']) - 1] = [1, -1]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             d1[[8, 9], int(vehicle['signal_id']) - 1] = [1, -1]
 
                             # 先頭車のフラグを更新
@@ -959,7 +960,7 @@ class MpcController(Object):
                             # delta_1の定義
                             d1[[8, 9], int(vehicle['signal_id']) - 1] = [1, -1]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             d1[[14, 15], int(vehicle['signal_id']) - 1] = [1, -1]
                         
                             # 準先頭車のフラグを更新
@@ -972,7 +973,7 @@ class MpcController(Object):
                             # delta_1の定義
                             d1[[10, 11], int(vehicle['signal_id']) - 1] = [1, -1]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             d1[[18, 19], int(vehicle['signal_id']) - 1] = [1, -1]
                             
                         # D1_matrixに追加
@@ -1163,21 +1164,21 @@ class MpcController(Object):
                             d3[4, [0, 1, 2]] = [1, 1, 3]
                             d3[5, [0, 1, 2]] = [-1, -1, -1]
 
-                            # delta_t1(3)の定義
+                            # delta_d_prime(3)の定義
                             d3[6, 3] = - h6_min
                             d3[7, 3] = - h6_max
 
-                            # delta_t2(4)の定義
+                            # delta_w1(4)の定義
                             d3[8, [1, 3, 4]] = [1, 1, 3]
                             d3[9, [1, 3, 4]] = [-1, -1, -1]
 
-                            col_delta_t2 = 4
+                            col_delta_w1 = 4
 
-                            # delta_t3(5)の定義
+                            # delta_w2(5)の定義
                             d3[10, 5] = -1
                             d3[11, 5] = 1
 
-                            rows_delta_t3 = [10, 11]
+                            rows_delta_w2 = [10, 11]
 
                             # z_1の定義
                             d3[12:16, 2] = [p_min, -p_max, p_max, -p_min] 
@@ -1206,17 +1207,17 @@ class MpcController(Object):
                             d3[8, [2, 3, 4]] = [-1, 1, 2]
                             d3[9, [2, 3, 4]] = [1, -1, -1]
 
-                            # delta_t1(5)の定義
+                            # delta_d_prime(5)の定義
                             d3[10, 5] = - h6_min
                             d3[11, 5] = - h6_max
 
-                            # delta_t2(6)の定義
+                            # delta_w1(6)の定義
                             d3[12, [1, 5, 6]] = [1, 1, 3]
                             d3[13, [1, 5, 6]] = [-1, -1, -1]
 
-                            col_delta_t2 = 6
+                            col_delta_w1 = 6
 
-                            # delta_t3(7)の定義
+                            # delta_w2(7)の定義
                             target_idx = -1
                             target_direction_id = None
                             for direction_id in range(1, self.num_roads):
@@ -1230,13 +1231,16 @@ class MpcController(Object):
                             if target_idx == -1:
                                 d3[14, 7] = -1
                                 d3[15, 7] = 1
-                            else:
-                                # d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
-                                # d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+                            elif self.definition == 1:
+                                d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
+                                d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+                            elif self.definition == 2:
                                 d3[14, [5, 6, 7]] = [1, 1, 3]
                                 d3[15, [5, 6, 7]] = [-1, -1, -1]
+                            else:
+                                raise ValueError('Invalid definition value.')
                             
-                            rows_delta_t3 = [14, 15]
+                            rows_delta_w2 = [14, 15]
                             
                             # z_1の定義
                             d3[16:20, 3] = [p_min, -p_max, p_max, -p_min]
@@ -1254,8 +1258,8 @@ class MpcController(Object):
                         # last_veh_indicesを更新
                         last_vehs_map[int(vehicle['direction_id'])] = {
                             'idx': idx,
-                            'rows': [row + row_D3 for row in rows_delta_t3],
-                            'col': col_delta_t2 + col_D3,
+                            'rows': [row + row_D3 for row in rows_delta_w2],
+                            'col': col_delta_w1 + col_D3,
                         }
                         # D3_matrixにd3を追加
                         D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
@@ -1321,21 +1325,21 @@ class MpcController(Object):
                             d3[4, [0, 1, 2]] = [1, 1, 3]
                             d3[5, [0, 1, 2]] = [-1, -1, -1]
 
-                            # delta_t1(3)の定義
+                            # delta_d_prime(3)の定義
                             d3[6, 3] = - h6_min
                             d3[7, 3] = - h6_max
 
-                            # delta_t2(4)の定義
+                            # delta_w1(4)の定義
                             d3[8, [1, 3, 4]] = [1, 1, 3]
                             d3[9, [1, 3, 4]] = [-1, -1, -1]
 
-                            col_delta_t2 = 4
+                            col_delta_w1 = 4
 
-                            # delta_t3(5)の定義
+                            # delta_w2(5)の定義
                             d3[10, 5] = -1
                             d3[11, 5] = 1
 
-                            rows_delta_t3 = [10, 11]
+                            rows_delta_w2 = [10, 11]
 
                             # z_1の定義
                             d3[12:16, 2] = [p_min, -p_max, p_max, -p_min]
@@ -1371,21 +1375,21 @@ class MpcController(Object):
                             d3[10, [2, 3, 4, 5]] = [-1, -1, 1, 3]
                             d3[11, [2, 3, 4, 5]] = [1, 1, -1, -1]
 
-                            # delta_t1(6)の定義
+                            # delta_d_prime(6)の定義
                             d3[12, 6] = - h6_min
                             d3[13, 6] = - h6_max
 
-                            # delta_t2(7)の定義
+                            # delta_w1(7)の定義
                             d3[14, [1, 6, 7]] = [1, 1, 3]
                             d3[15, [1, 6, 7]] = [-1, -1, -1]
 
-                            col_delta_t2 = 7
+                            col_delta_w1 = 7
 
-                            # delta_t3(8)の定義
+                            # delta_w2(8)の定義
                             d3[16, 8] = -1
                             d3[17, 8] = 1
 
-                            rows_delta_t3 = [16, 17]
+                            rows_delta_w2 = [16, 17]
 
                             # z_1の定義
                             d3[18:22, 4] = [p_min, -p_max, p_max, -p_min]
@@ -1436,17 +1440,17 @@ class MpcController(Object):
                             d3[14, [3, 4, 6, 7]] = [-1, 1, 1, 3]
                             d3[15, [3, 4, 6, 7]] = [1, -1, -1, -1]
 
-                            # delta_t1(8)の定義
+                            # delta_d_prime(8)の定義
                             d3[16, 8] = - h6_min
                             d3[17, 8] = - h6_max
 
-                            # delta_t2(9)の定義
+                            # delta_w1(9)の定義
                             d3[18, [1, 8, 9]] = [1, 1, 3]
                             d3[19, [1, 8, 9]] = [-1, -1, -1]
 
-                            col_delta_t2 = 9
+                            col_delta_w1 = 9
 
-                            # delta_t3(10)の定義
+                            # delta_w2(10)の定義
                             target_idx = -1
                             target_pos = float('inf')
                             target_direction_id = None
@@ -1486,13 +1490,16 @@ class MpcController(Object):
                             if target_idx == -1:
                                 d3[20, 10] = -1
                                 d3[21, 10] = 1
-                            else:
-                                # d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
-                                # d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
+                            elif self.definition == 1:
+                                d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
+                                d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
+                            elif self.definition == 2:
                                 d3[20, [8, 9, 10]] = [1, 1, 3]
                                 d3[21, [8, 9, 10]] = [-1, -1, -1]
+                            else:
+                                raise ValueError('Invalid definition value.')
                             
-                            rows_delta_t3 = [20, 21]
+                            rows_delta_w2 = [20, 21]
 
                             # z_1の定義
                             d3[22:26, 5] = [p_min, -p_max, p_max, -p_min]
@@ -1516,8 +1523,8 @@ class MpcController(Object):
                         # last_vehs_mapを更新
                         last_vehs_map[lane_str][int(vehicle['direction_id'])] = {
                             'idx': idx,
-                            'rows': [row + row_D3 for row in rows_delta_t3],
-                            'col': col_delta_t2 + col_D3,
+                            'rows': [row + row_D3 for row in rows_delta_w2],
+                            'col': col_delta_w1 + col_D3,
                             'pos': vehicle['position'],
                         }
 
@@ -1601,13 +1608,13 @@ class MpcController(Object):
                             # delta_1の定義
                             e[[4, 5], 0] = [3, -1]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             e[[8, 9], 0] = [3, -1]
 
-                            # delta_t3の定義
+                            # delta_w2の定義
                             e[[10, 11], 0] = [0, 0]
 
                             # z_1の定義
@@ -1634,13 +1641,13 @@ class MpcController(Object):
                             # delta_2の定義
                             e[[8, 9], 0] = [1, 0]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             e[[10, 11], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             e[[12, 13], 0] = [3, -1]
 
-                            # delta_t3の定義
+                            # delta_w2の定義
                             target_idx = -1
                             for direction_id in range(1, self.num_roads):
                                 if int(vehicle['direction_id']) == direction_id:
@@ -1650,9 +1657,12 @@ class MpcController(Object):
 
                             if target_idx == -1:
                                 e[[14, 15], 0] = [0, 0]
-                            else:
-                                # e[[14, 15], 0] = [3, 0]
+                            elif self.definition == 1:
+                                e[[14, 15], 0] = [3, 0]
+                            elif self.definition == 2:
                                 e[[14, 15], 0] = [2, 0]
+                            else:
+                                raise ValueError('Invalid definition value.')
                             
                             # z_1の定義
                             e[16:20, 0] = [0, 0, p_max, -p_min]
@@ -1714,13 +1724,13 @@ class MpcController(Object):
                             # delta_1の定義
                             e[[4, 5], 0] = [3, -1]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             e[[8, 9], 0] = [3, -1]
 
-                            # delta_t3の定義
+                            # delta_w2の定義
                             e[[10, 11], 0] = [0, 0]
 
                             # z_1の定義
@@ -1751,13 +1761,13 @@ class MpcController(Object):
                             # delta_2の定義
                             e[[10, 11], 0] = [1, 1]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             e[[12, 13], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             e[[14, 15], 0] = [3, -1]
 
-                            # delta_t3の定義
+                            # delta_w2の定義
                             e[[16, 17], 0] = [0, 0]
 
                             # z_1の定義
@@ -1799,13 +1809,13 @@ class MpcController(Object):
                             # delta_3の定義
                             e[[14, 15], 0] = [2, 0]
 
-                            # delta_t1の定義
+                            # delta_d_primeの定義
                             e[[16, 17], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_t2の定義
+                            # delta_w1の定義
                             e[[18, 19], 0] = [3, -1]
 
-                            # delta_t3の定義
+                            # delta_w2の定義
                             target_idx = -1
                             target_pos = float('inf')
                             for direction_id in range(1, self.num_roads):
@@ -1841,9 +1851,12 @@ class MpcController(Object):
                             
                             if target_idx == -1:
                                 e[[20, 21], 0] = [0, 0]
-                            else:
-                                # e[[20, 21], 0] = [3, 0]
+                            elif self.definition == 1:
+                                e[[20, 21], 0] = [3, 0]
+                            elif self.definition == 2:
                                 e[[20, 21], 0] = [2, 0]
+                            else:
+                                raise ValueError('Invalid definition value.')
                             
                             # z_1の定義
                             e[22:26, 0] = [0, 0, p_max, -p_min]
@@ -1920,9 +1933,9 @@ class MpcController(Object):
             # 'delta_1': [],
             # 'delta_2': [],
             # 'delta_3': [],
-            # 'delta_t1': [],
-            'delta_t2': [],
-            'delta_t3': [],
+            # 'delta_d_prime': [],
+            'delta_w1': [],
+            'delta_w2': [],
             'delta_c': [],
             'phi': [],
         }
@@ -2043,9 +2056,9 @@ class MpcController(Object):
                             # variable_list_map['delta_d'].append(count + 1)
                             variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
-                            # variable_list_map['delta_t1'].append(count + 4)
-                            variable_list_map['delta_t2'].append(count + 5)
-                            variable_list_map['delta_t3'].append(count + 6)
+                            # variable_list_map['delta_d_prime'].append(count + 4)
+                            variable_list_map['delta_w1'].append(count + 5)
+                            variable_list_map['delta_w2'].append(count + 6)
                             variable_list_map['delta_c'].append(count + 7)
 
                             count += 7
@@ -2056,9 +2069,9 @@ class MpcController(Object):
                             # variable_list_map['delta_f'].append(count + 3)
                             # variable_list_map['delta_1'].append(count + 4)
                             # variable_list_map['delta_2'].append(count + 5)
-                            # variable_list_map['delta_t1'].append(count + 6)
-                            variable_list_map['delta_t2'].append(count + 7)
-                            variable_list_map['delta_t3'].append(count + 8)
+                            # variable_list_map['delta_d_prime'].append(count + 6)
+                            variable_list_map['delta_w1'].append(count + 7)
+                            variable_list_map['delta_w2'].append(count + 8)
                             variable_list_map['delta_c'].append(count + 9)
 
                             count += 9
@@ -2076,9 +2089,9 @@ class MpcController(Object):
                             # variable_list_map['delta_d'].append(count + 1)
                             # variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
-                            # variable_list_map['delta_t1'].append(count + 4)
-                            variable_list_map['delta_t2'].append(count + 5)
-                            variable_list_map['delta_t3'].append(count + 6)
+                            # variable_list_map['delta_d_prime'].append(count + 4)
+                            variable_list_map['delta_w1'].append(count + 5)
+                            variable_list_map['delta_w2'].append(count + 6)
                             variable_list_map['delta_c'].append(count + 7)
 
                             count += 7
@@ -2094,9 +2107,9 @@ class MpcController(Object):
                             # variable_list_map['delta_b'].append(count + 4)
                             # variable_list_map['delta_1'].append(count + 5)
                             # variable_list_map['delta_2'].append(count + 6)
-                            # variable_list_map['delta_t1'].append(count + 7)
-                            variable_list_map['delta_t2'].append(count + 8)
-                            variable_list_map['delta_t3'].append(count + 9)
+                            # variable_list_map['delta_d_prime'].append(count + 7)
+                            variable_list_map['delta_w1'].append(count + 8)
+                            variable_list_map['delta_w2'].append(count + 9)
                             variable_list_map['delta_c'].append(count + 10)
 
                             count += 10
@@ -2114,9 +2127,9 @@ class MpcController(Object):
                             # variable_list_map['delta_1'].append(count + 6)
                             # variable_list_map['delta_2'].append(count + 7)
                             # variable_list_map['delta_3'].append(count + 8)
-                            # variable_list_map['delta_t1'].append(count + 9)
-                            variable_list_map['delta_t2'].append(count + 10)
-                            variable_list_map['delta_t3'].append(count + 11)
+                            # variable_list_map['delta_d_prime'].append(count + 9)
+                            variable_list_map['delta_w1'].append(count + 10)
+                            variable_list_map['delta_w2'].append(count + 11)
                             variable_list_map['delta_c'].append(count + 12)
 
                             count += 12
@@ -2373,17 +2386,17 @@ class MpcController(Object):
         f_matrix = np.zeros(self.num_variables)
 
         if self.objective_function_type == 'waiting_vehicles':
-            delta_t2_list = self.variable_list_map['delta_t2']
-            delta_t3_list = self.variable_list_map['delta_t3']
+            delta_w1_list = self.variable_list_map['delta_w1']
+            delta_w2_list = self.variable_list_map['delta_w2']
             v_length = self.variable_length_map['v']
 
-            # number of waiting vehicles = sum of delta_t2 + delta_t3
+            # number of waiting vehicles = sum of delta_w1 + delta_w2
             for step in range(1, self.horizon + 1):
-                for idx in range(len(delta_t2_list)):
-                    f_matrix[v_length * (step - 1) + delta_t2_list[idx]] = 1
+                for idx in range(len(delta_w1_list)):
+                    f_matrix[v_length * (step - 1) + delta_w1_list[idx]] = 1
 
-                for idx in range(len(delta_t3_list)):
-                    f_matrix[v_length * (step - 1) + delta_t3_list[idx]] = 1
+                for idx in range(len(delta_w2_list)):
+                    f_matrix[v_length * (step - 1) + delta_w2_list[idx]] = 1
         else:
             raise NotImplementedError(f"Not implemented objective_function_type: {self.objective_function_type}")
             
