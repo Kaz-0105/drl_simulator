@@ -107,6 +107,7 @@ class MpcController(Object):
         self.remained_steps = mpc_info['remained_steps']
         self.min_successive_steps = mpc_info['min_successive_steps']
         self.num_max_changes = mpc_info['num_max_changes']
+        self.branch_gap = mpc_info['branch_gap']
 
         # set properties regarding objective function
         self.objective_function_type = mpc_info['objective_function']['type']
@@ -119,9 +120,6 @@ class MpcController(Object):
         
         if self.objective_function_type == 'waiting_vehicles' and self.queue_measurement_type == 'ema':
             self.ema_alpha = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['ema']['alpha']
-        
-        if self.objective_function_type == 'waiting_vehicles' and self.leader_detection_type == 'multiple':
-            self.gap = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['multiple']['gap']
 
         self.signal_change_penalty_type = mpc_info['objective_function']['signal_change']['type']
         self.signal_change_penalty_weight = mpc_info['objective_function']['signal_change']['weight']
@@ -181,8 +179,9 @@ class MpcController(Object):
                     params['D_b'] = {}
                     for lane_str in lane_list:
                         params['D_b'][lane_str] = params['p_s'][lane_str] - branching_point
-                        if self.leader_detection_type == 'multiple':
-                            params['D_b'][lane_str] -= self.gap if params['D_b'][lane_str] - self.gap > 0 else 0
+
+                        # adjust D_b by branch_gap
+                        params['D_b'][lane_str] -= self.branch_gap if params['D_b'][lane_str] - self.branch_gap > 0 else 0
 
                 # set other parameters
                 params['v_max'] = road.get('max_speed') * 1000 / 3600

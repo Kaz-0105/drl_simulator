@@ -74,6 +74,7 @@ mpc:
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
   num_max_changes: 1           # maximum number of phase changes within a single optimization 
+  branch_gap: 1                # to avoid errors between vissim and mpc regarding the branching point
   bc_buffer: 
     flg: false                  # flg of saving data for behavioral cloning
     size: 1000                  # size of dataset for each buffer file
@@ -92,8 +93,6 @@ mpc:
           alpha: 0.3
       leader_detection:
         type: multiple                 # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
-        multiple:
-          gap: 1                 # from where the controller search all route for leader vehicle (meters)
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
       weight: 10                  # weights for the term of signal change penalty
