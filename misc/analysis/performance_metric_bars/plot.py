@@ -25,7 +25,6 @@ if config_yaml['figure']['wild_card_type'] == 'num_phases':
 else:
     raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
 
-
 # set data_dir_path
 data_dir_path = root_dir_path / 'data'
 

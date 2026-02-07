@@ -1,5 +1,5 @@
 figure:
-  performance_metric: average_queue # average_queue, average_delay, max_queue, max_delay, calc_time
+  performance_metric: max_queue # average_queue, average_delay, max_queue, max_delay, calc_time
   wild_card_type: num_phases # num_phases only
   plot_flg:
     mpc: true
@@ -18,7 +18,7 @@ mpc:
     network_id: 1               # network architecture id for behavioral cloning
   phases:
     3-road: 4                     # only 4
-    4-road: 4                     # 4, 8, or 17
+    4-road: null                     # 4, 8, or 17
     5-road: 10                    # only 10
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles

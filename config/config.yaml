@@ -1,6 +1,6 @@
 simulator :
-  control_method : scoot              # mpc, drl, scoot
-  layout_name : 7-4-1               # layout folder name
+  control_method : mpc              # mpc, drl, scoot
+  layout_name : 7-4-1            # layout folder name
   inflow_name : balanced_800          # inflow file name
   num_simulations: 1                # number of simulations to run
   simulation_time: 500              # simulation time for each simulation (seconds)
@@ -74,7 +74,7 @@ mpc:
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
   num_max_changes: 1           # maximum number of phase changes within a single optimization 
-  branch_gap: 1                # to avoid errors between vissim and mpc regarding the branching point
+  branch_gap: 5                # to avoid errors between vissim and mpc regarding the branching point
   bc_buffer: 
     flg: false                  # flg of saving data for behavioral cloning
     size: 1000                  # size of dataset for each buffer file
@@ -86,8 +86,8 @@ mpc:
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:
-      definition: 2             # 1: delta_q2 is calculated with using delta_p, 2: delta_q2 is calculated without using delta_p
-      range_type: common        # common: use common range for all roads, separate: use separate range for each route 
+      definition: 1             # 1: delta_q2 is calculated with using delta_p, 2: delta_q2 is calculated without using delta_p
+      range_type: separate       # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
         type: ema               # vissim: use vissim's built-in function, ema: use exponential moving average
         ema:  
