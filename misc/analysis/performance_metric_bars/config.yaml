@@ -23,7 +23,7 @@ mpc:
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:
-      definition_type: 2        # 1: delta_q2 is calculated with using delta_p, 2: delta_q2 is calculated without using delta_p
+      definition: 2        # 1: delta_q2 is calculated with using delta_p, 2: delta_q2 is calculated without using delta_p
       range_type: common        # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
         type: ema                 # vissim: use vissim's built-in function, ema: use exponential moving average
