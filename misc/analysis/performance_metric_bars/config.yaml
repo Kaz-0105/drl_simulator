@@ -1,10 +1,9 @@
 figure:
-  performance_metric: average_delay # average_queue, average_delay, max_queue, max_delay, calc_time, speed
   plot_flg:
     mpc:
       4-phase: true
       8-phase: true
-      17-phase: true
+      17-phase: false
     scoot: true
 
 mpc:

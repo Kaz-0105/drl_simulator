@@ -150,7 +150,10 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
         # set performance_metric_list and push to bar_graph_data
         for control_method, config_paths in path_info.items():
             if control_method == 'mpc':
-                for wild_card_value, config_path in config_paths.items():           
+                for num_phases, config_path in config_paths.items():  
+                    if not config_yaml['figure']['plot_flg']['mpc'][f"{num_phases}-phase"]:
+                        continue       
+
                     performance_metric_list = [0] * num_intersections
                     for intersection_dir_path in config_path.glob('intersection_*'):
                         intersection_id = int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1))
@@ -172,7 +175,7 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                         
-                    bar_graph_data[f"{wild_card_value}-phase MPC"] = performance_metric_list
+                    bar_graph_data[f"{num_phases}-phase MPC"] = performance_metric_list
                     
             elif control_method == 'scoot':
                 config_path = config_paths
@@ -180,6 +183,9 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
                     continue
 
                 if performance_metric == 'calc_time':
+                    continue
+
+                if not config_yaml['figure']['plot_flg']['scoot']:
                     continue
 
                 performance_metric_list = [0] * num_intersections
