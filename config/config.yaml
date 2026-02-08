@@ -86,7 +86,7 @@ mpc:
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:
-      definition: 3             # 1: delta_w2 is calculated with using delta_p, 2: delta_w2 is calculated without using delta_p, 3: delta_w1 and delta_w2 are both calculated without using delta_p
+      definition: 4             # 1: delta_w2 is calculated with using delta_p, 2: delta_w2 is calculated without using delta_p, 3: delta_w1 and delta_w2 are both calculated without using delta_p 4: devide delta_w2 into separete binaries for before branching point and after branching point
       range_type: separate       # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
         type: ema               # vissim: use vissim's built-in function, ema: use exponential moving average
