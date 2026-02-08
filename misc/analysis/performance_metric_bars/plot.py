@@ -118,40 +118,69 @@ analysis_dir_path = data_dir_path / 'analysis'
 layout_dir_path = root_dir_path / 'layout'
 
 # set bar_graph_df_map
-bar_graph_df_map = {}
-performance_metric = config_yaml['figure']['performance_metric']
-for keys, path_info in target_dir_paths_map.items():
-    # set bar_graph_data
-    bar_graph_data = {
-        'intersection_id': [],
-        'intersection_name': [],
-    }
+metric_bar_graph_df_map = {}
+for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_delay', 'calc_time', 'speed']:
+    metric_bar_graph_df_map[performance_metric] = {}
+    for keys, path_info in target_dir_paths_map.items():
+        # set bar_graph_data
+        bar_graph_data = {
+            'intersection_id': [],
+            'intersection_name': [],
+        }
 
-    # set intersection_name_map
-    layout_name = keys[0]
-    with open(layout_dir_path / layout_name / 'intersections.csv', 'r', encoding='utf-8') as f:
-        intersections_df = pd.read_csv(f)
-    intersection_name_map = {}
-    for _, intersection_row in intersections_df.iterrows():
-        if 'name' in intersection_row:
-            intersection_name_map[int(intersection_row['id'])] = intersection_row['name']
-        else:
-            intersection_name_map[int(intersection_row['id'])] = f"ID:{int(intersection_row['id'])}"
-    
-    # set num_intersections
-    num_intersections = len(intersection_name_map)
+        # set intersection_name_map
+        layout_name = keys[0]
+        with open(layout_dir_path / layout_name / 'intersections.csv', 'r', encoding='utf-8') as f:
+            intersections_df = pd.read_csv(f)
+        intersection_name_map = {}
+        for _, intersection_row in intersections_df.iterrows():
+            if 'name' in intersection_row:
+                intersection_name_map[int(intersection_row['id'])] = intersection_row['name']
+            else:
+                intersection_name_map[int(intersection_row['id'])] = f"ID:{int(intersection_row['id'])}"
+        
+        # set num_intersections
+        num_intersections = len(intersection_name_map)
 
-    # updata bar_graph_data
-    bar_graph_data['intersection_id'] = list(range(1, num_intersections + 1))
-    intersection_name_list = [''] * num_intersections
-    for intersection_id in range(1, num_intersections + 1):
-        intersection_name_list[intersection_id - 1] = intersection_name_map[intersection_id]
-    bar_graph_data['intersection_name'] = intersection_name_list
+        # updata bar_graph_data
+        bar_graph_data['intersection_id'] = list(range(1, num_intersections + 1))
+        intersection_name_list = [''] * num_intersections
+        for intersection_id in range(1, num_intersections + 1):
+            intersection_name_list[intersection_id - 1] = intersection_name_map[intersection_id]
+        bar_graph_data['intersection_name'] = intersection_name_list
 
-    # set performance_metric_list and push to bar_graph_data
-    for control_method, config_paths in path_info.items():
-        if control_method == 'mpc':
-            for wild_card_value, config_path in config_paths.items():           
+        # set performance_metric_list and push to bar_graph_data
+        for control_method, config_paths in path_info.items():
+            if control_method == 'mpc':
+                for wild_card_value, config_path in config_paths.items():           
+                    performance_metric_list = [0] * num_intersections
+                    for intersection_dir_path in config_path.glob('intersection_*'):
+                        intersection_id = int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1))
+                        with open(intersection_dir_path / f"{performance_metric}.csv", 'r', encoding='utf-8') as f:
+                            performance_metric_df = pd.read_csv(f)
+                        
+                        if performance_metric == 'average_queue':
+                            performance_metric_list[intersection_id - 1] = float(performance_metric_df['queue_length'].mean())
+                        elif performance_metric == 'max_queue':
+                            performance_metric_list[intersection_id - 1] = float(performance_metric_df['queue_length'].mean())
+                        elif performance_metric == 'average_delay':
+                            performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
+                        elif performance_metric == 'max_delay':
+                            performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
+                        elif performance_metric == 'calc_time':
+                            performance_metric_list[intersection_id - 1] = float(performance_metric_df['calculation_time'].mean())
+                        elif performance_metric == 'speed':
+                            performance_metric_list[intersection_id - 1] = float(performance_metric_df['value'].mean())
+                        else:
+                            raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                        
+                    bar_graph_data[f"{wild_card_value}-phase MPC"] = performance_metric_list
+                    
+            elif control_method == 'scoot':
+                config_path = config_paths
+                if config_path is None:
+                    continue
+
                 performance_metric_list = [0] * num_intersections
                 for intersection_dir_path in config_path.glob('intersection_*'):
                     intersection_id = int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1))
@@ -167,109 +196,86 @@ for keys, path_info in target_dir_paths_map.items():
                     elif performance_metric == 'max_delay':
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
                     elif performance_metric == 'calc_time':
-                        performance_metric_list[intersection_id - 1] = float(performance_metric_df['calculation_time'].mean())
+                        continue
+                    elif performance_metric == 'speed':
+                        performance_metric_list[intersection_id - 1] = float(performance_metric_df['value'].mean())
                     else:
                         raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-                    
-                bar_graph_data[f"{wild_card_value}-phase MPC"] = performance_metric_list
                 
-        elif control_method == 'scoot':
-            config_path = config_paths
-            if config_path is None:
-                continue
+                bar_graph_data[control_method.upper()] = performance_metric_list
 
-            performance_metric_list = [0] * num_intersections
-            for intersection_dir_path in config_path.glob('intersection_*'):
-                intersection_id = int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1))
-                with open(intersection_dir_path / f"{performance_metric}.csv", 'r', encoding='utf-8') as f:
-                    performance_metric_df = pd.read_csv(f)
-                
-                if performance_metric == 'average_queue':
-                    performance_metric_list[intersection_id - 1] = float(performance_metric_df['queue_length'].mean())
-                elif performance_metric == 'max_queue':
-                    performance_metric_list[intersection_id - 1] = float(performance_metric_df['queue_length'].mean())
-                elif performance_metric == 'average_delay':
-                    performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
-                elif performance_metric == 'max_delay':
-                    performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
-                elif performance_metric == 'calc_time':
-                    performance_metric_list[intersection_id - 1] = float(performance_metric_df['calculation_time'].mean())
-                else:
-                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-            
-            bar_graph_data[control_method.upper()] = performance_metric_list
-
-        else: 
-            raise NotImplementedError(f"Not supported control method: {control_method}")
-    
-    # convert to DataFrame
-    bar_graph_df_map[keys] = pd.DataFrame(bar_graph_data)
+            else: 
+                raise NotImplementedError(f"Not supported control method: {control_method}")
+        
+        # convert to DataFrame
+        metric_bar_graph_df_map[performance_metric][keys] = pd.DataFrame(bar_graph_data)
 
 # make figures
-for keys, bar_graph_df in bar_graph_df_map.items():
-    # set save_dir_path
-    save_dir_path = analysis_dir_path
-    save_dir_path /= keys[0]  # layout_name
-    save_dir_path /= keys[1]  # inflow_name
-    save_dir_path /= f"simulator_{keys[2]}"  # simulator_id
-    save_dir_path /= 'performance_metric_bars'
-    save_dir_path.mkdir(parents=True, exist_ok=True)
+for performance_metric, bar_graph_df_map in metric_bar_graph_df_map.items():
+    for keys, bar_graph_df in bar_graph_df_map.items():
+        # set save_dir_path
+        save_dir_path = analysis_dir_path
+        save_dir_path /= keys[0]  # layout_name
+        save_dir_path /= keys[1]  # inflow_name
+        save_dir_path /= f"simulator_{keys[2]}"  # simulator_id
+        save_dir_path /= 'performance_metric_bars'
+        save_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # set figure and axis
-    fig, ax = plt.subplots()
+        # set figure and axis
+        fig, ax = plt.subplots()
 
-    # set figure_title    
-    figure_title = f"Performance Metric Comparison: {performance_metric.replace('_', ' ').title()}"
+        # set figure_title    
+        figure_title = f"Performance Metric Comparison: {performance_metric.replace('_', ' ').title()}"
 
-    # set x_axis_label
-    if keys[0] == '7-4-1':
-        x_axis_label = 'Turning Rate (Left, Straight, Right)'
-    else:
-        x_axis_label = 'Intersection Name'
+        # set x_axis_label
+        if keys[0] == '7-4-1':
+            x_axis_label = 'Turning Rate (Left, Straight, Right)'
+        else:
+            x_axis_label = 'Intersection Name'
 
-    # set y_axis_label
-    y_axis_label = performance_metric.replace('_', ' ').title()
-    if performance_metric in ['average_queue', 'max_queue']:
-        y_axis_label = f"{y_axis_label} [m]"
-    elif performance_metric in ['average_delay', 'max_delay', 'calc_time']:
-        y_axis_label = f"{y_axis_label} [s]" 
-    else:
-        raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-    
-    # set legend_title
-    legend_title = 'Control Method'
-    
-    # set plot_df
-    plot_df = bar_graph_df.melt(
-        id_vars=['intersection_name'],
-        value_vars=[col for col in bar_graph_df.columns if col not in ['intersection_id', 'intersection_name']],
-        var_name=legend_title,
-        value_name=y_axis_label,
-    )
+        # set y_axis_label
+        y_axis_label = performance_metric.replace('_', ' ').title()
+        if performance_metric in ['average_queue', 'max_queue']:
+            y_axis_label = f"{y_axis_label} [m]"
+        elif performance_metric in ['average_delay', 'max_delay', 'calc_time']:
+            y_axis_label = f"{y_axis_label} [s]" 
+        else:
+            raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+        
+        # set legend_title
+        legend_title = 'Control Method'
+        
+        # set plot_df
+        plot_df = bar_graph_df.melt(
+            id_vars=['intersection_name'],
+            value_vars=[col for col in bar_graph_df.columns if col not in ['intersection_id', 'intersection_name']],
+            var_name=legend_title,
+            value_name=y_axis_label,
+        )
 
-    # set method_order_list
-    method_order_list = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
-    for method in copy.deepcopy(method_order_list):
-        if method in bar_graph_df.columns:
-            continue
-        method_order_list.remove(method)
-    
-    # plot bar graph
-    ax = sns.barplot(
-        data=plot_df,
-        x='intersection_name',
-        y=y_axis_label,
-        hue=legend_title,
-        hue_order=method_order_list,
-    )
+        # set method_order_list
+        method_order_list = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
+        for method in copy.deepcopy(method_order_list):
+            if method in bar_graph_df.columns:
+                continue
+            method_order_list.remove(method)
+        
+        # plot bar graph
+        ax = sns.barplot(
+            data=plot_df,
+            x='intersection_name',
+            y=y_axis_label,
+            hue=legend_title,
+            hue_order=method_order_list,
+        )
 
-    ax.set_title(figure_title)
-    ax.set_xlabel(x_axis_label)
-    ax.set_ylabel(y_axis_label)
-    ax.legend(title=legend_title, loc='best')
-    
-    fig.tight_layout()
-    fig.savefig(save_dir_path / f"{performance_metric}_bars.png")
+        ax.set_title(figure_title)
+        ax.set_xlabel(x_axis_label)
+        ax.set_ylabel(y_axis_label)
+        ax.legend(title=legend_title, loc='best')
+        
+        fig.tight_layout()
+        fig.savefig(save_dir_path / f"{performance_metric}_bars.png")
     
 
 
