@@ -1169,8 +1169,14 @@ class MpcController(Object):
                             d3[7, 3] = - h6_max
 
                             # delta_w1(4)の定義
-                            d3[8, [1, 3, 4]] = [1, 1, 3]
-                            d3[9, [1, 3, 4]] = [-1, -1, -1]
+                            if self.definition in [1, 2]:
+                                d3[8, [1, 3, 4]] = [1, 1, 3]
+                                d3[9, [1, 3, 4]] = [-1, -1, -1]
+                            elif self.definition == 3:
+                                d3[8, [3, 4]] = [1, 2]
+                                d3[9, [3, 4]] = [-1, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             col_delta_w1 = 4
 
@@ -1212,8 +1218,14 @@ class MpcController(Object):
                             d3[11, 5] = - h6_max
 
                             # delta_w1(6)の定義
-                            d3[12, [1, 5, 6]] = [1, 1, 3]
-                            d3[13, [1, 5, 6]] = [-1, -1, -1]
+                            if self.definition in [1, 2]:
+                                d3[12, [1, 5, 6]] = [1, 1, 3]
+                                d3[13, [1, 5, 6]] = [-1, -1, -1]
+                            elif self.definition == 3:
+                                d3[12, [5, 6]] = [1, 2]
+                                d3[13, [5, 6]] = [-1, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             col_delta_w1 = 6
 
@@ -1330,8 +1342,14 @@ class MpcController(Object):
                             d3[7, 3] = - h6_max
 
                             # delta_w1(4)の定義
-                            d3[8, [1, 3, 4]] = [1, 1, 3]
-                            d3[9, [1, 3, 4]] = [-1, -1, -1]
+                            if self.definition in [1, 2]:
+                                d3[8, [1, 3, 4]] = [1, 1, 3]
+                                d3[9, [1, 3, 4]] = [-1, -1, -1]
+                            elif self.definition == 3:
+                                d3[8, [3, 4]] = [1, 2]
+                                d3[9, [3, 4]] = [-1, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             col_delta_w1 = 4
 
@@ -1380,8 +1398,14 @@ class MpcController(Object):
                             d3[13, 6] = - h6_max
 
                             # delta_w1(7)の定義
-                            d3[14, [1, 6, 7]] = [1, 1, 3]
-                            d3[15, [1, 6, 7]] = [-1, -1, -1]
+                            if self.definition in [1, 2]:
+                                d3[14, [1, 6, 7]] = [1, 1, 3]
+                                d3[15, [1, 6, 7]] = [-1, -1, -1]
+                            elif self.definition == 3:
+                                d3[14, [6, 7]] = [1, 2]
+                                d3[15, [6, 7]] = [-1, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             col_delta_w1 = 7
 
@@ -1445,8 +1469,14 @@ class MpcController(Object):
                             d3[17, 8] = - h6_max
 
                             # delta_w1(9)の定義
-                            d3[18, [1, 8, 9]] = [1, 1, 3]
-                            d3[19, [1, 8, 9]] = [-1, -1, -1]
+                            if self.definition in [1, 2]:
+                                d3[18, [1, 8, 9]] = [1, 1, 3]
+                                d3[19, [1, 8, 9]] = [-1, -1, -1]
+                            elif self.definition == 3:
+                                d3[18, [8, 9]] = [1, 2]
+                                d3[19, [8, 9]] = [-1, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             col_delta_w1 = 9
 
@@ -1612,7 +1642,13 @@ class MpcController(Object):
                             e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
                             # delta_w1の定義
-                            e[[8, 9], 0] = [3, -1]
+                            if self.definition in [1, 2]:
+                                e[[8, 9], 0] = [3, -1]
+                            elif self.definition == 3:
+                                e[[8, 9], 0] = [2, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
+                            
 
                             # delta_w2の定義
                             e[[10, 11], 0] = [0, 0]
@@ -1645,7 +1681,12 @@ class MpcController(Object):
                             e[[10, 11], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
                             # delta_w1の定義
-                            e[[12, 13], 0] = [3, -1]
+                            if self.definition in [1, 2]:
+                                e[[12, 13], 0] = [3, -1]
+                            elif self.definition == 3:
+                                e[[12, 13], 0] = [2, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             # delta_w2の定義
                             target_idx = -1
@@ -1728,7 +1769,12 @@ class MpcController(Object):
                             e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
                             # delta_w1の定義
-                            e[[8, 9], 0] = [3, -1]
+                            if self.definition in [1, 2]:
+                                e[[8, 9], 0] = [3, -1]
+                            elif self.definition == 3:
+                                e[[8, 9], 0] = [2, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             # delta_w2の定義
                             e[[10, 11], 0] = [0, 0]
@@ -1765,7 +1811,12 @@ class MpcController(Object):
                             e[[12, 13], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
                             # delta_w1の定義
-                            e[[14, 15], 0] = [3, -1]
+                            if self.definition in [1, 2]:
+                                e[[14, 15], 0] = [3, -1]
+                            elif self.definition == 3:
+                                e[[14, 15], 0] = [2, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             # delta_w2の定義
                             e[[16, 17], 0] = [0, 0]
@@ -1813,7 +1864,12 @@ class MpcController(Object):
                             e[[16, 17], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
                             # delta_w1の定義
-                            e[[18, 19], 0] = [3, -1]
+                            if self.definition in [1, 2]:
+                                e[[18, 19], 0] = [3, -1]
+                            elif self.definition == 3:
+                                e[[18, 19], 0] = [2, -1]
+                            else:
+                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             # delta_w2の定義
                             target_idx = -1
