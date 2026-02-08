@@ -1,8 +1,10 @@
 figure:
-  performance_metric: max_queue # average_queue, average_delay, max_queue, max_delay, calc_time, speed
-  wild_card_type: num_phases # num_phases only
+  performance_metric: average_delay # average_queue, average_delay, max_queue, max_delay, calc_time, speed
   plot_flg:
-    mpc: true
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: true
     scoot: true
 
 mpc:
@@ -12,14 +14,6 @@ mpc:
   min_successive_steps: 4      # minimum steps for consecutive phases
   num_max_changes: 1           # maximum number of phase changes within a single optimization 
   branch_gap: 1                # to avoid errors between vissim and mpc regarding the branching point
-  bc_buffer: 
-    flg: false                  # flg of saving data for behavioral cloning
-    size: 1000                  # size of dataset for each buffer file
-    network_id: 1               # network architecture id for behavioral cloning
-  phases:
-    3-road: 4                     # only 4
-    4-road: null                     # 4, 8, or 17
-    5-road: 10                    # only 10
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:

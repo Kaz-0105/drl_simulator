@@ -12,18 +12,11 @@ import re
 
 from libs.figure_config import initFigureConfig
 
-
 # configuration
 initFigureConfig()
 config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_bars' / 'config.yaml'
 with open(config_file_path, 'r', encoding='utf-8') as f:
     config_yaml = yaml.safe_load(f)
-
-# set wild_card_keys
-if config_yaml['figure']['wild_card_type'] == 'num_phases':
-    wild_card_keys = ['mpc', 'phases', '4-road']
-else:
-    raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
 
 # set data_dir_path
 data_dir_path = root_dir_path / 'data'
@@ -32,15 +25,15 @@ data_dir_path = root_dir_path / 'data'
 performance_metrics_dir_path = data_dir_path / 'performance_metrics'
 
 # set target_dir_path_map
-def getSubSetFlg(sub_config, main_config, wild_card_key_list=None, key_list=[]):
-    for sub_key, sub_value in sub_config.items():
+def checkCofigMatch(main_config, sub_config, wild_card_key_list=None, key_list=[]):
+    for main_key, main_value in main_config.items():
         tmp_keys = copy.deepcopy(key_list)
-        tmp_keys.append(sub_key)
+        tmp_keys.append(main_key)
 
-        main_value = main_config[sub_key]
+        sub_value = sub_config[main_key]
 
-        if isinstance(sub_value, dict):
-            if getSubSetFlg(sub_value, main_value, wild_card_key_list, tmp_keys):
+        if isinstance(main_value, dict):
+            if checkCofigMatch(main_value, sub_value, wild_card_key_list, tmp_keys):
                 continue
             else:
                 return False
@@ -48,7 +41,7 @@ def getSubSetFlg(sub_config, main_config, wild_card_key_list=None, key_list=[]):
         if wild_card_key_list is not None and tmp_keys == wild_card_key_list:
             continue
 
-        if sub_value != main_config[sub_key]:
+        if main_value != sub_config[main_key]:
             return False
         
     return True
@@ -68,11 +61,14 @@ for simulator_dir_path in performance_metrics_dir_path.rglob('simulator_*'):
         if not config_yaml['figure']['plot_flg'][control_method]:
             continue
         
-        # set wild_card_exist_flg
-        wild_card_exist_flg = wild_card_keys is not None and wild_card_keys[0] == control_method
-        
         # update path_info
-        path_info[control_method] = {} if wild_card_exist_flg else None
+        if control_method == 'mpc':
+            path_info[control_method] = {}
+        elif control_method == 'scoot':
+            path_info[control_method] = None
+        else:
+            raise NotImplementedError(f"Not supported control method: {control_method}")
+        
         control_method_dir_path = simulator_dir_path / control_method
         for config_dir_path in control_method_dir_path.glob('config_*'):
             # set main_config_yaml and sub_config_yaml
@@ -80,29 +76,34 @@ for simulator_dir_path in performance_metrics_dir_path.rglob('simulator_*'):
             with open(config_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
                 sub_config_yaml = yaml.safe_load(f)
             
-            # check if it is sub set or not
-            if wild_card_exist_flg:
-                sub_set_flg = getSubSetFlg(sub_config_yaml, main_config_yaml, wild_card_keys[1:])
+            # check if config match
+            if control_method == 'mpc':
+                wild_card_key_list = ['mpc', 'phases', '4-road']
+                match_flg = checkCofigMatch(main_config_yaml, sub_config_yaml, wild_card_key_list)
+            elif control_method == 'scoot':
+                match_flg = checkCofigMatch(main_config_yaml, sub_config_yaml)
             else:
-                sub_set_flg = getSubSetFlg(sub_config_yaml, main_config_yaml)
+                raise NotImplementedError(f"Not supported control method: {control_method}")
 
             # skip if it is not sub set
-            if not sub_set_flg:
+            if not match_flg:
                 continue
 
             # increment match_config_count
             match_config_count += 1
             
             # push to path_info
-            if wild_card_exist_flg:
-                # set wild_card_value
-                wild_card_value = sub_config_yaml
-                for wild_card_key in wild_card_keys[1:]:
-                    wild_card_value = wild_card_value[wild_card_key]
+            if control_method == 'mpc':
+                # set num_phases
+                num_phases = sub_config_yaml
+                for wild_card_key in wild_card_key_list:
+                    num_phases = num_phases[wild_card_key]
 
-                path_info[control_method][wild_card_value] = config_dir_path
+                path_info[control_method][num_phases] = config_dir_path
+            elif control_method == 'scoot':
+                path_info[control_method] = config_dir_path
             else:
-                path_info[control_method] = config_dir_path  
+                raise NotImplementedError(f"Not supported control method: {control_method}")
 
     # skip if no matched configuration
     if match_config_count == 0:
@@ -149,7 +150,7 @@ for keys, path_info in target_dir_paths_map.items():
 
     # set performance_metric_list and push to bar_graph_data
     for control_method, config_paths in path_info.items():
-        if isinstance(config_paths, dict):
+        if control_method == 'mpc':
             for wild_card_value, config_path in config_paths.items():           
                 performance_metric_list = [0] * num_intersections
                 for intersection_dir_path in config_path.glob('intersection_*'):
@@ -169,11 +170,10 @@ for keys, path_info in target_dir_paths_map.items():
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['calculation_time'].mean())
                     else:
                         raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-                if config_yaml['figure']['wild_card_type'] == 'num_phases':
-                    bar_graph_data[f"{wild_card_value}-phase MPC"] = performance_metric_list
-                else:
-                    raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
-        else:
+                    
+                bar_graph_data[f"{wild_card_value}-phase MPC"] = performance_metric_list
+                
+        elif control_method == 'scoot':
             config_path = config_paths
             if config_path is None:
                 continue
@@ -197,8 +197,10 @@ for keys, path_info in target_dir_paths_map.items():
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
             
-            if config_yaml['figure']['wild_card_type'] == 'num_phases':
-                bar_graph_data[control_method.upper()] = performance_metric_list
+            bar_graph_data[control_method.upper()] = performance_metric_list
+
+        else: 
+            raise NotImplementedError(f"Not supported control method: {control_method}")
     
     # convert to DataFrame
     bar_graph_df_map[keys] = pd.DataFrame(bar_graph_data)
@@ -235,10 +237,7 @@ for keys, bar_graph_df in bar_graph_df_map.items():
         raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
     
     # set legend_title
-    if config_yaml['figure']['wild_card_type'] == 'num_phases':
-        legend_title = 'Control Method'
-    else:
-        raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
+    legend_title = 'Control Method'
     
     # set plot_df
     plot_df = bar_graph_df.melt(
@@ -249,14 +248,11 @@ for keys, bar_graph_df in bar_graph_df_map.items():
     )
 
     # set method_order_list
-    if config_yaml['figure']['wild_card_type'] == 'num_phases':
-        method_order_list = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
-        for method in copy.deepcopy(method_order_list):
-            if method in bar_graph_df.columns:
-                continue
-            method_order_list.remove(method)
-    else:
-        raise NotImplementedError(f"Not supported wild card type: {config_yaml['figure']['wild_card_type']}")
+    method_order_list = ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']
+    for method in copy.deepcopy(method_order_list):
+        if method in bar_graph_df.columns:
+            continue
+        method_order_list.remove(method)
     
     # plot bar graph
     ax = sns.barplot(
