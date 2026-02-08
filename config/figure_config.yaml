@@ -1,0 +1,38 @@
+size: [16, 9]
+dpi: 
+  save: 100
+  display: 100
+font: 
+  family: sans # sans, serif
+  mathtext: regular
+  size: 18
+axes:
+  title:
+    size: 24
+    weight: normal # normal, bold
+  label:
+    size: 20
+    weight: normal # normal, bold
+  linewidth: 3
+  grid:
+    flg: true
+    style: --
+    alpha: 0.5
+  spines:
+    top: true
+    right: true
+legend: 
+  fontsize: 20
+ticks: 
+  label:
+    size: 20
+  direction: in # in, out, inout
+  major:
+    width: 3
+    size: 8
+  minor:
+    width: 1.5
+    size: 4
+lines:
+  width: 2
+  markersize: 6

@@ -24,29 +24,25 @@ class Simulation(Common):
         self.current_time = self.com.AttValue('SimSec')
 
         # set other parameters
-        simulation_info = self.config.get('simulator_info')
-        self.control_method = simulation_info['control_method']
-        self.layout_name = simulation_info['layout_name']
-        self.inflow_name = simulation_info['inflow_name']
+        simulator_info = self.config.get('simulator_info')
+        self.control_method = simulator_info['control_method']
+        self.layout_name = simulator_info['layout_name']
+        self.inflow_name = simulator_info['inflow_name']
 
         if self.control_method in ['drl', 'bc']:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.end_time = simulation_info['simulation_time']
-        self.time_step = simulation_info['time_step']
+        self.end_time = simulator_info['simulation_time']
+        self.time_step = simulator_info['time_step']
         
-        self.debug_flg = simulation_info['debug']['flg']
+        self.debug_flg = simulator_info['debug']['flg']
         
-        # set random_seed
-        if simulation_info['seed']['is_random']:
-            self.random_seed = random.randint(100 + 1, 10000)
-        else:
-            self.random_seed = simulation_info['seed']['value'] 
+        self.seed = simulator_info['seed']
         return
         
     def _setParametersToVissim(self):
         # Vissimにパラメータを設定
-        self.com.SetAttValue('RandSeed', self.random_seed)
+        self.com.SetAttValue('RandSeed', self.seed)
         self.com.SetAttValue('SimPeriod', self.end_time + 1)
 
         # シミュレーションの速度について
@@ -85,7 +81,7 @@ class Simulation(Common):
             master_agents = self.network.master_agents
 
             # 最初のネットワーク更新と状態の取得
-            self.network.updateData()
+            self.network.update()
             local_agents.getState()
             
             while self.current_time < self.end_time:
@@ -96,7 +92,7 @@ class Simulation(Common):
                 self._runSingleStep()
 
                 # ネットワークの更新，状態・報酬の取得，学習データの作成
-                self.network.updateData()
+                self.network.update()
                 local_agents.getState()
                 local_agents.getReward()
                 local_agents.makeLearningData()
@@ -110,7 +106,7 @@ class Simulation(Common):
                     break
             
             # 最後のネットワーク更新
-            self.network.updateData()
+            self.network.update()
 
             # トータルの報酬を更新し，データを保存
             master_agents.updateSessionData()
@@ -124,7 +120,7 @@ class Simulation(Common):
 
             while self.current_time < self.end_time:
                 # ネットワークの更新
-                self.network.updateData()
+                self.network.update()
 
                 # MPCで最適な行動を計算
                 mpc_controllers.optimize()
@@ -142,7 +138,7 @@ class Simulation(Common):
                 bc_buffers.writeToFile()
             
             # 最後のネットワーク更新
-            self.network.updateData()
+            self.network.update()
         
         elif self.control_method == 'bc':
             # 行動クローンを行う
@@ -151,7 +147,7 @@ class Simulation(Common):
 
             while self.current_time < self.end_time:
                 # 最初のネットワークの更新
-                self.network.updateData()
+                self.network.update()
 
                 # 状態・報酬・行動を計算
                 bc_agent.updateState()
@@ -162,7 +158,7 @@ class Simulation(Common):
                 self._runSingleStep()
             
             # 最後のネットワーク更新
-            self.network.updateData()
+            self.network.update()
 
             # トータルの報酬を表示し、モデルを保存
             bc_agent.showTotalReward()
@@ -172,14 +168,14 @@ class Simulation(Common):
             scoot_controllers = self.network.scoot_controllers
 
             while self.current_time < self.end_time:
-                self.network.updateData()
+                self.network.update()
                 scoot_controllers.updateParameters()
                 self._runSingleStep()
             
-            self.network.updateData()
+            self.network.update()
 
-        # 評価指標の保存
-        self.network.saveData()
+        # save performance metrics
+        self.network.save()
         return
 
     def _runSingleStep(self):
@@ -213,3 +209,7 @@ class Simulation(Common):
         for signal_controller in self.network.signal_controllers.getAll():
             for signal_group in signal_controller.signal_groups.getAll():
                 signal_group.com.SetAttValue('SigState', 1)
+
+    @property
+    def network(self):
+        return self.vissim.network

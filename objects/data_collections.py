@@ -151,7 +151,7 @@ class DataCollectionMeasurements(Container):
         for data_collection_measurement_com in self.com.GetAll():
             self.add(DataCollectionMeasurement(data_collection_measurement_com, self))
     
-    def updateData(self):
+    def update(self):
         # Comオブジェクトからデータを更新
         measurement_ids = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('No')]
         veh_nums = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('Vehs(Current, Last, All)')]
@@ -159,7 +159,7 @@ class DataCollectionMeasurements(Container):
         # データを要素オブジェクトにセット（非同期処理）
         for index, measurement_id in enumerate(measurement_ids):
             measurement = self[measurement_id]
-            self.executor.submit(measurement.updateData, veh_nums[index])
+            self.executor.submit(measurement.update, veh_nums[index])
     
 class DataCollectionMeasurement(Object):
     def __init__(self, com, data_collection_measurements):
@@ -213,7 +213,7 @@ class DataCollectionMeasurement(Object):
         
         return
     
-    def updateData(self, num_vehs):
+    def update(self, num_vehs):
         self.current_num_vehs = 0 if num_vehs is None else num_vehs
         self.num_vehs_record.loc[len(self.num_vehs_record)] = [self.current_time, self.current_num_vehs]
         return

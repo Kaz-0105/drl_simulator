@@ -12,43 +12,36 @@ import pandas as pd
 
 class Roads(Container): 
     def __init__(self, upper_object, options = None):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
 
-        # 上位の紐づくオブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
-            # 上位の紐づくオブジェクトを取得
             self.network = upper_object
-
-            # 要素オブジェクトを初期化
             self.makeElements()
 
         elif upper_object.__class__.__name__ == 'Intersection':
-            # 上位の紐づくオブジェクトを取得
             self.intersection = upper_object
-
-            # タイプを設定（input/output）
             self.type = options['type']
-
-            # 要素オブジェクトを設定
             self.makeElements()
+        
+        else:
+            raise NotImplementedError(f"Not supported upper_object: {upper_object.__class__.__name__}")
+        
+        return
     
     def makeElements(self):
-        # 上位の紐づくオブジェクトによって分岐
         if self.has('network'):
             roads = self.config.get('roads')
             for _, road in roads.iterrows():
                 self.add(Road(road, self))
+
         elif self.has('intersection'):
-            # intersectionとroadの紐づけに関して
             tags = self.config.get('intersection_road_tags')
             target_tags = tags[(tags['intersection_id'] == self.intersection.get('id')) & (tags['type'] == self.type)]
 
-            network = self.intersection.getNetwork()
+            network = self.intersection.network
             roads = network.roads
 
             for _, tag in target_tags.iterrows():
@@ -85,11 +78,11 @@ class Roads(Container):
 
             return 
         
-    def updateData(self):
+    def update(self):
         for road in self.getAll():
-            road.updateData()
-        
+            road.update()
         self.executor.wait()        
+        return
 
 class Road(Object):
     def __init__(self, road, roads):
@@ -199,9 +192,9 @@ class Road(Object):
         else:
             return None
     
-    def updateData(self):
+    def update(self):
         # 紐づくlinkオブジェクトのデータを更新
-        self.links.updateData()
+        self.links.update()
 
         # linksのデータをroadにまとめる
         self.executor.submit(self.summarizeData)

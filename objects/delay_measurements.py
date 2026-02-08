@@ -110,7 +110,7 @@ class DelayMeasurements(Container):
             vehicle_routing_decision.delay_measurements.add(delay_measurement)
             delay_measurement.set('vehicle_routing_decision', vehicle_routing_decision)
     
-    def updateData(self):
+    def update(self):
         # Comオブジェクトからデータを取得
         delay_measurement_ids = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('No')]
         delays = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('VehDelay(Current, Last, All)')]
@@ -118,7 +118,7 @@ class DelayMeasurements(Container):
         # データを要素オブジェクトにセット（非同期処理）
         for index, delay_measurement_id in enumerate(delay_measurement_ids):
             delay_measurement = self[delay_measurement_id]
-            self.executor.submit(delay_measurement.updateData, delays[index])
+            self.executor.submit(delay_measurement.update, delays[index])
     
 
 class DelayMeasurement(Object):
@@ -167,7 +167,7 @@ class DelayMeasurement(Object):
     def current_time(self):
         return self.network.simulation.get('current_time')
     
-    def updateData(self, delay):
+    def update(self, delay):
         # current_delayを更新
         self.current_delay = self.current_delay if delay is None else round(delay, 1)
 

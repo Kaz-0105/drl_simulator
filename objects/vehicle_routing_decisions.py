@@ -67,7 +67,7 @@ class VehicleRoutingDecisions(Container):
             
             # road_order_mapを取得
             intersection = road.output_intersection
-            road_order_map = intersection.getRoadOrderMap()
+            road_order_map = intersection.get('road_order_map')
             num_roads = intersection.get('num_roads')
 
             # road_direction_mapを作成
@@ -100,7 +100,7 @@ class VehicleRoutingDecisions(Container):
             
             # 交差点のIDと道路の順番を示すIDを取得
             intersection_id = intersection.get('id')
-            road_order_map = intersection.getRoadOrderMap()
+            road_order_map = intersection.get('road_order_map')
             road_order_id = road_order_map[road.get('id')]
 
             # 該当する設定ファイル内のレコードを取得

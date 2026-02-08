@@ -41,17 +41,17 @@ class MasterAgents(Container):
         self.intersections_map = {}
         for intersection in intersections.getAll():
             # 車線数のリストを取得
-            num_lanes_turple = intersection.getNumLanesTurple()
+            num_lanes_tuple = intersection.get('num_lanes_tuple')
 
-            if num_lanes_turple not in self.intersections_map:
+            if num_lanes_tuple not in self.intersections_map:
                 # 車線数のリストをキーにしてMasterAgentオブジェクトを初期化
-                self.intersections_map[num_lanes_turple] = []
+                self.intersections_map[num_lanes_tuple] = []
             
-            self.intersections_map[num_lanes_turple].append(intersection)
+            self.intersections_map[num_lanes_tuple].append(intersection)
         
-        for num_lanes_turple in self.intersections_map.keys():
+        for num_lanes_tuple in self.intersections_map.keys():
             # master_agentオブジェクトを初期化
-            self.add(MasterAgent(self, num_lanes_turple))
+            self.add(MasterAgent(self, num_lanes_tuple))
 
     def saveLearningData(self):
         for master_agent in self.getAll():
@@ -84,7 +84,7 @@ class MasterAgents(Container):
         return
 
 class MasterAgent(Object):
-    def __init__(self, master_agents, num_lanes_turple):
+    def __init__(self, master_agents, num_lanes_tuple):
         # 継承
         super().__init__()
 
@@ -106,13 +106,13 @@ class MasterAgent(Object):
         self.id = self.master_agents.count() + 1
 
         # num_roadsを設定
-        self.num_roads = len(num_lanes_turple)
+        self.num_roads = len(num_lanes_tuple)
 
         # intersectionsオブジェクトと紐づける
-        self._makeIntersectionConnections(num_lanes_turple)
+        self._makeIntersectionConnections(num_lanes_tuple)
 
         # 車線数の情報を取得
-        self._makeNumLanesMap(num_lanes_turple)
+        self._makeNumLanesMap(num_lanes_tuple)
         
         # symmetry_phase_map, random_phase_probsを作成
         self._makeSymmetryPhaseMap()
@@ -144,9 +144,9 @@ class MasterAgent(Object):
 
         return
 
-    def _makeIntersectionConnections(self, num_lanes_turple):
+    def _makeIntersectionConnections(self, num_lanes_tuple):
         # intersection_listを取得
-        intersection_list = self.master_agents.intersections_map[num_lanes_turple]
+        intersection_list = self.master_agents.intersections_map[num_lanes_tuple]
 
         # intersectionsオブジェクトを初期化
         self.intersections = Intersections(self)
@@ -156,10 +156,10 @@ class MasterAgent(Object):
             self.intersections.add(intersection)
             intersection.set('master_agent', self)
 
-    def _makeNumLanesMap(self, num_lanes_turple):
+    def _makeNumLanesMap(self, num_lanes_tuple):
         # 車線数のリストを少し整形
         num_lanes_map = {}
-        for num_lanes in num_lanes_turple:
+        for num_lanes in num_lanes_tuple:
             num_lanes_map[len(num_lanes_map) + 1] = num_lanes
 
         self.num_lanes_map = num_lanes_map

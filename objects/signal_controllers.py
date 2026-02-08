@@ -334,7 +334,7 @@ class SignalGroup(Object):
         if self.future_signal_colors:
             previous_signal_color = self.future_signal_colors[-1]
         elif self.signal_colors_df.shape[0] > 0:
-            previous_signal_color = self.signal_colors_df.iloc[-1]['value']
+            previous_signal_color = self.signal_colors_df.iloc[-1]['signal_color']
         else:
             previous_signal_color = None
 

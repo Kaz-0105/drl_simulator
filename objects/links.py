@@ -110,17 +110,17 @@ class Links(Container):
 
         return
     
-    def updateData(self):
+    def update(self):
         # 要素オブジェクトの更新
         for link in self.getAll():
-            link.updateData()
+            link.update()
         
         # 終わるまで待機
         self.executor.wait()
 
         # 車線ごとに車両データを分割
         for link in self.getAll():
-            link.lanes.updateData()
+            link.lanes.update()
         
 class Link(Object):
     def __init__(self, com, links):
@@ -163,7 +163,7 @@ class Link(Object):
         # data_collection_pointsオブジェクトを初期化
         self.data_collection_points = DataCollectionPoints(self)
     
-    def updateData(self):
+    def update(self):
         # 車両データを取得
         self._getVehicleDataFromVissim()
 
@@ -313,11 +313,11 @@ class Lanes(Container):
         for lane_com in self.com.GetAll():
             self.add(Lane(lane_com, self))
     
-    def updateData(self):
+    def update(self):
         # 要素オブジェクトの更新
         for lane in self.getAll():
             # 車両データを取得（非同期処理）
-            self.executor.submit(lane.updateData)
+            self.executor.submit(lane.update)
 
 class Lane(Object):
     def __init__(self, com, lanes):
@@ -352,7 +352,7 @@ class Lane(Object):
         in_queue_vehicle_data = self.vehicle_data[self.vehicle_data['in_queue']]
         return in_queue_vehicle_data.shape[0]
 
-    def updateData(self):
+    def update(self):
         # 車両データを取得
         vehicle_data = self.lanes.link.get('vehicle_data')
 
