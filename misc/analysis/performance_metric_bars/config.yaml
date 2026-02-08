@@ -1,5 +1,5 @@
 figure:
-  performance_metric: max_queue # average_queue, average_delay, max_queue, max_delay, calc_time
+  performance_metric: max_delay # average_queue, average_delay, max_queue, max_delay, calc_time, speed
   wild_card_type: num_phases # num_phases only
   plot_flg:
     mpc: true
