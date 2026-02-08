@@ -95,9 +95,7 @@ for simulator_dir_path in performance_metrics_dir_path.rglob('simulator_*'):
             # push to path_info
             if control_method == 'mpc':
                 # set num_phases
-                num_phases = sub_config_yaml
-                for wild_card_key in wild_card_key_list:
-                    num_phases = num_phases[wild_card_key]
+                num_phases = sub_config_yaml['phases']['4-road']
 
                 path_info[control_method][num_phases] = config_dir_path
             elif control_method == 'scoot':
@@ -181,6 +179,9 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
                 if config_path is None:
                     continue
 
+                if performance_metric == 'calc_time':
+                    continue
+
                 performance_metric_list = [0] * num_intersections
                 for intersection_dir_path in config_path.glob('intersection_*'):
                     intersection_id = int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1))
@@ -195,8 +196,6 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
                     elif performance_metric == 'max_delay':
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
-                    elif performance_metric == 'calc_time':
-                        continue
                     elif performance_metric == 'speed':
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['value'].mean())
                     else:
@@ -225,7 +224,7 @@ for performance_metric, bar_graph_df_map in metric_bar_graph_df_map.items():
         fig, ax = plt.subplots()
 
         # set figure_title    
-        figure_title = f"Performance Metric Comparison: {performance_metric.replace('_', ' ').title()}"
+        figure_title = f"{performance_metric.replace('_', ' ').title()} Comparison"
 
         # set x_axis_label
         if keys[0] == '7-4-1':
@@ -239,6 +238,8 @@ for performance_metric, bar_graph_df_map in metric_bar_graph_df_map.items():
             y_axis_label = f"{y_axis_label} [m]"
         elif performance_metric in ['average_delay', 'max_delay', 'calc_time']:
             y_axis_label = f"{y_axis_label} [s]" 
+        elif performance_metric == 'speed':
+            y_axis_label = f"{y_axis_label} [km/h]"
         else:
             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
         
@@ -276,7 +277,7 @@ for performance_metric, bar_graph_df_map in metric_bar_graph_df_map.items():
         
         fig.tight_layout()
         fig.savefig(save_dir_path / f"{performance_metric}_bars.png")
-    
+        plt.close(fig)
 
 
 
