@@ -1246,7 +1246,7 @@ class MpcController(Object):
                             elif self.definition == 1:
                                 d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
                                 d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
-                            elif self.definition == 2:
+                            elif self.definition in [2, 3]:
                                 d3[14, [5, 6, 7]] = [1, 1, 3]
                                 d3[15, [5, 6, 7]] = [-1, -1, -1]
                             else:
@@ -1523,7 +1523,7 @@ class MpcController(Object):
                             elif self.definition == 1:
                                 d3[20, [1, 8, 9, 10]] = [1, 1, 1, 4]
                                 d3[21, [1, 8, 9, 10]] = [-1, -1, -1, -1]
-                            elif self.definition == 2:
+                            elif self.definition in [2, 3]:
                                 d3[20, [8, 9, 10]] = [1, 1, 3]
                                 d3[21, [8, 9, 10]] = [-1, -1, -1]
                             else:
@@ -1700,7 +1700,7 @@ class MpcController(Object):
                                 e[[14, 15], 0] = [0, 0]
                             elif self.definition == 1:
                                 e[[14, 15], 0] = [3, 0]
-                            elif self.definition == 2:
+                            elif self.definition in [2, 3]:
                                 e[[14, 15], 0] = [2, 0]
                             else:
                                 raise ValueError('Invalid definition value.')
@@ -1909,7 +1909,7 @@ class MpcController(Object):
                                 e[[20, 21], 0] = [0, 0]
                             elif self.definition == 1:
                                 e[[20, 21], 0] = [3, 0]
-                            elif self.definition == 2:
+                            elif self.definition in [2, 3]:
                                 e[[20, 21], 0] = [2, 0]
                             else:
                                 raise ValueError('Invalid definition value.')
