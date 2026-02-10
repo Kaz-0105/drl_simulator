@@ -12,7 +12,7 @@ import time
 import re
 import random
 
-class MpcController(Object):
+class NewMpcController(Object):
     def __init__(self, mpc_controllers, intersection):
         super().__init__()
 
@@ -345,7 +345,7 @@ class MpcController(Object):
 
     def _updateVehicleData(self):
         # initialize road_vehicle_data_map
-        self.road_vehicle_data_map = {}
+        self.road_vehicles_df_map = {}
         for road_order_id in range(1, self.num_roads + 1):
             # get road object
             road = self.roads[road_order_id]
@@ -358,7 +358,7 @@ class MpcController(Object):
                 vehicle_data_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
                     vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
-                self.road_vehicle_data_map[road_order_id] = vehicle_data_map
+                self.road_vehicles_df_map[road_order_id] = vehicle_data_map
                 continue
             
             # recalculate position based on road start point and sort by position
@@ -435,7 +435,7 @@ class MpcController(Object):
 
                 vehicle_data_map[combination_order_id] = tmp_vehicles_df
             
-            self.road_vehicle_data_map[road_order_id] = vehicle_data_map
+            self.road_vehicles_df_map[road_order_id] = vehicle_data_map
         return
     
     def _updateRoadMaxQueueMap(self):
@@ -522,7 +522,7 @@ class MpcController(Object):
     
     def _updateA(self):
         for road_order_id in range(1, self.num_roads + 1):
-            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
 
             for _, vehicle_data in vehicle_data_map.items():
                 num_vehicles = vehicle_data.shape[0]
@@ -546,7 +546,7 @@ class MpcController(Object):
             return
         
         for road_order_id in range(1, self.num_roads + 1):
-            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
 
             for combination_order_id, vehicle_data in vehicle_data_map.items():
                 num_vehicles = vehicle_data.shape[0]
@@ -565,7 +565,7 @@ class MpcController(Object):
         
         for road_order_id in range(1, self.num_roads + 1):
             # get vehicles_df_map
-            vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             dt = self.time_step
 
@@ -595,7 +595,7 @@ class MpcController(Object):
                         first_end_flg_map[lane_str] = False
 
                     for idx, vehicle_row in vehicles_df.iterrows():
-                        lane_str = f"{vehicle_row['wait_link_id']}-{vehicle_row['wait_lane_id']}"
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         if idx == 0:
                             b2 = np.array([-k_s]) * v * dt
                             first_end_flg_map[lane_str] = True
@@ -615,7 +615,7 @@ class MpcController(Object):
             return
         
         for road_order_id in range(1, self.num_roads + 1):
-            vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             dt = self.time_step
 
@@ -648,7 +648,7 @@ class MpcController(Object):
                         first_end_flg_map[lane_str] = False
 
                     for idx, vehicle_row in vehicles_df.iterrows():
-                        lane_str = f"{vehicle_row['wait_link_id']}-{vehicle_row['wait_lane_id']}"
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         
                         p_s = params['p_s'][lane_str]
 
@@ -671,7 +671,7 @@ class MpcController(Object):
             return
 
         for road_order_id in range(1, self.num_roads + 1):
-            vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             for combination_order_id, vehicles_df in vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
@@ -729,10 +729,10 @@ class MpcController(Object):
                         tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
                     
                 else:
-                    last_veh_info = {lane_str: {'idx': -1} for lane_str in lane_str_list}
+                    last_vehs_map = {lane_str: {'idx': -1} for lane_str in lane_str_list}
                     
                     for idx, vehicle_row in vehicles_df.iterrows():
-                        lane_str = f"{vehicle_row['wait_link_id']}-{vehicle_row['wait_lane_id']}"
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         
                         if idx == 0:
                             # 先頭車のc行列を初期化
@@ -750,76 +750,76 @@ class MpcController(Object):
                             # z_1
                             c[[16, 17], idx] = [1, -1]
 
-                        elif last_veh_info[lane_str]['idx'] == -1:
-                            # 準先頭車（分岐前は非先頭車，分岐後は先頭車）のc行列を初期化
+                        elif last_vehs_map[lane_str]['idx'] == -1:
+                            # initialize c matrix
                             c = np.zeros((32, vehicles_df.shape[0]))
 
-                            # delta_d
+                            # define delta_d
                             c[[0, 1], idx] = [1, -1]
 
-                            # delta_p
+                            # define delta_p
                             c[[2, 3], idx] = [-1, 1]
 
-                            # delta_f1
+                            # define delta_f1
                             c[[4, 5], idx-1] = [1, -1]
                             c[[4, 5], idx] = [-1, 1]
 
-                            # delta_b
+                            # define delta_b
                             c[[6, 7], idx] = [1, -1]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             c[[12, 13], idx] = [1, -1]
 
-                            # z_1
+                            # define z_1
                             c[[22, 23], idx] = [1, -1]
 
-                            # z_2
+                            # define z_2
                             c[[26, 27], idx-1] = [1, -1]
 
-                            # z_3
+                            # define z_3
                             c[[30, 31], idx] = [1, -1]
       
                         else:
-                            # 先頭車以外のc行列を初期化
+                            # initialize c matrix
                             c = np.zeros((44, vehicles_df.shape[0]))
 
-                            # delta_d
+                            # define delta_d
                             c[[0, 1], idx] = [1, -1]
 
-                            # delta_p
+                            # define delta_p
                             c[[2, 3], idx] = [-1, 1]
 
-                            # delta_f1
+                            # define delta_f1
                             c[[4, 5], idx-1] = [1, -1]
                             c[[4, 5], idx] = [-1, 1]
 
-                            # delta_f2
-                            c[[6, 7], last_veh_info[lane_str]['idx']] = [1, -1]
+                            # define delta_f2
+                            c[[6, 7], last_vehs_map[lane_str]['idx']] = [1, -1]
                             c[[6, 7], idx] = [-1, 1]
 
-                            # delta_b
+                            # define delta_b
                             c[[8, 9], idx] = [1, -1]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             c[[16, 17], idx] = [1, -1]
 
-                            # z_1
+                            # define z_1
                             c[[26, 27], idx] = [1, -1]
 
-                            # z_2
+                            # define z_2
                             c[[30, 31], idx-1] = [1, -1]
 
-                            # z_3
+                            # define z_3
                             c[[34, 35], idx] = [1, -1]
 
-                            # z_4
-                            c[[38, 39], last_veh_info[lane_str]['idx']] = [1, -1]
+                            # define z_4
+                            c[[38, 39], last_vehs_map[lane_str]['idx']] = [1, -1]
 
-                            # z_5
+                            # define z_5
                             c[[42, 43], idx] = [1, -1]
 
-                        # update last_veh_info
-                        last_veh_info[lane_str]['idx'] = idx
+                        # update last_vehs_map
+                        last_vehs_map[lane_str]['idx'] = idx
                         
                         # tmp_C_matrixに追加
                         tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
@@ -836,7 +836,7 @@ class MpcController(Object):
             return
 
         for road_order_id in range(1, self.num_roads + 1):
-            vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             for combination_order_id, vehicles_df in vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
@@ -875,7 +875,7 @@ class MpcController(Object):
                         first_end_flg_map[lane_str] = False
 
                     for idx, vehicle_row in vehicles_df.iterrows():
-                        lane_str = f"{vehicle_row['wait_link_id']}-{vehicle_row['wait_lane_id']}"
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         if idx == 0:
                             # initialize d1 matrix
                             d1 = np.zeros((18, self.num_signals))
@@ -925,7 +925,7 @@ class MpcController(Object):
         
         for road_order_id in range(1, self.num_roads + 1):
             # get vehicles_df_map 
-            vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             for combination_order_id, vehicles_df in vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
@@ -959,12 +959,10 @@ class MpcController(Object):
 
                 else:
                     # initialize first_end_flg_map
-                    first_end_flg_map = {}
-                    for lane_str in lane_str_list:
-                        first_end_flg_map[lane_str] = False
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
 
                     for idx, vehicle_row in vehicles_df.iterrows():
-                        lane_str = f"{vehicle_row['wait_link_id']}-{vehicle_row['wait_lane_id']}"
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         if idx == 0:
                             # initialize d2
                             d2 = np.zeros((18, 1))
@@ -1022,7 +1020,7 @@ class MpcController(Object):
 
         for road_order_id in range(1, self.num_roads + 1):
             # get vehicles_df_map
-            vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             for combination_order_id, vehicles_df in vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
@@ -1045,13 +1043,7 @@ class MpcController(Object):
 
                 if len(lane_str_list) == 1:
                     # initialize last_vehs_map
-                    last_vehs_map = {}
-                    for direction_id in range(1, self.num_roads):
-                        last_vehs_map[direction_id] = {
-                            'idx': -1,
-                            'row': None,
-                            'col': None,
-                        }
+                    last_vehs_map = {direction_id: {'idx': -1} for direction_id in range(1, self.num_roads)}
                     
                     p_s = params['p_s'][lane_str_list[0]]
                     h1_min = - p_max + p_s - D_s
@@ -1101,37 +1093,37 @@ class MpcController(Object):
                             # initialize d3 matrix
                             d3 = np.zeros((28, 9))
 
-                            # delta_d(0)
+                            # define delta_d(0)
                             d3[0, 0] = - h1_min
                             d3[1, 0] = - h1_max
 
-                            # delta_p(1)
+                            # define delta_p(1)
                             d3[2, 1] = - h2_min
                             d3[3, 1] = - h2_max
 
-                            # delta_f(2)
+                            # define delta_f(2)
                             d3[4, 2] = - h3_min
                             d3[5, 2] = - h3_max
 
-                            # delta_1(3)
+                            # define delta_1(3)
                             d3[6, [0, 1, 3]] = [1, 1, 3]
                             d3[7, [0, 1, 3]] = [-1, -1, -1]
 
-                            # delta_2(4)
+                            # define delta_2(4)
                             d3[8, [2, 3, 4]] = [-1, 1, 2]
                             d3[9, [2, 3, 4]] = [1, -1, -1]
 
-                            # delta_d_prime(5)
+                            # define delta_d_prime(5)
                             d3[10, 5] = - h6_min
                             d3[11, 5] = - h6_max
 
-                            # delta_w1(6)
+                            # define delta_w1(6)
                             d3[12, [1, 5, 6]] = [1, 1, 3]
                             d3[13, [1, 5, 6]] = [-1, -1, -1]
 
                             col_delta_w1 = 6
 
-                            # delta_w2(7)
+                            # search target vehicle for delta_w2(7)
                             target_info = {'idx': -1, 'direction_id': None}
                             for direction_id in range(1, self.num_roads):
                                 if direction_id == int(vehicle_row['direction_id']):
@@ -1142,37 +1134,36 @@ class MpcController(Object):
                                     target_info['direction_id'] = direction_id
                             
                             # define delta_w2(7)
-                            if target_info['idx'] == 1:
+                            if target_info['idx'] == -1:
                                 d3[14, 7] = -1
                                 d3[15, 7] = 1
-                            elif self.definition == 4:
+                            else:
                                 d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
                                 d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
-                            else:
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
                             
                             rows_delta_w2 = [14, 15]
                             
-                            # z_1
+                            # define z_1
                             d3[16:20, 3] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_2
+                            # define z_2
                             d3[20:24, 4] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_3
+                            # define z_3
                             d3[24:28, 4] = [p_min, -p_max, p_max, -p_min]
 
-                        # D3_matrixのサイズを取得
+                        # get dimensions of current D3_matrix
                         row_D3 = D3_matrix.shape[0] if 'D3_matrix' in locals() else 0
                         col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
 
-                        # last_veh_indicesを更新
+                        # update last_vehs_map
                         last_vehs_map[int(vehicle_row['direction_id'])] = {
                             'idx': idx,
                             'rows': [row + row_D3 for row in rows_delta_w2],
                             'col': col_delta_w1 + col_D3,
                         }
-                        # D3_matrixにd3を追加
+
+                        # push to D3_matrix
                         D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
 
                         # additional definition for delta_w2
@@ -1186,31 +1177,20 @@ class MpcController(Object):
                             D3_matrix[target_rows, target_col] = [-1, 1]                 
                         
                 else:
-                    # set full_flg_map
+                    # get full_flg_map
                     full_flg_map = self.road_combination_full_flg_map[road_order_id][combination_order_id]
                     
-                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
-                    first_end_flg = {}
-                    for lane_str in lane_str_list:
-                        first_end_flg[lane_str] = False
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
                     
-                    # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
+                    # initialize last_vehs_map
                     last_vehs_map = {}
                     for lane_str in lane_str_list:
-                        tmp_last_vehs_map = {}
-                        for direction_id in range(1, self.num_roads):
-                            tmp_last_vehs_map[direction_id] = {
-                                'idx': -1,
-                                'rows': [-2, -1],
-                                'col': -1,
-                                'pos': float('inf'),
-                            }
-                        last_vehs_map[lane_str] = tmp_last_vehs_map
+                        last_vehs_map[lane_str] = {direction_id: {'idx': -1, 'pos': float('inf')} for direction_id in range(1, self.num_roads)}
 
-                    for idx, vehicle in vehicle_data.iterrows():
-                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         
-                        # 必要なパラメータを取得
                         p_s = params['p_s'][lane_str]
                         D_b = params['D_b'][lane_str]
                         h1_min = - p_max + p_s - D_s
@@ -1223,89 +1203,91 @@ class MpcController(Object):
                         h6_max = - p_min + p_s - D_t
 
                         if idx == 0:
-                            # 先頭車に対するD3行列を初期化
-                            d3 = np.zeros((16, 7))
+                            # initialize d3 matrix
+                            d3 = np.zeros((18, 8))
 
-                            # delta_d(0)
+                            # define delta_d(0)
                             d3[0, 0] = - h1_min
                             d3[1, 0] = - h1_max
 
-                            # delta_p(1)
+                            # define delta_p(1)
                             d3[2, 1] = - h2_min
                             d3[3, 1] = - h2_max
 
-                            # delta_1(2)
+                            # define delta_1(2)
                             d3[4, [0, 1, 2]] = [1, 1, 3]
                             d3[5, [0, 1, 2]] = [-1, -1, -1]
 
-                            # delta_d_prime(3)
+                            # define delta_d_prime(3)
                             d3[6, 3] = - h6_min
                             d3[7, 3] = - h6_max
 
-                            # delta_w1(4)
+                            # define delta_w1(4)
                             d3[8, [1, 3, 4]] = [1, 1, 3]
                             d3[9, [1, 3, 4]] = [-1, -1, -1]
 
                             col_delta_w1 = 4
 
-                            # delta_w2(5)
+                            # define delta_w2(5)
                             d3[10, 5] = -1
                             d3[11, 5] = 1
 
                             rows_delta_w2 = [10, 11]
 
-                            # delta_w3(6)
+                            # define delta_w3(6)
                             d3[12, 6] = -1
                             d3[13, 6] = 1
 
-                            # z_1
+                            rows_delta_w3 = [12, 13]
+
+                            # define z_1
                             d3[14:18, 2] = [p_min, -p_max, p_max, -p_min]
 
-                            # 先頭車のフラグを更新
-                            first_end_flg[lane_str] = True
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
                         
-                        elif not first_end_flg[lane_str]:
-                            # 準先頭車に対するD3行列を初期化
-                            d3 = np.zeros((30, 10))
+                        elif not first_end_flg_map[lane_str]:
+                            # initialize d3 matrix
+                            d3 = np.zeros((32, 11))
 
-                            # delta_d(0)
+                            # define delta_d(0)
                             d3[0, 0] = - h1_min
                             d3[1, 0] = - h1_max
 
-                            # delta_p(1)
+                            # define delta_p(1)
                             d3[2, 1] = - h2_min
                             d3[3, 1] = - h2_max
 
-                            # delta_f1(2)
+                            # define delta_f1(2)
                             d3[4, 2] = - h3_min
                             d3[5, 2] = - h3_max
 
-                            # delta_b(3)
+                            # define delta_b(3)
                             d3[6, 3] = - h5_min
                             d3[7, 3] = - h5_max
 
-                            # delta_1(4)
+                            # define delta_1(4)
                             d3[8, [0, 1, 4]] = [1, 1, 3]
                             d3[9, [0, 1, 4]] = [-1, -1, -1]
 
-                            # delta_2(5)
+                            # define delta_2(5)
                             d3[10, [2, 3, 4, 5]] = [-1, -1, 1, 3]
                             d3[11, [2, 3, 4, 5]] = [1, 1, -1, -1]
 
-                            # delta_d_prime(6)
+                            # define delta_d_prime(6)
                             d3[12, 6] = - h6_min
                             d3[13, 6] = - h6_max
 
-                            # delta_w1(7)
+                            # define delta_w1(7)
                             d3[14, [1, 6, 7]] = [1, 1, 3]
                             d3[15, [1, 6, 7]] = [-1, -1, -1]
 
                             col_delta_w1 = 7
 
                             # search target vehicles for delta_w2(8)
-                            target_info = {'idx': -1, 'pos': float('inf'), 'direction_id': None}
+                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'direction_id': None, 'lane_str': None} for pos_type in ['before', 'after']}
                             for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle['direction_id']):
+                                if direction_id == int(vehicle_row['direction_id']):
                                     continue
                                 
                                 for tmp_lane_str in lane_str_list:
@@ -1313,20 +1295,19 @@ class MpcController(Object):
                                         continue
 
                                     last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                    if last_veh_info['pos'] < target_info['pos']:
-                                        target_info['idx'] = last_veh_info['idx']
-                                        target_info['pos'] = last_veh_info['pos']
-                                        target_info['direction_id'] = direction_id
+                                    if last_veh_info['pos'] < target_info['before']['pos']:
+                                        target_info['before']['idx'] = last_veh_info['idx']
+                                        target_info['before']['pos'] = last_veh_info['pos']
+                                        target_info['before']['direction_id'] = direction_id
+                                        target_info['before']['lane_str'] = tmp_lane_str
 
                             # define delta_w2(8)
-                            if target_info['idx'] == -1:
+                            if target_info['before']['idx'] == -1:
                                 d3[16, 8] = -1
                                 d3[17, 8] = 1
-                            elif self.definition == 4:
+                            else:
                                 d3[16, [3, 6, 7, 8]] = [-1, 1, 1, 4]
                                 d3[17, [3, 6, 7, 8]] = [1, -1, -1, -1]
-                            else:
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             rows_delta_w2 = [16, 17]
 
@@ -1336,74 +1317,68 @@ class MpcController(Object):
 
                             rows_delta_w3 = [18, 19]
 
-                            # z_1
-                            d3[18:22, 4] = [p_min, -p_max, p_max, -p_min]
+                            # define z_1
+                            d3[20:24, 4] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_2
-                            d3[22:26, 5] = [p_min, -p_max, p_max, -p_min]
+                            # define z_2
+                            d3[24:28, 5] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_3
-                            d3[26:30, 5] = [p_min, -p_max, p_max, -p_min]
+                            # define z_3
+                            d3[28:32, 5] = [p_min, -p_max, p_max, -p_min]
 
-                            # 準先頭車のフラグを更新
-                            first_end_flg[lane_str] = True
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
 
                         else:
-                            # 先頭車以外のD3行列を初期化
-                            d3 = np.zeros((42, 12))
+                            # initialize d3 matrix
+                            d3 = np.zeros((44, 13))
 
-                            # delta_d(0)
+                            # define delta_d(0)
                             d3[0, 0] = - h1_min
                             d3[1, 0] = - h1_max
 
-                            # delta_p(1)
+                            # define delta_p(1)
                             d3[2, 1] = - h2_min
                             d3[3, 1] = - h2_max
 
-                            # delta_f1(2)
+                            # define delta_f1(2)
                             d3[4, 2] = - h3_min
                             d3[5, 2] = - h3_max
 
-                            # delta_f2(3)
+                            # define delta_f2(3)
                             d3[6, 3] = - h4_min
                             d3[7, 3] = - h4_max
 
-                            # delta_b(4)
+                            # define delta_b(4)
                             d3[8, 4] = - h5_min
                             d3[9, 4] = - h5_max
 
-                            # delta_1(5)
+                            # define delta_1(5)
                             d3[10, [0, 1, 5]] = [1, 1, 3]
                             d3[11, [0, 1, 5]] = [-1, -1, -1]
 
-                            # delta_2(6)
+                            # define delta_2(6)
                             d3[12, [2, 4, 5, 6]] = [-1, -1, 1, 3]
                             d3[13, [2, 4, 5, 6]] = [1, 1, -1, -1]
 
-                            # delta_3(7)
+                            # define delta_3(7)
                             d3[14, [3, 4, 6, 7]] = [-1, 1, 1, 3]
                             d3[15, [3, 4, 6, 7]] = [1, -1, -1, -1]
 
-                            # delta_d_prime(8)
+                            # define delta_d_prime(8)
                             d3[16, 8] = - h6_min
                             d3[17, 8] = - h6_max
 
                             # delta_w1(9)
-                            if self.definition in [1, 2]:
-                                d3[18, [1, 8, 9]] = [1, 1, 3]
-                                d3[19, [1, 8, 9]] = [-1, -1, -1]
-                            elif self.definition == 3:
-                                d3[18, [8, 9]] = [1, 2]
-                                d3[19, [8, 9]] = [-1, -1]
-                            else:
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
+                            d3[18, [1, 8, 9]] = [1, 1, 3]
+                            d3[19, [1, 8, 9]] = [-1, -1, -1]
 
                             col_delta_w1 = 9
 
                             # search target_idx for delta_w2(10) and delta_w3(11)
                             target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'direction_id': None} for pos_type in ['before', 'after']}
                             for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle['direction_id']):
+                                if direction_id == int(vehicle_row['direction_id']):
                                     continue
 
                                 # regarding before branching point
@@ -1412,27 +1387,27 @@ class MpcController(Object):
                                         continue
 
                                     last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
-                                    if last_vehs_info['pos'] < target_info['before']['pos']:
+                                    if last_veh_info['pos'] < target_info['before']['pos']:
                                         target_info['before']['idx'] = last_veh_info['idx']
                                         target_info['before']['pos'] = last_veh_info['pos']
+                                        target_info['before']['lane_str'] = tmp_lane_str
                                         target_info['before']['direction_id'] = direction_id
                                 
                                 # regarding after branching point
-                                last_vehs_info = last_vehs_map[lane_str][direction_id]
-                                if last_vehs_info['pos'] < target_info['after']['pos']:
-                                    target_info['after']['idx'] = last_vehs_info['idx']
-                                    target_info['after']['pos'] = last_vehs_info['pos']
+                                last_veh_info = last_vehs_map[lane_str][direction_id]
+                                if last_veh_info['pos'] < target_info['after']['pos']:
+                                    target_info['after']['idx'] = last_veh_info['idx']
+                                    target_info['after']['pos'] = last_veh_info['pos']
+                                    target_info['after']['lane_str'] = lane_str
                                     target_info['after']['direction_id'] = direction_id
 
                             # define delta_w2(10)
                             if target_info['before']['idx'] == -1:
                                 d3[20, 10] = -1
                                 d3[21, 10] = 1
-                            elif self.definition == 4:
+                            else:
                                 d3[20, [4, 8, 9, 10]] = [-1, 1, 1, 4]
                                 d3[21, [4, 8, 9, 10]] = [1, -1, -1, -1]
-                            else:
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
                             
                             rows_delta_w2 = [20, 21]
 
@@ -1440,45 +1415,43 @@ class MpcController(Object):
                             if target_info['after']['idx'] == -1:
                                 d3[22, 11] = -1
                                 d3[23, 11] = 1
-                            elif self.definition == 4:
+                            else:
                                 d3[22, [1, 4, 8, 9, 10]] = [1, 1, 1, 1, 5]
                                 d3[23, [1, 4, 8, 9, 10]] = [-1, -1, -1, -1, -1]
-                            else:
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
 
                             rows_delta_w3 = [22, 23]
 
-                            # z_1
+                            # define z_1
                             d3[24:28, 5] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_2
+                            # define z_2
                             d3[28:32, 6] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_3
+                            # define z_3
                             d3[32:36, 6] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_4
+                            # define z_4
                             d3[36:40, 7] = [p_min, -p_max, p_max, -p_min]
 
-                            # z_5
+                            # define z_5
                             d3[40:44, 7] = [p_min, -p_max, p_max, -p_min]
 
-                        # D3_matrixのサイズを取得
+                        # get dimensions of current D3_matrix
                         row_D3 = D3_matrix.shape[0] if 'D3_matrix' in locals() else 0
                         col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
 
-                        # last_vehs_mapを更新
-                        last_vehs_map[lane_str][int(vehicle['direction_id'])] = {
+                        # update last_vehs_map
+                        last_vehs_map[lane_str][int(vehicle_row['direction_id'])] = {
                             'idx': idx,
                             'rows': {
                                 'delta_w2': [row + row_D3 for row in rows_delta_w2],
                                 'delta_w3': [row + row_D3 for row in rows_delta_w3],
                             },
                             'col': col_delta_w1 + col_D3,
-                            'pos': vehicle['position'],
+                            'pos': vehicle_row['position'],
                         }
 
-                        # D3_matrixにd3を追加
+                        # push to D3_matrix
                         D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
                         
                         # additional constraints for delta_w2 and delta_w3
@@ -1486,52 +1459,38 @@ class MpcController(Object):
                             continue
 
                         if target_info['before']['idx'] != -1:
-                            target_rows = last_vehs_map[lane_str][int(vehicle['direction_id'])]['rows']['delta_w2']
-                            target_col = last_vehs_map[target_info['before']['direction_id']]['col']
+                            target_rows = last_vehs_map[lane_str][int(vehicle_row['direction_id'])]['rows']['delta_w2']
+                            target_col = last_vehs_map[target_info['before']['lane_str']][target_info['before']['direction_id']]['col']
 
                             D3_matrix[target_rows, target_col] = [-1, 1]
 
                         if target_info['after']['idx'] != -1:
-                            target_rows = last_vehs_map[lane_str][int(vehicle['direction_id'])]['rows']['delta_w3']
-                            target_col = last_vehs_map[lane_str][target_info['after']['direction_id']]['col']
+                            target_rows = last_vehs_map[lane_str][int(vehicle_row['direction_id'])]['rows']['delta_w3']
+                            target_col = last_vehs_map[target_info['after']['lane_str']][target_info['after']['direction_id']]['col']
 
                             D3_matrix[target_rows, target_col] = [-1, 1]
                         
-        # D3_matrixを交通流モデルに追加
+        # push to object property
         self.traffic_flow_model['D3'] = D3_matrix
         return
 
     def _updateE(self):
-        # 自動車が存在しない場合はスキップ
         if not self.vehicle_exist_flg:
             return
-
-        # 道路ごとに走査
+        
         for road_order_id in range(1, self.num_roads + 1):
-            # 道路に紐づくvehicle_data_mapを取得
-            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            # get vehicles_df_map
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
-
-            # 道路に紐づく組み合わせのマップと道路パラメータのマップを取得
-            combination_lane_list_map = self.road_combinations_map[road_order_id]
-            combination_params_map = self.road_combination_params_map[road_order_id]
-
-            # 各車線の組み合わせごとに走査
-            for combination_order_id, vehicle_data in vehicle_data_map.items():
-                # 車両データが空の場合はスキップ
-                if vehicle_data.shape[0] == 0:
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
                     continue
                 
-                # 道路パラメータと車線の組み合わせを取得
-                params = combination_params_map[combination_order_id]
-                lane_str_list = combination_lane_list_map[combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
 
-                # 車線数を取得
-                num_lanes = len(lane_str_list)
-
-                # 必要なパラメータを取得
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
                 v = params['v_max']
-                p_max = vehicle_data.iloc[0]['position'] + v * self.time_step * (self.horizon + 1)
+                p_max = vehicles_df.iloc[0]['position'] + v * self.time_step * (self.horizon + 1)
                 p_min = - v * self.time_step
                 D_s = params['D_s'] 
                 d_s = params['d_s']
@@ -1540,88 +1499,81 @@ class MpcController(Object):
                 h3_min = - p_max + p_min + D_f
                 h4_min = - p_max + p_min + D_f    
 
-                # 車線数が複数あるかどうか（分岐があるかどうか）で場合分け
-                if num_lanes == 1:
-                    # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
-                    last_veh_indices = {}
-                    for direction_id in range(1, self.num_roads):
-                        last_veh_indices[direction_id] = -1
+                if len(lane_str_list) == 1:
+                    # initialize last_vehs_map
+                    last_vehs_map = {direction_id: {'idx': -1} for direction_id in range(1, self.num_roads)}
 
-                    # 必要なパラメータの取得
                     p_s = params['p_s'][lane_str_list[0]]
                     h1_min = - p_max + p_s - D_s
                     h2_min = p_min - p_s + d_s
                     h6_min = -p_max + p_s - D_t
 
-                    for idx, vehicle in vehicle_data.iterrows():
+                    for idx, vehicle_row in vehicles_df.iterrows():
                         if idx == 0:
-                            # 先頭車に対するE行列を初期化
+                            # initialize e matrix
                             e = np.zeros((16, 1))
 
-                            # delta_d
+                            # define delta_d
                             e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
 
-                            # delta_p
+                            # define delta_p
                             e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
 
-                            # delta_1
+                            # define delta_1
                             e[[4, 5], 0] = [3, -1]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_w1
+                            # define delta_w1
                             e[[8, 9], 0] = [3, -1]
 
-                            # delta_w2
+                            # define delta_w2
                             e[[10, 11], 0] = [0, 0]
 
-                            # z_1
+                            # define z_1
                             e[12:16, 0] = [0, 0, p_max, -p_min]
 
-                            # last_veh_indicesを更新
-                            last_veh_indices[int(vehicle['direction_id'])] = idx
                         else:
-                            # 先頭車以外のE行列を初期化
+                            # initialize e matrix
                             e = np.zeros((28, 1))
 
-                            # delta_d
+                            # define delta_d
                             e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
 
-                            # delta_p
+                            # define delta_p
                             e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
 
-                            # delta_f
+                            # define delta_f
                             e[[4, 5], 0] = [D_f - h3_min, -D_f]
 
-                            # delta_1
+                            # define delta_1
                             e[[6, 7], 0] = [3, -1]
 
-                            # delta_2
+                            # define delta_2
                             e[[8, 9], 0] = [1, 0]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             e[[10, 11], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_w1
+                            # define delta_w1
                             e[[12, 13], 0] = [3, -1]
 
-                            # delta_w2
-                            target_idx = -1
+                            
+                            # search target vehicle for delta_w2
+                            target_info = {'idx': -1}
                             for direction_id in range(1, self.num_roads):
-                                if int(vehicle['direction_id']) == direction_id:
+                                if direction_id == int(vehicle_row['direction_id']):
                                     continue
+                                
+                                if last_vehs_map[direction_id]['idx'] > target_info['idx']:
+                                    target_info['idx'] = last_vehs_map[direction_id]['idx']
 
-                                target_idx = max(target_idx, last_veh_indices[direction_id])
-
-                            if target_idx == -1:
+                            # define delta_w2
+                            if target_info['idx'] == -1:
                                 e[[14, 15], 0] = [0, 0]
-                            elif self.definition == 1:
-                                e[[14, 15], 0] = [3, 0]
-                            elif self.definition == 2:
-                                e[[14, 15], 0] = [2, 0]
                             else:
-                                raise ValueError('Invalid definition value.')
+                                e[[14, 15], 0] = [3, 0]
                             
                             # z_1
                             e[16:20, 0] = [0, 0, p_max, -p_min]
@@ -1631,37 +1583,28 @@ class MpcController(Object):
 
                             # z_3
                             e[24:28, 0] = [0, 0, p_max, -p_min]
-
-                            # last_veh_indicesを更新
-                            last_veh_indices[int(vehicle['direction_id'])] = idx
+                            
+                        # update last_vehs_map
+                        last_vehs_map[int(vehicle_row['direction_id'])]['idx'] = idx
                         
-                        # E_matrixに追加
+                        # push to E_matrix
                         E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
 
                 else:
                     # get full_flg_map
                     full_flg_map = self.road_combination_full_flg_map[road_order_id][combination_order_id]
 
-                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
-                    first_end_flg = {}
-                    for lane_str in lane_str_list:
-                        first_end_flg[lane_str] = False
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
 
-                    # 進路ごとに最後にモデル化を終えた車両のインデックスを保持する辞書を初期化
+                    # initialize last_vehs_map
                     last_vehs_map = {}
                     for lane_str in lane_str_list:
-                        tmp_last_vehs_map = {}
-                        for direction_id in range(1, self.num_roads):
-                            tmp_last_vehs_map[direction_id] = {
-                                'idx': -1,
-                                'pos': float('inf'),
-                            }
-                        last_vehs_map[lane_str] = tmp_last_vehs_map
+                        last_vehs_map[lane_str] = {direction_id: {'idx': -1, 'pos': float('inf')} for direction_id in range(1, self.num_roads)}
 
-                    for idx, vehicle in vehicle_data.iterrows():
-                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
-                        
-                        # 必要なパラメータの取得
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+
                         p_s = params['p_s'][lane_str]
                         D_b = params['D_b'][lane_str]
                         h1_min = - p_max + p_s - D_s
@@ -1670,22 +1613,22 @@ class MpcController(Object):
                         h6_min = -p_max + p_s - D_t
 
                         if idx == 0:
-                            # 先頭車に対するE行列を初期化
-                            e = np.zeros((16, 1))
+                            # initialize e matrix
+                            e = np.zeros((18, 1))
 
-                            # delta_d
+                            # define delta_d
                             e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
 
-                            # delta_p
+                            # define delta_p
                             e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
 
-                            # delta_1
+                            # define delta_1
                             e[[4, 5], 0] = [3, -1]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_w1
+                            # define delta_w1
                             e[[8, 9], 0] = [3, -1]
 
                             # define delta_w2
@@ -1694,43 +1637,44 @@ class MpcController(Object):
                             # define delta_w3
                             e[[12, 13], 0] = [0, 0]
 
-                            # z_1
+                            # define z_1
                             e[14:18, 0] = [0, 0, p_max, -p_min]
 
-                            # 先頭車のフラグを更新
-                            first_end_flg[lane_str] = True
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
 
-                        elif not first_end_flg[lane_str]:
-                            # 準先頭車に対するE行列を初期化
-                            e = np.zeros((30, 1))
+                        elif not first_end_flg_map[lane_str]:
+                            # initialize e matrix
+                            e = np.zeros((32, 1))
 
-                            # delta_d
+                            # define delta_d
                             e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
 
-                            # delta_p
+                            # define delta_p
                             e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
 
-                            # delta_f1
+                            # define delta_f1
                             e[[4, 5], 0] = [D_f - h3_min, -D_f]
 
-                            # delta_b
+                            # define delta_b
                             e[[6, 7], 0] = [p_s - D_b - h5_min, -p_s + D_b]
 
-                            # delta_1
+                            # define delta_1
                             e[[8, 9], 0] = [3, -1]
 
-                            # delta_2
+                            # define delta_2
                             e[[10, 11], 0] = [1, 1]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             e[[12, 13], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_w1
+                            # define delta_w1
                             e[[14, 15], 0] = [3, -1]
                             
+                            # search target vehicle for delta_w2
                             target_info = {'idx': -1, 'pos': float('inf')}
                             for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle['direction_id']):
+                                if direction_id == int(vehicle_row['direction_id']):
                                     continue
 
                                 for tmp_lane_str in lane_str_list:
@@ -1750,61 +1694,61 @@ class MpcController(Object):
                             if target_info['idx'] == -1:
                                 e[[16, 17], 0] = [0, 0]
                             else:
-                                e[[16, 17], 0] = [3, 1]
+                                e[[16, 17], 0] = [2, 1]
 
                             # define delta_w3
                             e[[18, 19], 0] = [0, 0]
 
-                            # z_1
-                            e[18:22, 0] = [0, 0, p_max, -p_min]
+                            # define z_1
+                            e[20:24, 0] = [0, 0, p_max, -p_min]
 
-                            # z_2
-                            e[22:26, 0] = [0, 0, p_max, -p_min]
+                            # define z_2
+                            e[24:28, 0] = [0, 0, p_max, -p_min]
 
-                            # z_3
-                            e[26:30, 0] = [0, 0, p_max, -p_min]
+                            # define z_3
+                            e[28:32, 0] = [0, 0, p_max, -p_min]
 
-                            # 準先頭車のフラグを更新
-                            first_end_flg[lane_str] = True
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
                         else:
-                            # 先頭車以外のE行列を初期化
-                            e = np.zeros((42, 1))
+                            # initialize e matrix
+                            e = np.zeros((44, 1))
 
-                            # delta_d
+                            # define delta_d
                             e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
 
-                            # delta_p
+                            # define delta_p
                             e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
 
-                            # delta_f1
+                            # define delta_f1
                             e[[4, 5], 0] = [D_f - h3_min, -D_f]
 
-                            # delta_f2
+                            # define delta_f2
                             e[[6, 7], 0] = [D_f - h4_min, -D_f]
 
-                            # delta_b
+                            # define delta_b
                             e[[8, 9], 0] = [p_s - D_b - h5_min, -p_s + D_b]
 
-                            # delta_1
+                            # define delta_1
                             e[[10, 11], 0] = [3, -1]
 
-                            # delta_2
+                            # define delta_2
                             e[[12, 13], 0] = [1, 1]
 
-                            # delta_3
+                            # define delta_3
                             e[[14, 15], 0] = [2, 0]
 
-                            # delta_d_prime
+                            # define delta_d_prime
                             e[[16, 17], 0] = [p_s - D_t - h6_min, -p_s + D_t]
 
-                            # delta_w1
+                            # define delta_w1
                             e[[18, 19], 0] = [3, -1]
                             
                             # search target vehicles for delta_w2 and delta_w3
                             target_info = {pos_type: {'idx': -1, 'pos': float('inf')} for pos_type in ['before', 'after']}
                             for direction_id in range(1, self.num_roads):
                                 # skip own direction_id
-                                if int(vehicle['direction_id']) == direction_id:
+                                if int(vehicle_row['direction_id']) == direction_id:
                                     continue
 
                                 # regarding before branching point
@@ -1827,56 +1771,51 @@ class MpcController(Object):
                             # define delta_w2
                             if target_info['before']['idx'] == -1:
                                 e[[20, 21], 0] = [0, 0]
-                            elif self.definition == 3:
-                                e[[20, 21], 0] = [3, 1]
-                            else: 
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
+                            else:
+                                e[[20, 21], 0] = [2, 1]
 
                             # define delta_w3
                             if target_info['after']['idx'] == -1:
                                 e[[22, 23], 0] = [0, 0]
-                            elif self.definition == 3:
-                                e[[22, 23], 0] = [4, 0]
                             else:
-                                raise NotImplementedError(f"Not supported definition: {self.definition}")
+                                e[[22, 23], 0] = [4, 0]
                             
-                            # z_1
+                            # define z_1
                             e[24:28, 0] = [0, 0, p_max, -p_min]
 
-                            # z_2
+                            # define z_2
                             e[28:32, 0] = [0, 0, p_max, -p_min]
 
-                            # z_3
+                            # define z_3
                             e[32:36, 0] = [0, 0, p_max, -p_min]
 
-                            # z_4
+                            # define z_4
                             e[36:40, 0] = [0, 0, p_max, -p_min]
 
-                            # z_5
+                            # define z_5
                             e[40:44, 0] = [0, 0, p_max, -p_min]
                         
-                        # last_vehs_mapを更新
-                        last_vehs_map[lane_str][int(vehicle['direction_id'])] = {
+                        # update last_vehs_map
+                        last_vehs_map[lane_str][int(vehicle_row['direction_id'])] = {
                             'idx': idx,
-                            'pos': vehicle['position'],
+                            'pos': vehicle_row['position'],
                         }
 
-                        # E_matrixに追加
+                        # push to E_matrix
                         E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
         
-        # E_matrixを交通流モデルに追加
+        # push to object property
         self.traffic_flow_model['E'] = E_matrix
         return
 
     def _updatePosVehs(self):
-        # 自動車が存在しない場合はスキップ
         if not self.vehicle_exist_flg:
             return
 
         # 道路ごとに走査
         for road_order_id in range(1, self.num_roads + 1):
             # 道路に紐づくvehicle_data_mapを取得
-            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
             for combination_order_id, vehicle_data in vehicle_data_map.items():
@@ -1907,7 +1846,7 @@ class MpcController(Object):
             'z_4': [],
             'z_5': [],
             # 'delta_d': [],
-            'delta_p': [],
+            # 'delta_p': [],
             # 'delta_f': [],
             # 'delta_f1': [],
             # 'delta_f2': [],
@@ -1918,6 +1857,7 @@ class MpcController(Object):
             # 'delta_d_prime': [],
             'delta_w1': [],
             'delta_w2': [],
+            'delta_w3': [],
             'delta_c': [],
             'phi': [],
         }
@@ -1944,7 +1884,7 @@ class MpcController(Object):
         # zに関して変数リストを更新
         for road_order_id in range(1, self.num_roads + 1):
             # 道路に紐づくvehicle_data_mapを取得
-            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
 
             # 道路に紐づく組み合わせのマップを取得
             combination_lane_list_map = self.road_combinations_map[road_order_id]
@@ -2014,29 +1954,21 @@ class MpcController(Object):
         # zの変数の長さを更新                   
         variable_length_map['z'] = (count + 1) - variable_length_map['u']
 
-        # deltaに関して変数リストを更新
+        # regarding delta variable list
         for road_order_id in range(1, self.num_roads + 1):
-            # 道路に紐づくvehicle_data_mapを取得
-            vehicle_data_map = self.road_vehicle_data_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
-            # 道路に紐づく組み合わせのマップを取得
-            combination_lane_list_map = self.road_combinations_map[road_order_id]
-
-            # 各車線の組み合わせごとに走査
-            for combination_order_id, vehicle_data in vehicle_data_map.items():
-                # 車両データが空の場合はスキップ
-                if vehicle_data.shape[0] == 0:
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
                     continue
 
-                # 組み合わせを取得
-                lane_str_list = combination_lane_list_map[combination_order_id]
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
 
                 if len(lane_str_list) == 1:
-                    for idx, vehicle in vehicle_data.iterrows():
+                    for idx, vehicle_row in vehicles_df.iterrows():
                         if idx == 0:
-                            # 先頭車の変数を追加（現状必要ないのはコメントアウト）
                             # variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
                             # variable_list_map['delta_d_prime'].append(count + 4)
                             variable_list_map['delta_w1'].append(count + 5)
@@ -2045,9 +1977,8 @@ class MpcController(Object):
 
                             count += 7
                         else:
-                            # 先頭車以外の変数を追加
                             # variable_list_map['delta_d'].append(count + 1)
-                            variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f'].append(count + 3)
                             # variable_list_map['delta_1'].append(count + 4)
                             # variable_list_map['delta_2'].append(count + 5)
@@ -2059,30 +1990,27 @@ class MpcController(Object):
                             count += 9
                     
                 else:
-                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
-                    first_end_flg = {}
-                    for lane_str in lane_str_list:
-                        first_end_flg[lane_str] = False
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
 
-                    for idx, vehicle in vehicle_data.iterrows():
-                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         if idx == 0:
-                            # 先頭車の変数を追加
                             # variable_list_map['delta_d'].append(count + 1)
                             # variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
                             # variable_list_map['delta_d_prime'].append(count + 4)
                             variable_list_map['delta_w1'].append(count + 5)
                             variable_list_map['delta_w2'].append(count + 6)
-                            variable_list_map['delta_c'].append(count + 7)
+                            variable_list_map['delta_w3'].append(count + 7)
+                            variable_list_map['delta_c'].append(count + 8)
 
-                            count += 7
+                            count += 8
 
-                            # 先頭車のフラグを更新
-                            first_end_flg[lane_str] = True
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
                         
-                        elif not first_end_flg[lane_str]:
-                            # 準先頭車の変数を追加
+                        elif not first_end_flg_map[lane_str]:
                             # variable_list_map['delta_d'].append(count + 1)
                             # variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f1'].append(count + 3)
@@ -2092,15 +2020,15 @@ class MpcController(Object):
                             # variable_list_map['delta_d_prime'].append(count + 7)
                             variable_list_map['delta_w1'].append(count + 8)
                             variable_list_map['delta_w2'].append(count + 9)
-                            variable_list_map['delta_c'].append(count + 10)
+                            variable_list_map['delta_w3'].append(count + 10)
+                            variable_list_map['delta_c'].append(count + 11)
 
-                            count += 10
+                            count += 11
 
-                            # 準先頭車のフラグを更新
-                            first_end_flg[lane_str] = True
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
                         
                         else:
-                            # 先頭車以外の変数を追加
                             # variable_list_map['delta_d'].append(count + 1)
                             # variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f1'].append(count + 3)
@@ -2112,14 +2040,15 @@ class MpcController(Object):
                             # variable_list_map['delta_d_prime'].append(count + 9)
                             variable_list_map['delta_w1'].append(count + 10)
                             variable_list_map['delta_w2'].append(count + 11)
-                            variable_list_map['delta_c'].append(count + 12)
+                            variable_list_map['delta_w3'].append(count + 12)
+                            variable_list_map['delta_c'].append(count + 13)
 
-                            count += 12
+                            count += 13
 
-        # deltaの変数の長さを更新
+        # calculate length of delta variables
         variable_length_map['delta'] = (count + 1) - variable_length_map['u'] - variable_length_map['z']
 
-        # u, z, deltaの変数を合わせた変数の長さを更新
+        # calculate total length of variable
         variable_length_map['v'] = count + 1
 
         # phiに関して変数リストを更新
@@ -2370,15 +2299,19 @@ class MpcController(Object):
         if self.objective_function_type == 'waiting_vehicles':
             delta_w1_list = self.variable_list_map['delta_w1']
             delta_w2_list = self.variable_list_map['delta_w2']
+            delta_w3_list = self.variable_list_map['delta_w3']
             v_length = self.variable_length_map['v']
 
-            # number of waiting vehicles = sum of delta_w1 + delta_w2
+            # number of waiting vehicles = sum of delta_w1, delta_w2, and delta_w3
             for step in range(1, self.horizon + 1):
                 for idx in range(len(delta_w1_list)):
                     f_matrix[v_length * (step - 1) + delta_w1_list[idx]] = 1
 
                 for idx in range(len(delta_w2_list)):
                     f_matrix[v_length * (step - 1) + delta_w2_list[idx]] = 1
+                
+                for idx in range(len(delta_w3_list)):
+                    f_matrix[v_length * (step - 1) + delta_w3_list[idx]] = 1
         else:
             raise NotImplementedError(f"Not implemented objective_function_type: {self.objective_function_type}")
             
@@ -2413,7 +2346,7 @@ class MpcController(Object):
         
         self.signal_change_penalty_flg = False
         for road_order_id in range(1, self.num_roads + 1):
-                vehicles_df_map = self.road_vehicle_data_map[road_order_id]
+                vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
                 tmp_num_vehs = 0
                 for _, vehicles_df in vehicles_df_map.items():
