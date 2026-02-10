@@ -1,0 +1,2818 @@
+from libs.container import Container
+from libs.object import Object
+from objects.links import Lanes
+
+import numpy as np
+import scipy.linalg as la
+import pandas as pd
+from collections import deque
+from scipy.optimize import milp, LinearConstraint, Bounds
+import torch
+import time
+import re
+import random
+
+class NewMpcController(Object):
+    def __init__(self, mpc_controllers, intersection):
+        super().__init__()
+
+        # set config and executor object
+        self.config = mpc_controllers.config
+        self.executor = mpc_controllers.executor
+
+        # set mpc_controllers and network
+        self.mpc_controllers = mpc_controllers
+        self.network = mpc_controllers.network
+
+        # connect to intersection object
+        self.intersection = intersection
+        self.intersection.set('mpc_controller', self)
+
+        # set roads and signal_controller object
+        self.roads = self.intersection.input_roads
+        self.signal_controller = self.intersection.signal_controller
+        
+        # set properties for mpc
+        self._initProps()
+        self._initRoadLengthInfoMap()
+        self._initRoadCombinationMap()
+        self._initRoadParameters()
+
+        # set properties for behavior cloning
+        self._makeBcRoadLanesMap()
+        self._makeBcNumLanesList()
+        return
+
+    def _initProps(self):
+        self.id = self.intersection.get('id')
+        self.num_roads = self.roads.count()
+        self.num_signals = self.signal_controller.signal_groups.count()
+        
+        # set num_phases
+        mpc_info = self.config.get('mpc_info')
+        self.num_phases = mpc_info['phases'][f"{self.num_roads}-road"]
+
+        # set phases
+        self.phases = {phase_id: phase_list for phase_id, phase_list in self.signal_controller.get('phases').items() if phase_id <= self.num_phases}
+        
+        # set time_step
+        simulator_info = self.config.get('simulator_info')
+        self.time_step = simulator_info['time_step']
+
+        # set parameters regarding mpc
+        mpc_info = self.config.get('mpc_info')
+        self.horizon = mpc_info['horizon']
+        self.utilize_steps = mpc_info['utilize_steps']
+        self.remained_steps = mpc_info['remained_steps']
+        self.min_successive_steps = mpc_info['min_successive_steps']
+        self.num_max_changes = mpc_info['num_max_changes']
+        self.branch_gap = mpc_info['branch_gap']
+
+        # set properties regarding objective function
+        self.objective_function_type = mpc_info['objective_function']['type']
+        if self.objective_function_type == 'waiting_vehicles':
+            self.definition = mpc_info['objective_function']['waiting_vehicles']['definition']
+            self.range_type = mpc_info['objective_function']['waiting_vehicles']['range_type']
+            self.queue_measurement_type = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['type']
+            self.leader_detection_type = mpc_info['objective_function']['waiting_vehicles']['leader_detection']['type']
+        else:
+            raise NotImplementedError(f"Not supported objective_function_type: {self.objective_function_type}")
+        
+        if self.objective_function_type == 'waiting_vehicles' and self.queue_measurement_type == 'ema':
+            self.ema_alpha = mpc_info['objective_function']['waiting_vehicles']['queue_measurement']['ema']['alpha']
+
+        self.signal_change_penalty_type = mpc_info['objective_function']['signal_change']['type']
+        self.signal_change_penalty_weight = mpc_info['objective_function']['signal_change']['weight']
+
+        # set phi_record
+        self.phi_record = deque([np.float64(0)] * self.min_successive_steps, maxlen=self.min_successive_steps)
+
+        # set parameters regarding behavior cloning
+        bc_buffer_info = mpc_info['bc_buffer']
+        self.bc_flg = bc_buffer_info['flg']
+        if self.bc_flg:
+            drl_info = self.config.get('drl_info')
+            self.bc_features_info = drl_info['features']
+            self.bc_num_vehicles = drl_info['num_vehicles']
+
+        # set calc_time_record if needed
+        save_info = self.config.get('save_info')
+        self.calc_time_flg = save_info['performance_metrics']['calc_time']
+        if self.calc_time_flg:
+            self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
+        
+        return
+
+    def _initRoadParameters(self):
+        self.road_combination_params_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            # get information to be used for parameter calculation
+            road = self.roads[road_order_id]
+            lane_combinations_map = self.road_combinations_map[road_order_id]
+            length_info = self.road_length_info_map[road_order_id]
+
+            # set combination_params_map
+            combination_params_map = {}
+            for lane_list_id, lane_list in lane_combinations_map.items():
+                # set p_s for each lane
+                params = {}
+                params['p_s'] = {}
+                for lane_str in lane_list:
+                    link_id = int(lane_str.split('-')[0])
+                    link = road.links[link_id]
+                    if link.get('type') == 'main':
+                        params['p_s'][lane_str] = length_info[link_id]['length']
+                    else:
+                        params['p_s'][lane_str] = length_info[link_id]['start_pos'] + length_info[link_id]['length']
+                
+                # set D_b 
+                if len(lane_list) != 1:
+                    for lane_str in lane_list:
+                        link = road.links[int(re.match(rf"(\d+)-(\d+)", lane_str).group(1))]
+                        if link.get('type') == 'main':
+                            continue
+                        
+                        connector = link.from_links.getAll()[0]
+                        branching_point = length_info[connector.get('id')]['start_pos']
+                        break
+                    
+                    params['D_b'] = {}
+                    for lane_str in lane_list:
+                        params['D_b'][lane_str] = params['p_s'][lane_str] - branching_point
+
+                        # adjust D_b by branch_gap
+                        params['D_b'][lane_str] -= self.branch_gap if params['D_b'][lane_str] - self.branch_gap > 0 else 0
+
+                # set other parameters
+                params['v_max'] = road.get('max_speed') * 1000 / 3600
+                params['D_s'] = road.get('max_speed')
+                params['d_s'] = 0
+                params['D_f'] = road.get('max_speed') if road.get('max_speed') > 60 else road.get('max_speed') - 15
+                params['d_f'] = 5
+                params['k_s'] = 1 / (params['D_s'] - params['d_s'])
+                params['k_f'] = 1 / (params['D_f'] - params['d_f'])
+                params['D_t'] = params['D_s']
+
+                # push to map        
+                combination_params_map[lane_list_id] = params
+            
+            # push to map
+            self.road_combination_params_map[road_order_id] = combination_params_map        
+        return
+    
+    def _makeBcRoadLanesMap(self):
+        # 行動クローンのデータ集めをしない場合はスキップ
+        if not self.bc_flg:
+            return
+        
+        # 道路のIDからlanesオブジェクトへのマップを初期化
+        self.bc_road_lanes_map = {}
+        
+        for road_order_id in range(1, self.num_roads + 1):
+            road = self.roads[road_order_id]
+            lanes = Lanes(self)
+
+            # 右折分岐車線，メインの車線，左折分岐車線の順番でlaneオブジェクトをlanesオブジェクトに追加
+            for link in road.links.getAll():
+                if link.get('type') != 'right':
+                    continue
+
+                for lane_id in link.lanes.getKeys(sorted_flg=True):
+                    lane = link.lanes[lane_id]
+                    lanes.add(lane, lanes.count() + 1)
+            
+            for link in road.links.getAll():
+                if link.get('type') != 'main':
+                    continue
+
+                for lane_id in link.lanes.getKeys(sorted_flg=True):
+                    lane = link.lanes[lane_id]
+                    lanes.add(lane, lanes.count() + 1)
+            
+            for link in road.links.getAll():
+                if link.get('type') != 'left':
+                    continue
+
+                for lane_id in link.lanes.getKeys(sorted_flg=True):
+                    lane = link.lanes[lane_id]
+                    lanes.add(lane, lanes.count() + 1)
+            
+            # lanesオブジェクトをroad_lanes_mapに追加
+            self.bc_road_lanes_map[road_order_id] = lanes
+        
+        return
+
+    def _makeBcNumLanesList(self):
+        # skip if bc_flg is False
+        if not self.bc_flg:
+            return
+
+        # get bc_num_lanes_list
+        self.bc_num_lanes_list = []
+        for road_order_id in range(1, self.num_roads + 1):  
+            road = self.roads[road_order_id]
+            num_lanes = 0
+            for link in road.links.getAll():  
+                if link.get('type') == 'connector':
+                    continue
+
+                num_lanes += link.lanes.count()
+            
+            self.bc_num_lanes_list.append(num_lanes)
+        
+        return
+    
+    def _initRoadLengthInfoMap(self):
+        # set road_length_info_map
+        self.road_length_info_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            road = self.roads[road_order_id]
+            length_info = {}
+            for link in road.links.getAll():
+                link_id = link.get('id')
+                link_type = link.get('type')
+                if link_type == 'main':
+                    length_info[link_id] = {
+                        'length': link.get('length'),
+                        'start_pos': 0,
+                    }
+                elif link_type == 'connector':
+                    length_info[link_id] = {
+                        'length': link.get('length'),
+                        'start_pos': link.get('from_pos'),
+                    }
+                elif link_type in ['right', 'left']:
+                    from_connector = link.from_links.getAll()[0]
+                    length_info[link_id] = {
+                        'length': link.get('length'),
+                        'start_pos': from_connector.get('from_pos') + from_connector.get('length') - from_connector.get('to_pos'),
+                    }
+            
+            self.road_length_info_map[road_order_id] = length_info
+        return
+
+    def _initRoadCombinationMap(self):
+        self.road_combinations_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            road = self.roads[road_order_id]
+            combination_lane_list_map = {}
+            
+            # combination with branch links
+            branch_exist_flg_map = {'left': False, 'right': False}
+            for link in road.links.getAll():
+                # if link is not branch, skip
+                if link.get('type') not in ['right', 'left']:
+                    continue
+
+                # set lane_str_list
+                lane_str_list = []
+                
+                # push branch link information
+                if link.lanes.count() > 1:
+                    raise NotImplementedError(f"Not supported multiple lanes in branch link.")
+                lane_str_list.append(f"{link.get('id')}-{link.lanes.getAll()[0].get('id')}")
+                
+                # push main link information
+                main_link = road.get('main_link')
+                if link.get('type') == 'right':
+                    lane_str_list.append(f"{main_link.get('id')}-{main_link.lanes[1].get('id')}")
+                    branch_exist_flg_map['right'] = True
+                elif link.get('type') == 'left':
+                    lane_str_list.append(f"{main_link.get('id')}-{main_link.lanes[main_link.lanes.count()].get('id')}")
+                    branch_exist_flg_map['left'] = True
+                else:
+                    raise ValueError(f"Invalid link type: {link.get('type')}")
+
+                # push to combination_lane_list_map
+                combination_lane_list_map[len(combination_lane_list_map) + 1] = lane_str_list
+            
+            # main link only combination
+            main_link = road.get('main_link')
+            for lane_id in range(1, main_link.lanes.count() + 1):
+                # skip if lane is already included when branch link exists
+                if lane_id == 1 and branch_exist_flg_map['right']:
+                    continue
+                if lane_id == main_link.lanes.count() and branch_exist_flg_map['left']:
+                    continue
+                
+                # push to combination_lane_list_map
+                combination_lane_list_map[len(combination_lane_list_map) + 1] = [f"{main_link.get('id')}-{lane_id}"]
+            
+            # push to road_combinations_map
+            self.road_combinations_map[road_order_id] = combination_lane_list_map
+        return
+
+    def optimize(self):
+        # 残りのステップ数がfixed_stepsと等しくなるまではスキップ
+        if not self._shouldCalculate():
+            return
+
+        # 自動車のデータを更新
+        self._updateVehicleData()
+        self._updateRoadMaxQueueMap()
+        self._updateFullFlgs()
+
+        # D_tを更新
+        self._updateDt()
+
+        # 交通流モデルを更新
+        self._updateTrafficFlowModel()
+
+        # 最適化問題を更新
+        self._updateOptimizationProblem()
+
+        # 最適化問題を解く
+        self._solveOptimizationProblem()
+
+        # 将来の信号機のフェーズを更新
+        self._updateFuturePhaseIds()
+
+        # 信号が変化したかどうかのフラグを更新（次の最適化計算で使う）
+        self._updatePhiRecord()
+
+        return
+    
+    def _shouldCalculate(self):
+        signal_controller = self.intersection.signal_controller
+        future_phase_ids = signal_controller.get('future_phase_ids')
+
+        if len(future_phase_ids) <= self.remained_steps:
+            self.should_calculate = True
+            return True
+    
+        self.should_calculate = False
+        return False
+
+    def _updateVehicleData(self):
+        # initialize road_vehicle_data_map
+        self.road_vehicles_df_map = {}
+        for road_order_id in range(1, self.num_roads + 1):
+            # get road object
+            road = self.roads[road_order_id]
+
+            # get vehicles_df
+            vehicles_df = road.get('vehicle_data').copy()
+
+            # if there is no vehicle, make empty dataframes
+            if vehicles_df.shape[0] == 0:
+                vehicle_data_map = {}
+                for combination_order_id in self.road_combinations_map[road_order_id].keys():
+                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
+                self.road_vehicles_df_map[road_order_id] = vehicle_data_map
+                continue
+            
+            # recalculate position based on road start point and sort by position
+            position_list = []
+            for _, vehicle_row in vehicles_df.iterrows():
+                link_length_info = self.road_length_info_map[road_order_id][vehicle_row['link_id']]
+                position_list.append(vehicle_row['position'] + link_length_info['start_pos'])
+            
+            vehicles_df['position'] = position_list
+            vehicles_df = vehicles_df.sort_values(by='position', ascending=False)
+            vehicles_df = vehicles_df.reset_index(drop=True)
+
+            # remove unnecessary columns
+            vehicles_df = vehicles_df.drop(columns=['in_queue', 'road_id'])
+        
+            # make wait_link_id, wait_lane_id, signal_id columns
+            wait_link_id_list = []
+            wait_lane_id_list = []
+            signal_id_list = []
+            for _, vehicle_row in vehicles_df.iterrows():
+                # define signal_id
+                direction_id = vehicle_row['direction_id'] if vehicle_row['direction_id'] != 0 else random.choice(range(1, self.num_roads))
+                signal_id = (road_order_id - 1) * (self.num_roads - 1) + direction_id
+                signal_id_list.append(int(signal_id))
+
+                if vehicle_row['next_link_id'] not in road.links.getKeys():
+                    wait_link_id_list.append(int(vehicle_row['link_id']))
+                    wait_lane_id_list.append(int(vehicle_row['lane_id']))
+                    continue
+
+                # define wait_link_id and wait_lane_id
+                next_link = road.links[vehicle_row['next_link_id']]
+                if next_link.get('type') == 'connector':
+                    wait_link = next_link.to_links.getAll()[0]
+                    wait_lane = next_link.to_lane
+                elif next_link.get('type') in ['right', 'left']:
+                    wait_link = next_link
+                    wait_lane = road.links[vehicle_row['link_id']].to_lane
+                else:
+                    raise ValueError(f"Invalid next_link type: {next_link.get('type')}")
+                wait_link_id_list.append(int(wait_link.get('id')))
+                wait_lane_id_list.append(int(wait_lane.get('id')))
+                
+            # add wait_link_id, wait_lane_id, signal_id columns to vehicles_df
+            vehicles_df['wait_link_id'] = wait_link_id_list
+            vehicles_df['wait_lane_id'] = wait_lane_id_list
+            vehicles_df['signal_id'] = signal_id_list
+            
+            # devide vehicles_df by lane combinations
+            vehicle_data_map = {}
+            for combination_order_id, lane_str_list in self.road_combinations_map[road_order_id].items():
+                # make vehicles_df for the lane combination
+                vehicles_df_list = []
+                for lane_str in lane_str_list:
+                    match_obj = re.match(rf"(\d+)-(\d+)", lane_str) 
+                    sub_vehicles_df = vehicles_df[
+                        (vehicles_df['wait_link_id'] == int(match_obj.group(1))) & 
+                        (vehicles_df['wait_lane_id'] == int(match_obj.group(2)))
+                    ]
+                    if sub_vehicles_df.shape[0] == 0:
+                        continue
+
+                    vehicles_df_list.append(sub_vehicles_df)
+                
+                if len(vehicles_df_list) == 0:
+                    column_list = vehicles_df.columns.tolist()
+                    column_list.remove('next_link_id')
+                    tmp_vehicles_df = pd.DataFrame(columns=column_list)
+                else:
+                    tmp_vehicles_df = pd.concat(vehicles_df_list, ignore_index=True)
+                    tmp_vehicles_df = tmp_vehicles_df.drop(columns=['next_link_id'])
+                    tmp_vehicles_df = tmp_vehicles_df.sort_values(by='position', ascending=False)
+                    tmp_vehicles_df = tmp_vehicles_df.reset_index(drop=True)
+
+                vehicle_data_map[combination_order_id] = tmp_vehicles_df
+            
+            self.road_vehicles_df_map[road_order_id] = vehicle_data_map
+        return
+    
+    def _updateRoadMaxQueueMap(self):
+        # skip if objective function is not waiting vehicles
+        if self.objective_function_type != 'waiting_vehicles':
+            return
+        
+        # update road_max_queue_map
+        if self.queue_measurement_type == 'vissim' or (self.queue_measurement_type == 'ema' and not self.has('road_max_queue_map')):
+            self.road_max_queue_map = {}
+            for road_order_id in range(1, self.num_roads + 1):
+                self.road_max_queue_map[road_order_id] = self.roads[road_order_id].get('max_queue_length')
+        elif self.queue_measurement_type == 'ema':
+            for road_order_id in range(1, self.num_roads + 1):  
+                self.road_max_queue_map[road_order_id] = self.ema_alpha * self.roads[road_order_id].get('max_queue_length') + (1 - self.ema_alpha) * self.road_max_queue_map[road_order_id] 
+        else:
+            raise NotImplementedError(f"Not supported queue_measurement_type: {self.queue_measurement_type}")
+        return
+
+    def _updateFullFlgs(self):
+        if self.leader_detection_type == 'single':
+            return
+        
+        # initialize road_combination_full_flg_map
+        self.road_combination_full_flg_map = {}
+        for road_id in range(1, self.num_roads + 1):
+            self.road_combination_full_flg_map[road_id] = {}
+            combination_lane_list_map = self.road_combinations_map[road_id]
+            for combination_id, lane_str_list in combination_lane_list_map.items():
+                if len(lane_str_list) == 1:
+                    continue
+                
+                self.road_combination_full_flg_map[road_id][combination_id] = {}
+                for lane_str in lane_str_list:
+                    match_obj = re.match(rf"(\d+)-(\d+)", lane_str)
+                    current_queue_length = self.network.links[int(match_obj.group(1))].get('queue_length')
+                    D_b = self.road_combination_params_map[road_id][combination_id]['D_b'][lane_str]
+                    self.road_combination_full_flg_map[road_id][combination_id][lane_str] = (current_queue_length > D_b)                
+        return
+    
+    def _updateDt(self):  
+        if self.range_type == 'common':
+            max_queue_length = max(self.road_max_queue_map.values())
+            for road_order_id in range(1, self.num_roads + 1):
+                # combinations_mapを取得
+                combination_params_map = self.road_combination_params_map[road_order_id]
+                for combination_order_id, params in combination_params_map.items():
+                    params = combination_params_map[combination_order_id]
+                    params['D_t'] = max(max_queue_length, params['D_s'])
+        elif self.range_type == 'separate':
+            for road_order_id in range(1, self.num_roads + 1):
+                # combinations_mapを取得
+                combination_params_map = self.road_combination_params_map[road_order_id]
+                max_queue_length = self.road_max_queue_map[road_order_id]
+                for combination_order_id, params in combination_params_map.items():
+                    params = combination_params_map[combination_order_id]
+                    params['D_t'] = max(max_queue_length, params['D_s'])
+        else:
+            raise NotImplementedError(f"Not supported range_type: {self.range_type}")
+        return
+
+    def _updateTrafficFlowModel(self):
+        # 初期化
+        self.traffic_flow_model = {}
+
+        # 各行列を更新する
+        self._updateA()
+        self._updateB1()
+        self._updateB2()
+        self._updateB3()
+        self._updateC()
+        self._updateD1()
+        self._updateD2()
+        self._updateD3()
+        self._updateE()
+
+        # 自動車の位置の初期値を更新
+        self._updatePosVehs()
+
+        # 変数のリストを更新
+        self._updateVariableListMap()
+
+        return
+    
+    def _updateA(self):
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+
+            for _, vehicle_data in vehicle_data_map.items():
+                num_vehicles = vehicle_data.shape[0]
+                if num_vehicles == 0:
+                    continue
+                
+                tmp_A = np.eye((num_vehicles))
+                A_matrix = la.block_diag(A_matrix, tmp_A) if 'A_matrix' in locals() else tmp_A
+        
+        # set vehicle_exist_flg and A_matrix
+        if 'A_matrix' not in locals():
+            self.vehicle_exist_flg = False
+        else:
+            self.vehicle_exist_flg = True
+            self.traffic_flow_model['A'] = A_matrix
+ 
+        return
+    
+    def _updateB1(self):
+        if not self.vehicle_exist_flg:
+            return
+        
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                num_vehicles = vehicle_data.shape[0]
+                if num_vehicles == 0:
+                    continue
+
+                tmp_B1 = np.zeros((num_vehicles, self.num_signals))
+                B1_matrix = np.vstack([B1_matrix, tmp_B1]) if 'B1_matrix' in locals() else tmp_B1
+        
+        self.traffic_flow_model['B1'] = B1_matrix    
+        return
+
+    def _updateB2(self):
+        if not self.vehicle_exist_flg:
+            return
+        
+        for road_order_id in range(1, self.num_roads + 1):
+            # get vehicles_df_map
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            dt = self.time_step
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                # skip if no vehicle exists
+                if vehicles_df.shape[0] == 0:
+                    continue
+
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
+                v = params['v_max']
+                k_s = params['k_s']
+                k_f = params['k_f']
+                
+                if len(lane_str_list) == 1:
+                    for idx in range(vehicles_df.shape[0]):
+                        if idx == 0:
+                            b2 = np.array([-k_s]) * v * dt
+                        else:
+                            b2 = np.array([-k_s, k_f, -k_f]) * v * dt
+                        
+                        B2_matrix = la.block_diag(B2_matrix, b2) if 'B2_matrix' in locals() else b2
+                else:
+                    first_end_flg_map = {}
+                    for lane_str in lane_str_list:
+                        first_end_flg_map[lane_str] = False
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        if idx == 0:
+                            b2 = np.array([-k_s]) * v * dt
+                            first_end_flg_map[lane_str] = True
+                        elif not first_end_flg_map[lane_str]:
+                            b2 = np.array([-k_s, k_f, -k_f]) * v * dt
+                            first_end_flg_map[lane_str] = True
+                        else:
+                            b2 = np.array([-k_s, k_f, -k_f, k_f, -k_f]) * v * dt
+
+                        B2_matrix = la.block_diag(B2_matrix, b2) if 'B2_matrix' in locals() else b2
+
+        self.traffic_flow_model['B2'] = B2_matrix
+        return
+
+    def _updateB3(self):
+        if not self.vehicle_exist_flg:
+            return
+        
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            dt = self.time_step
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue
+
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
+                v = params['v_max']
+                k_s = params['k_s']
+                k_f = params['k_f']
+                d_s = params['d_s']
+                d_f = params['d_f']
+                
+                if len(lane_str_list) == 1:
+                    p_s = params['p_s'][lane_str_list[0]]
+
+                    for idx in range(vehicles_df.shape[0]):
+                        if idx == 0:    
+                            b3 = np.array([0, 0, k_s * (p_s - d_s) - 1, 0, 0, 0, 1]) * v * dt
+                        else:
+                            b3 = np.array([0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, 0, 0, 0, 1]) * v * dt
+                        
+                        B3_matrix = la.block_diag(B3_matrix, b3) if 'B3_matrix' in locals() else b3
+                else:
+                    first_end_flg_map = {}
+                    for lane_str in lane_str_list:
+                        first_end_flg_map[lane_str] = False
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        
+                        p_s = params['p_s'][lane_str]
+
+                        if idx == 0:
+                            b3 = np.array([0, 0, k_s * (p_s - d_s) - 1, 0, 0, 0, 0, 1]) * v * dt
+                            first_end_flg_map[lane_str] = True
+                        elif not first_end_flg_map[lane_str]:
+                            b3 = np.array([0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, 0, 0, 0, 0, 1]) * v * dt
+                            first_end_flg_map[lane_str] = True
+                        else:
+                            b3 = np.array([0, 0, 0, 0, 0, k_s * (p_s - d_s) - 1, -k_f * d_f - 1, -k_f * d_f - 1, 0, 0, 0, 0, 1]) * v * dt
+
+                        B3_matrix = la.block_diag(B3_matrix, b3) if 'B3_matrix' in locals() else b3
+
+        self.traffic_flow_model['B3'] = B3_matrix
+        return
+    
+    def _updateC(self):
+        if not self.vehicle_exist_flg:
+            return
+
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue
+
+                # tmp_C_matrixを初期化
+                tmp_C_matrix = None
+
+                # 車線の組み合わせとパラメータを取得
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+                
+                if len(lane_str_list) == 1:
+                    for idx in range(vehicles_df.shape[0]):
+                        if idx == 0:
+                            c = np.zeros((16, vehicles_df.shape[0]))
+
+                            # delta_d
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_p
+                            c[[2, 3], idx] = [-1, 1]  
+
+                            # delta_d_prime
+                            c[[6, 7], idx] = [1, -1]
+
+                            # z_1
+                            c[[14, 15], idx] = [1, -1]
+
+                        else:
+                            c = np.zeros((28, vehicles_df.shape[0]))
+
+                            # delta_d
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_p
+                            c[[2, 3], idx] = [-1, 1]
+
+                            # delta_f
+                            c[[4, 5], idx-1] = [1, -1]
+                            c[[4, 5], idx] = [-1, 1]
+
+                            # delta_d_prime
+                            c[[10, 11], idx] = [1, -1]
+
+                            # z_1
+                            c[[18, 19], idx] = [1, -1]
+
+                            # z_2
+                            c[[22, 23], idx-1] = [1, -1]
+
+                            # z_3
+                            c[[26, 27], idx] = [1, -1]
+                        
+                        # tmp_C_matrixに追加
+                        tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
+                    
+                else:
+                    last_vehs_map = {lane_str: {'idx': -1} for lane_str in lane_str_list}
+                    
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        
+                        if idx == 0:
+                            # 先頭車のc行列を初期化
+                            c = np.zeros((18, vehicles_df.shape[0]))
+
+                            # delta_d
+                            c[[0, 1], idx] = [1, -1]
+
+                            # delta_p
+                            c[[2, 3], idx] = [-1, 1]
+                            
+                            # delta_d_prime
+                            c[[6, 7], idx] = [1, -1]
+
+                            # z_1
+                            c[[16, 17], idx] = [1, -1]
+
+                        elif last_vehs_map[lane_str]['idx'] == -1:
+                            # initialize c matrix
+                            c = np.zeros((32, vehicles_df.shape[0]))
+
+                            # define delta_d
+                            c[[0, 1], idx] = [1, -1]
+
+                            # define delta_p
+                            c[[2, 3], idx] = [-1, 1]
+
+                            # define delta_f1
+                            c[[4, 5], idx-1] = [1, -1]
+                            c[[4, 5], idx] = [-1, 1]
+
+                            # define delta_b
+                            c[[6, 7], idx] = [1, -1]
+
+                            # define delta_d_prime
+                            c[[12, 13], idx] = [1, -1]
+
+                            # define z_1
+                            c[[22, 23], idx] = [1, -1]
+
+                            # define z_2
+                            c[[26, 27], idx-1] = [1, -1]
+
+                            # define z_3
+                            c[[30, 31], idx] = [1, -1]
+      
+                        else:
+                            # initialize c matrix
+                            c = np.zeros((44, vehicles_df.shape[0]))
+
+                            # define delta_d
+                            c[[0, 1], idx] = [1, -1]
+
+                            # define delta_p
+                            c[[2, 3], idx] = [-1, 1]
+
+                            # define delta_f1
+                            c[[4, 5], idx-1] = [1, -1]
+                            c[[4, 5], idx] = [-1, 1]
+
+                            # define delta_f2
+                            c[[6, 7], last_vehs_map[lane_str]['idx']] = [1, -1]
+                            c[[6, 7], idx] = [-1, 1]
+
+                            # define delta_b
+                            c[[8, 9], idx] = [1, -1]
+
+                            # define delta_d_prime
+                            c[[16, 17], idx] = [1, -1]
+
+                            # define z_1
+                            c[[26, 27], idx] = [1, -1]
+
+                            # define z_2
+                            c[[30, 31], idx-1] = [1, -1]
+
+                            # define z_3
+                            c[[34, 35], idx] = [1, -1]
+
+                            # define z_4
+                            c[[38, 39], last_vehs_map[lane_str]['idx']] = [1, -1]
+
+                            # define z_5
+                            c[[42, 43], idx] = [1, -1]
+
+                        # update last_vehs_map
+                        last_vehs_map[lane_str]['idx'] = idx
+                        
+                        # tmp_C_matrixに追加
+                        tmp_C_matrix = c if tmp_C_matrix is None else np.block([[tmp_C_matrix], [c]])
+                    
+                # C_matrixに追加
+                C_matrix = la.block_diag(C_matrix, tmp_C_matrix) if 'C_matrix' in locals() else tmp_C_matrix
+
+        # C_matrixを交通流モデルに追加
+        self.traffic_flow_model['C'] = C_matrix
+        return
+    
+    def _updateD1(self):
+        if not self.vehicle_exist_flg:
+            return
+
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue
+
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                if len(lane_str_list) == 1:
+                    for idx in range(vehicles_df.shape[0]):
+                        if idx == 0:
+                            # initialize D1
+                            d1 = np.zeros((16, self.num_signals))
+                            
+                            # define delta_1
+                            d1[[4, 5], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                            # define delta_w1
+                            d1[[8, 9], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                        else:
+                            # initialize D1
+                            d1 = np.zeros((28, self.num_signals))
+
+                            # define delta_1
+                            d1[[6, 7], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                            # define delta_w1
+                            d1[[12, 13], int(vehicle_row['signal_id']) - 1] = [1, -1]
+                    
+                        # push to D1_matrix
+                        D1_matrix = np.vstack([D1_matrix, d1]) if 'D1_matrix' in locals() else d1
+                else:
+                    # set first_end_flg_map
+                    first_end_flg_map = {}
+                    for lane_str in lane_str_list:
+                        first_end_flg_map[lane_str] = False
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        if idx == 0:
+                            # initialize d1 matrix
+                            d1 = np.zeros((18, self.num_signals))
+                            
+                            # define delta_1
+                            d1[[4, 5], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                            # define delta_w1
+                            d1[[8, 9], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+
+                        elif not first_end_flg_map[lane_str]:
+                            # initialize d1 matrix
+                            d1 = np.zeros((32, self.num_signals))
+
+                            # define delta_1
+                            d1[[8, 9], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                            # define delta_w1
+                            d1[[14, 15], int(vehicle_row['signal_id']) - 1] = [1, -1]
+                        
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+                        
+                        else:
+                            # initialize d1 matrix
+                            d1 = np.zeros((44, self.num_signals))
+
+                            # define delta_1
+                            d1[[10, 11], int(vehicle_row['signal_id']) - 1] = [1, -1]
+
+                            # define delta_w1
+                            d1[[18, 19], int(vehicle_row['signal_id']) - 1] = [1, -1]
+                            
+                        # push to D1_matrix
+                        D1_matrix = np.vstack([D1_matrix, d1]) if 'D1_matrix' in locals() else d1
+                       
+        # push to object property
+        self.traffic_flow_model['D1'] = D1_matrix
+        return
+
+    def _updateD2(self):
+        if not self.vehicle_exist_flg:
+            return
+        
+        for road_order_id in range(1, self.num_roads + 1):
+            # get vehicles_df_map 
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue 
+
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                if len(lane_str_list) == 1:
+                    for idx in range(vehicles_df.shape[0]):
+                        if idx == 0:
+                            # initialize d2 matrix
+                            d2 = np.zeros((16, 1))
+
+                            # define z_1
+                            d2[12:16, 0] = [-1, 1, -1, 1]
+                        else:
+                            # initialize d2 matrix
+                            d2 = np.zeros((28, 3))
+
+                            # define z_1
+                            d2[16:20, 0] = [-1, 1, -1, 1]
+
+                            # define z_2
+                            d2[20:24, 1] = [-1, 1, -1, 1]
+
+                            # define z_3
+                            d2[24:28, 2] = [-1, 1, -1, 1]
+                        
+                        # push to D2_matrix
+                        D2_matrix = la.block_diag(D2_matrix, d2) if 'D2_matrix' in locals() else d2
+
+                else:
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        if idx == 0:
+                            # initialize d2
+                            d2 = np.zeros((18, 1))
+
+                            # define z_1
+                            d2[14:18, 0] = [-1, 1, -1, 1]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+
+                        elif not first_end_flg_map[lane_str]:
+                            # initialize d2
+                            d2 = np.zeros((32, 3))
+
+                            # define z_1
+                            d2[20:24, 0] = [-1, 1, -1, 1]
+
+                            # define z_2
+                            d2[24:28, 1] = [-1, 1, -1, 1]
+
+                            # define z_3
+                            d2[28:32, 2] = [-1, 1, -1, 1]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+                        else:
+                            # initialize d2
+                            d2 = np.zeros((44, 5))
+
+                            # define z_1
+                            d2[24:28, 0] = [-1, 1, -1, 1]
+
+                            # define z_2
+                            d2[28:32, 1] = [-1, 1, -1, 1]
+
+                            # define z_3
+                            d2[32:36, 2] = [-1, 1, -1, 1]
+
+                            # define z_4
+                            d2[36:40, 3] = [-1, 1, -1, 1]
+
+                            # define z_5
+                            d2[40:44, 4] = [-1, 1, -1, 1]
+
+                        # push to D2_matrix
+                        D2_matrix = la.block_diag(D2_matrix, d2) if 'D2_matrix' in locals() else d2
+          
+        # push to object property
+        self.traffic_flow_model['D2'] = D2_matrix
+        return
+
+    def _updateD3(self):
+        if not self.vehicle_exist_flg:
+            return
+
+        for road_order_id in range(1, self.num_roads + 1):
+            # get vehicles_df_map
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue
+
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
+                v = params['v_max']
+                p_max = vehicles_df.iloc[0]['position'] + v * self.time_step * (self.horizon + 1)
+                p_min = - v * self.time_step
+                D_s = params['D_s']
+                d_s = params['d_s']
+                D_f = params['D_f']
+                D_t = params['D_t']
+                h3_min = - p_max + p_min + D_f
+                h3_max = - p_min + p_max + D_f
+                h4_min = - p_max + p_min + D_s
+                h4_max = - p_min + p_max + D_s
+
+                if len(lane_str_list) == 1:
+                    # initialize last_vehs_map
+                    last_vehs_map = {direction_id: {'idx': -1} for direction_id in range(1, self.num_roads)}
+                    
+                    p_s = params['p_s'][lane_str_list[0]]
+                    h1_min = - p_max + p_s - D_s
+                    h1_max = - p_min + p_s - D_s
+                    h2_min = p_min - p_s + d_s
+                    h2_max = p_max - p_s + d_s
+                    h6_min = - p_max + p_s - D_t
+                    h6_max = - p_min + p_s - D_t
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        if idx == 0:
+                            # initialize d3 matrix
+                            d3 = np.zeros((16, 7))
+
+                            # define delta_d(0)
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # define delta_p(1)
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # define delta_1(2)
+                            d3[4, [0, 1, 2]] = [1, 1, 3]
+                            d3[5, [0, 1, 2]] = [-1, -1, -1]
+
+                            # define delta_d_prime(3)
+                            d3[6, 3] = - h6_min
+                            d3[7, 3] = - h6_max
+
+                            # define delta_w1(4)
+                            d3[8, [1, 3, 4]] = [1, 1, 3]
+                            d3[9, [1, 3, 4]] = [-1, -1, -1]
+
+                            col_delta_w1 = 4
+
+                            # define delta_w2(5)
+                            d3[10, 5] = -1
+                            d3[11, 5] = 1
+
+                            rows_delta_w2 = [10, 11]
+
+                            # define z_1
+                            d3[12:16, 2] = [p_min, -p_max, p_max, -p_min] 
+
+                        else:
+                            # initialize d3 matrix
+                            d3 = np.zeros((28, 9))
+
+                            # define delta_d(0)
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # define delta_p(1)
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # define delta_f(2)
+                            d3[4, 2] = - h3_min
+                            d3[5, 2] = - h3_max
+
+                            # define delta_1(3)
+                            d3[6, [0, 1, 3]] = [1, 1, 3]
+                            d3[7, [0, 1, 3]] = [-1, -1, -1]
+
+                            # define delta_2(4)
+                            d3[8, [2, 3, 4]] = [-1, 1, 2]
+                            d3[9, [2, 3, 4]] = [1, -1, -1]
+
+                            # define delta_d_prime(5)
+                            d3[10, 5] = - h6_min
+                            d3[11, 5] = - h6_max
+
+                            # define delta_w1(6)
+                            d3[12, [1, 5, 6]] = [1, 1, 3]
+                            d3[13, [1, 5, 6]] = [-1, -1, -1]
+
+                            col_delta_w1 = 6
+
+                            # search target vehicle for delta_w2(7)
+                            target_info = {'idx': -1, 'direction_id': None}
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle_row['direction_id']):
+                                    continue
+                                
+                                if last_vehs_map[direction_id]['idx'] > target_info['idx']:
+                                    target_info['idx'] = last_vehs_map[direction_id]['idx']
+                                    target_info['direction_id'] = direction_id
+                            
+                            # define delta_w2(7)
+                            if target_info['idx'] == -1:
+                                d3[14, 7] = -1
+                                d3[15, 7] = 1
+                            else:
+                                # d3[14, 7] = -1
+                                # d3[15, 7] = 1
+                                d3[14, [1, 5, 6, 7]] = [1, 1, 1, 4]
+                                d3[15, [1, 5, 6, 7]] = [-1, -1, -1, -1]
+                            
+                            rows_delta_w2 = [14, 15]
+                            
+                            # define z_1
+                            d3[16:20, 3] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_2
+                            d3[20:24, 4] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_3
+                            d3[24:28, 4] = [p_min, -p_max, p_max, -p_min]
+
+                        # get dimensions of current D3_matrix
+                        row_D3 = D3_matrix.shape[0] if 'D3_matrix' in locals() else 0
+                        col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
+
+                        # update last_vehs_map
+                        last_vehs_map[int(vehicle_row['direction_id'])] = {
+                            'idx': idx,
+                            'rows': [row + row_D3 for row in rows_delta_w2],
+                            'col': col_delta_w1 + col_D3,
+                        }
+
+                        # push to D3_matrix
+                        D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
+
+                        # additional definition for delta_w2
+                        if idx == 0:
+                            continue
+
+                        if target_info['idx'] != -1:
+                            target_rows = last_vehs_map[int(vehicle_row['direction_id'])]['rows']
+                            target_col = last_vehs_map[target_info['direction_id']]['col']
+
+                            D3_matrix[target_rows, target_col] = [-1, 1]                 
+                        
+                else:
+                    # get full_flg_map
+                    full_flg_map = self.road_combination_full_flg_map[road_order_id][combination_order_id]
+                    
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
+                    
+                    # initialize last_vehs_map
+                    last_vehs_map = {}
+                    for lane_str in lane_str_list:
+                        last_vehs_map[lane_str] = {direction_id: {'idx': -1, 'pos': float('inf')} for direction_id in range(1, self.num_roads)}
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        
+                        p_s = params['p_s'][lane_str]
+                        D_b = params['D_b'][lane_str]
+                        h1_min = - p_max + p_s - D_s
+                        h1_max = - p_min + p_s - D_s
+                        h2_min = p_min - p_s + d_s
+                        h2_max = p_max - p_s + d_s
+                        h5_min = - p_max + p_s - D_b
+                        h5_max = - p_min + p_s - D_b
+                        h6_min = - p_max + p_s - D_t
+                        h6_max = - p_min + p_s - D_t
+
+                        if idx == 0:
+                            # initialize d3 matrix
+                            d3 = np.zeros((18, 8))
+
+                            # define delta_d(0)
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # define delta_p(1)
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # define delta_1(2)
+                            d3[4, [0, 1, 2]] = [1, 1, 3]
+                            d3[5, [0, 1, 2]] = [-1, -1, -1]
+
+                            # define delta_d_prime(3)
+                            d3[6, 3] = - h6_min
+                            d3[7, 3] = - h6_max
+
+                            # define delta_w1(4)
+                            d3[8, [1, 3, 4]] = [1, 1, 3]
+                            d3[9, [1, 3, 4]] = [-1, -1, -1]
+
+                            col_delta_w1 = 4
+
+                            # define delta_w2(5)
+                            d3[10, 5] = -1
+                            d3[11, 5] = 1
+
+                            rows_delta_w2 = [10, 11]
+
+                            # define delta_w3(6)
+                            d3[12, 6] = -1
+                            d3[13, 6] = 1
+
+                            rows_delta_w3 = [12, 13]
+
+                            # define z_1
+                            d3[14:18, 2] = [p_min, -p_max, p_max, -p_min]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+                        
+                        elif not first_end_flg_map[lane_str]:
+                            # initialize d3 matrix
+                            d3 = np.zeros((32, 11))
+
+                            # define delta_d(0)
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # define delta_p(1)
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # define delta_f1(2)
+                            d3[4, 2] = - h3_min
+                            d3[5, 2] = - h3_max
+
+                            # define delta_b(3)
+                            d3[6, 3] = - h5_min
+                            d3[7, 3] = - h5_max
+
+                            # define delta_1(4)
+                            d3[8, [0, 1, 4]] = [1, 1, 3]
+                            d3[9, [0, 1, 4]] = [-1, -1, -1]
+
+                            # define delta_2(5)
+                            d3[10, [2, 3, 4, 5]] = [-1, -1, 1, 3]
+                            d3[11, [2, 3, 4, 5]] = [1, 1, -1, -1]
+
+                            # define delta_d_prime(6)
+                            d3[12, 6] = - h6_min
+                            d3[13, 6] = - h6_max
+
+                            # define delta_w1(7)
+                            d3[14, [1, 6, 7]] = [1, 1, 3]
+                            d3[15, [1, 6, 7]] = [-1, -1, -1]
+
+                            col_delta_w1 = 7
+
+                            # search target vehicles for delta_w2(8)
+                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'direction_id': None, 'lane_str': None} for pos_type in ['before', 'after']}
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle_row['direction_id']):
+                                    continue
+                                
+                                for tmp_lane_str in lane_str_list:
+                                    if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
+                                        continue
+
+                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    if last_veh_info['pos'] < target_info['before']['pos']:
+                                        target_info['before']['idx'] = last_veh_info['idx']
+                                        target_info['before']['pos'] = last_veh_info['pos']
+                                        target_info['before']['direction_id'] = direction_id
+                                        target_info['before']['lane_str'] = tmp_lane_str
+
+                            # define delta_w2(8)
+                            if target_info['before']['idx'] == -1:
+                                d3[16, 8] = -1
+                                d3[17, 8] = 1
+                            else:
+                                # d3[16, 8] = -1
+                                # d3[17, 8] = 1
+                                d3[16, [3, 6, 7, 8]] = [-1, 1, 1, 4]
+                                d3[17, [3, 6, 7, 8]] = [1, -1, -1, -1]
+
+                            rows_delta_w2 = [16, 17]
+
+                            # define delta_w3(9)
+                            d3[18, 9] = -1
+                            d3[19, 9] = 1
+
+                            rows_delta_w3 = [18, 19]
+
+                            # define z_1
+                            d3[20:24, 4] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_2
+                            d3[24:28, 5] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_3
+                            d3[28:32, 5] = [p_min, -p_max, p_max, -p_min]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+
+                        else:
+                            # initialize d3 matrix
+                            d3 = np.zeros((44, 13))
+
+                            # define delta_d(0)
+                            d3[0, 0] = - h1_min
+                            d3[1, 0] = - h1_max
+
+                            # define delta_p(1)
+                            d3[2, 1] = - h2_min
+                            d3[3, 1] = - h2_max
+
+                            # define delta_f1(2)
+                            d3[4, 2] = - h3_min
+                            d3[5, 2] = - h3_max
+
+                            # define delta_f2(3)
+                            d3[6, 3] = - h4_min
+                            d3[7, 3] = - h4_max
+
+                            # define delta_b(4)
+                            d3[8, 4] = - h5_min
+                            d3[9, 4] = - h5_max
+
+                            # define delta_1(5)
+                            d3[10, [0, 1, 5]] = [1, 1, 3]
+                            d3[11, [0, 1, 5]] = [-1, -1, -1]
+
+                            # define delta_2(6)
+                            d3[12, [2, 4, 5, 6]] = [-1, -1, 1, 3]
+                            d3[13, [2, 4, 5, 6]] = [1, 1, -1, -1]
+
+                            # define delta_3(7)
+                            d3[14, [3, 4, 6, 7]] = [-1, 1, 1, 3]
+                            d3[15, [3, 4, 6, 7]] = [1, -1, -1, -1]
+
+                            # define delta_d_prime(8)
+                            d3[16, 8] = - h6_min
+                            d3[17, 8] = - h6_max
+
+                            # delta_w1(9)
+                            d3[18, [1, 8, 9]] = [1, 1, 3]
+                            d3[19, [1, 8, 9]] = [-1, -1, -1]
+
+                            col_delta_w1 = 9
+
+                            # search target_idx for delta_w2(10) and delta_w3(11)
+                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'direction_id': None} for pos_type in ['before', 'after']}
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle_row['direction_id']):
+                                    continue
+
+                                # regarding before branching point
+                                for tmp_lane_str in lane_str_list:
+                                    if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
+                                        continue
+
+                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    if last_veh_info['pos'] < target_info['before']['pos']:
+                                        target_info['before']['idx'] = last_veh_info['idx']
+                                        target_info['before']['pos'] = last_veh_info['pos']
+                                        target_info['before']['lane_str'] = tmp_lane_str
+                                        target_info['before']['direction_id'] = direction_id
+                                
+                                # regarding after branching point
+                                last_veh_info = last_vehs_map[lane_str][direction_id]
+                                if last_veh_info['pos'] < target_info['after']['pos']:
+                                    target_info['after']['idx'] = last_veh_info['idx']
+                                    target_info['after']['pos'] = last_veh_info['pos']
+                                    target_info['after']['lane_str'] = lane_str
+                                    target_info['after']['direction_id'] = direction_id
+
+                            # define delta_w2(10)
+                            if target_info['before']['idx'] == -1:
+                                d3[20, 10] = -1
+                                d3[21, 10] = 1
+                            else:
+                                # d3[20, 10] = -1
+                                # d3[21, 10] = 1
+                                d3[20, [4, 8, 9, 10]] = [-1, 1, 1, 4]
+                                d3[21, [4, 8, 9, 10]] = [1, -1, -1, -1]
+                            
+                            rows_delta_w2 = [20, 21]
+
+                            # define delta_w3(11)
+                            if target_info['after']['idx'] == -1:
+                                d3[22, 11] = -1
+                                d3[23, 11] = 1
+                            else:
+                                # d3[22, 11] = -1
+                                # d3[23, 11] = 1
+                                d3[22, [1, 4, 8, 9, 11]] = [1, 1, 1, 1, 5]
+                                d3[23, [1, 4, 8, 9, 11]] = [-1, -1, -1, -1, -1]
+
+                            rows_delta_w3 = [22, 23]
+
+                            # define z_1
+                            d3[24:28, 5] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_2
+                            d3[28:32, 6] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_3
+                            d3[32:36, 6] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_4
+                            d3[36:40, 7] = [p_min, -p_max, p_max, -p_min]
+
+                            # define z_5
+                            d3[40:44, 7] = [p_min, -p_max, p_max, -p_min]
+
+                        # get dimensions of current D3_matrix
+                        row_D3 = D3_matrix.shape[0] if 'D3_matrix' in locals() else 0
+                        col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
+
+                        # update last_vehs_map
+                        last_vehs_map[lane_str][int(vehicle_row['direction_id'])] = {
+                            'idx': idx,
+                            'rows': {
+                                'delta_w2': [row + row_D3 for row in rows_delta_w2],
+                                'delta_w3': [row + row_D3 for row in rows_delta_w3],
+                            },
+                            'col': col_delta_w1 + col_D3,
+                            'pos': vehicle_row['position'],
+                        }
+
+                        # push to D3_matrix
+                        D3_matrix = la.block_diag(D3_matrix, d3) if 'D3_matrix' in locals() else d3
+                        
+                        # additional constraints for delta_w2 and delta_w3
+                        if idx == 0:
+                            continue
+
+                        if target_info['before']['idx'] != -1:
+                            target_rows = last_vehs_map[lane_str][int(vehicle_row['direction_id'])]['rows']['delta_w2']
+                            target_col = last_vehs_map[target_info['before']['lane_str']][target_info['before']['direction_id']]['col']
+
+                            D3_matrix[target_rows, target_col] = [-1, 1]
+
+                        if target_info['after']['idx'] != -1:
+                            target_rows = last_vehs_map[lane_str][int(vehicle_row['direction_id'])]['rows']['delta_w3']
+                            target_col = last_vehs_map[target_info['after']['lane_str']][target_info['after']['direction_id']]['col']
+
+                            D3_matrix[target_rows, target_col] = [-1, 1]
+                        
+        # push to object property
+        self.traffic_flow_model['D3'] = D3_matrix
+        return
+
+    def _updateE(self):
+        if not self.vehicle_exist_flg:
+            return
+        
+        for road_order_id in range(1, self.num_roads + 1):
+            # get vehicles_df_map
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue
+                
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                params = self.road_combination_params_map[road_order_id][combination_order_id]
+                v = params['v_max']
+                p_max = vehicles_df.iloc[0]['position'] + v * self.time_step * (self.horizon + 1)
+                p_min = - v * self.time_step
+                D_s = params['D_s'] 
+                d_s = params['d_s']
+                D_f = params['D_f']  
+                D_t = params['D_t']
+                h3_min = - p_max + p_min + D_f
+                h4_min = - p_max + p_min + D_f    
+
+                if len(lane_str_list) == 1:
+                    # initialize last_vehs_map
+                    last_vehs_map = {direction_id: {'idx': -1} for direction_id in range(1, self.num_roads)}
+
+                    p_s = params['p_s'][lane_str_list[0]]
+                    h1_min = - p_max + p_s - D_s
+                    h2_min = p_min - p_s + d_s
+                    h6_min = -p_max + p_s - D_t
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        if idx == 0:
+                            # initialize e matrix
+                            e = np.zeros((16, 1))
+
+                            # define delta_d
+                            e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
+
+                            # define delta_p
+                            e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
+
+                            # define delta_1
+                            e[[4, 5], 0] = [3, -1]
+
+                            # define delta_d_prime
+                            e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
+
+                            # define delta_w1
+                            e[[8, 9], 0] = [3, -1]
+
+                            # define delta_w2
+                            e[[10, 11], 0] = [0, 0]
+
+                            # define z_1
+                            e[12:16, 0] = [0, 0, p_max, -p_min]
+
+                        else:
+                            # initialize e matrix
+                            e = np.zeros((28, 1))
+
+                            # define delta_d
+                            e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
+
+                            # define delta_p
+                            e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
+
+                            # define delta_f
+                            e[[4, 5], 0] = [D_f - h3_min, -D_f]
+
+                            # define delta_1
+                            e[[6, 7], 0] = [3, -1]
+
+                            # define delta_2
+                            e[[8, 9], 0] = [1, 0]
+
+                            # define delta_d_prime
+                            e[[10, 11], 0] = [p_s - D_t - h6_min, -p_s + D_t]
+
+                            # define delta_w1
+                            e[[12, 13], 0] = [3, -1]
+
+                            
+                            # search target vehicle for delta_w2
+                            target_info = {'idx': -1}
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle_row['direction_id']):
+                                    continue
+                                
+                                if last_vehs_map[direction_id]['idx'] > target_info['idx']:
+                                    target_info['idx'] = last_vehs_map[direction_id]['idx']
+
+                            # define delta_w2
+                            if target_info['idx'] == -1:
+                                e[[14, 15], 0] = [0, 0]
+                            else:
+                                # e[[14, 15], 0] = [0, 0]
+                                e[[14, 15], 0] = [3, 0]
+                            
+                            # z_1
+                            e[16:20, 0] = [0, 0, p_max, -p_min]
+
+                            # z_2
+                            e[20:24, 0] = [0, 0, p_max, -p_min]
+
+                            # z_3
+                            e[24:28, 0] = [0, 0, p_max, -p_min]
+                            
+                        # update last_vehs_map
+                        last_vehs_map[int(vehicle_row['direction_id'])]['idx'] = idx
+                        
+                        # push to E_matrix
+                        E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
+
+                else:
+                    # get full_flg_map
+                    full_flg_map = self.road_combination_full_flg_map[road_order_id][combination_order_id]
+
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
+
+                    # initialize last_vehs_map
+                    last_vehs_map = {}
+                    for lane_str in lane_str_list:
+                        last_vehs_map[lane_str] = {direction_id: {'idx': -1, 'pos': float('inf')} for direction_id in range(1, self.num_roads)}
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+
+                        p_s = params['p_s'][lane_str]
+                        D_b = params['D_b'][lane_str]
+                        h1_min = - p_max + p_s - D_s
+                        h2_min = p_min - p_s + d_s
+                        h5_min = -p_max + p_s - D_b
+                        h6_min = -p_max + p_s - D_t
+
+                        if idx == 0:
+                            # initialize e matrix
+                            e = np.zeros((18, 1))
+
+                            # define delta_d
+                            e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
+
+                            # define delta_p
+                            e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
+
+                            # define delta_1
+                            e[[4, 5], 0] = [3, -1]
+
+                            # define delta_d_prime
+                            e[[6, 7], 0] = [p_s - D_t - h6_min, -p_s + D_t]
+
+                            # define delta_w1
+                            e[[8, 9], 0] = [3, -1]
+
+                            # define delta_w2
+                            e[[10, 11], 0] = [0, 0]
+
+                            # define delta_w3
+                            e[[12, 13], 0] = [0, 0]
+
+                            # define z_1
+                            e[14:18, 0] = [0, 0, p_max, -p_min]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+
+                        elif not first_end_flg_map[lane_str]:
+                            # initialize e matrix
+                            e = np.zeros((32, 1))
+
+                            # define delta_d
+                            e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
+
+                            # define delta_p
+                            e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
+
+                            # define delta_f1
+                            e[[4, 5], 0] = [D_f - h3_min, -D_f]
+
+                            # define delta_b
+                            e[[6, 7], 0] = [p_s - D_b - h5_min, -p_s + D_b]
+
+                            # define delta_1
+                            e[[8, 9], 0] = [3, -1]
+
+                            # define delta_2
+                            e[[10, 11], 0] = [1, 1]
+
+                            # define delta_d_prime
+                            e[[12, 13], 0] = [p_s - D_t - h6_min, -p_s + D_t]
+
+                            # define delta_w1
+                            e[[14, 15], 0] = [3, -1]
+                            
+                            # search target vehicle for delta_w2
+                            target_info = {'idx': -1, 'pos': float('inf')}
+                            for direction_id in range(1, self.num_roads):
+                                if direction_id == int(vehicle_row['direction_id']):
+                                    continue
+
+                                for tmp_lane_str in lane_str_list:
+                                    if tmp_lane_str == lane_str:
+                                        continue
+
+                                    if not full_flg_map[tmp_lane_str]:
+                                        continue
+
+                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    if last_veh_info['pos'] < target_info['pos']:
+                                        target_info['idx'] = last_veh_info['idx']
+                                        target_info['pos'] = last_veh_info['pos']
+                            
+
+                            # define delta_w2
+                            if target_info['idx'] == -1:
+                                e[[16, 17], 0] = [0, 0]
+                            else:
+                                # e[[16, 17], 0] = [0, 0]
+                                e[[16, 17], 0] = [2, 1]
+
+                            # define delta_w3
+                            e[[18, 19], 0] = [0, 0]
+
+                            # define z_1
+                            e[20:24, 0] = [0, 0, p_max, -p_min]
+
+                            # define z_2
+                            e[24:28, 0] = [0, 0, p_max, -p_min]
+
+                            # define z_3
+                            e[28:32, 0] = [0, 0, p_max, -p_min]
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+                        else:
+                            # initialize e matrix
+                            e = np.zeros((44, 1))
+
+                            # define delta_d
+                            e[[0, 1], 0] = [p_s - D_s - h1_min, -p_s + D_s]
+
+                            # define delta_p
+                            e[[2, 3], 0] = [-p_s + d_s - h2_min, p_s - d_s]
+
+                            # define delta_f1
+                            e[[4, 5], 0] = [D_f - h3_min, -D_f]
+
+                            # define delta_f2
+                            e[[6, 7], 0] = [D_f - h4_min, -D_f]
+
+                            # define delta_b
+                            e[[8, 9], 0] = [p_s - D_b - h5_min, -p_s + D_b]
+
+                            # define delta_1
+                            e[[10, 11], 0] = [3, -1]
+
+                            # define delta_2
+                            e[[12, 13], 0] = [1, 1]
+
+                            # define delta_3
+                            e[[14, 15], 0] = [2, 0]
+
+                            # define delta_d_prime
+                            e[[16, 17], 0] = [p_s - D_t - h6_min, -p_s + D_t]
+
+                            # define delta_w1
+                            e[[18, 19], 0] = [3, -1]
+                            
+                            # search target vehicles for delta_w2 and delta_w3
+                            target_info = {pos_type: {'idx': -1, 'pos': float('inf')} for pos_type in ['before', 'after']}
+                            for direction_id in range(1, self.num_roads):
+                                # skip own direction_id
+                                if int(vehicle_row['direction_id']) == direction_id:
+                                    continue
+
+                                # regarding before branching point
+                                for tmp_lane_str in lane_str_list:
+                                    # only check target vehicle if in own lane or lane is full 
+                                    if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
+                                        continue
+                                    
+                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    if last_veh_info['pos'] < target_info['before']['pos']:
+                                        target_info['before']['idx'] = last_veh_info['idx']
+                                        target_info['before']['pos'] = last_veh_info['pos']
+                                
+                                # regarding after branching point
+                                last_veh_info = last_vehs_map[lane_str][direction_id]
+                                if last_veh_info['pos'] < target_info['after']['pos']:
+                                    target_info['after']['idx'] = last_veh_info['idx']
+                                    target_info['after']['pos'] = last_veh_info['pos']
+
+                            # define delta_w2
+                            if target_info['before']['idx'] == -1:
+                                e[[20, 21], 0] = [0, 0]
+                            else:
+                                # e[[20, 21], 0] = [0, 0]
+                                e[[20, 21], 0] = [2, 1]
+
+                            # define delta_w3
+                            if target_info['after']['idx'] == -1:
+                                e[[22, 23], 0] = [0, 0]
+                            else:
+                                # e[[22, 23], 0] = [0, 0]
+                                e[[22, 23], 0] = [4, 0]
+                            
+                            # define z_1
+                            e[24:28, 0] = [0, 0, p_max, -p_min]
+
+                            # define z_2
+                            e[28:32, 0] = [0, 0, p_max, -p_min]
+
+                            # define z_3
+                            e[32:36, 0] = [0, 0, p_max, -p_min]
+
+                            # define z_4
+                            e[36:40, 0] = [0, 0, p_max, -p_min]
+
+                            # define z_5
+                            e[40:44, 0] = [0, 0, p_max, -p_min]
+                        
+                        # update last_vehs_map
+                        last_vehs_map[lane_str][int(vehicle_row['direction_id'])] = {
+                            'idx': idx,
+                            'pos': vehicle_row['position'],
+                        }
+
+                        # push to E_matrix
+                        E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
+        
+        # push to object property
+        self.traffic_flow_model['E'] = E_matrix
+        return
+
+    def _updatePosVehs(self):
+        if not self.vehicle_exist_flg:
+            return
+
+        # 道路ごとに走査
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+                
+                # 車両の位置を取得
+                tmp_pos_vehs = vehicle_data['position'].values.reshape(-1, 1)
+
+                # pos_vehsに追加
+                pos_vehs = np.vstack([pos_vehs, tmp_pos_vehs]) if 'pos_vehs' in locals() else tmp_pos_vehs
+
+        # 位置ベクトルを交通流モデルに追加
+        self.traffic_flow_model['pos_vehs'] = pos_vehs
+        return
+
+    def _updateVariableListMap(self):
+        # if no vehicle exists, skip update
+        if not self.vehicle_exist_flg:
+            return
+        
+        # reset variable list map
+        variable_list_map = {
+            'z_1': [],
+            'z_2': [],
+            'z_3': [],
+            'z_4': [],
+            'z_5': [],
+            # 'delta_d': [],
+            # 'delta_p': [],
+            # 'delta_f': [],
+            # 'delta_f1': [],
+            # 'delta_f2': [],
+            # 'delta_b': [],
+            # 'delta_1': [],
+            # 'delta_2': [],
+            # 'delta_3': [],
+            # 'delta_d_prime': [],
+            'delta_w1': [],
+            'delta_w2': [],
+            'delta_w3': [],
+            'delta_c': [],
+            'phi': [],
+        }
+
+        # if signal change penalty is local, add phi variables for each signal
+        if self.signal_change_penalty_type == 'local':
+            for signal_id in range(1, self.num_signals + 1):
+                variable_list_map[f"phi_{signal_id}"] = []
+
+        # フェーズの変数リストを追加
+        for phase_order_id in range(1, self.num_phases + 1):
+            variable_list_map['p_' + str(phase_order_id)] = []
+
+        variable_length_map = {
+            'u': self.num_signals,
+            'z': None,
+            'delta': None,
+            'v': None,
+        }
+
+        # 現在の変数の数を初期化
+        count = variable_length_map['u'] - 1
+
+        # zに関して変数リストを更新
+        for road_order_id in range(1, self.num_roads + 1):
+            # 道路に紐づくvehicle_data_mapを取得
+            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+
+            # 道路に紐づく組み合わせのマップを取得
+            combination_lane_list_map = self.road_combinations_map[road_order_id]
+
+            # 各車線の組み合わせごとに走査
+            for combination_order_id, vehicle_data in vehicle_data_map.items():
+                # 車両データが空の場合はスキップ
+                if vehicle_data.shape[0] == 0:
+                    continue
+
+                # 組み合わせを取得
+                lane_str_list = combination_lane_list_map[combination_order_id]
+
+                if len(lane_str_list) == 1:
+                    for idx, vehicle in vehicle_data.iterrows():
+                        if idx == 0:
+                            # 先頭車の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+
+                            count += 1
+                        
+                        else:
+                            # 先頭車以外の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+                            variable_list_map['z_2'].append(count + 2)
+                            variable_list_map['z_3'].append(count + 3)
+
+                            count += 3
+                else:
+                    # 先頭車の処理が終わったかどうかを示すフラグを初期化
+                    first_end_flg = {}
+                    for lane_str in lane_str_list:
+                        first_end_flg[lane_str] = False
+
+                    for idx, vehicle in vehicle_data.iterrows():
+                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                        if idx == 0:
+                            # 先頭車の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+
+                            count += 1
+
+                            # 先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        elif not first_end_flg[lane_str]:
+                            # 準先頭車の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+                            variable_list_map['z_2'].append(count + 2)
+                            variable_list_map['z_3'].append(count + 3)
+
+                            count += 3
+
+                            # 準先頭車のフラグを更新
+                            first_end_flg[lane_str] = True
+                        
+                        else:
+                            # 先頭車以外の変数を追加
+                            variable_list_map['z_1'].append(count + 1)
+                            variable_list_map['z_2'].append(count + 2)
+                            variable_list_map['z_3'].append(count + 3)
+                            variable_list_map['z_4'].append(count + 4)
+                            variable_list_map['z_5'].append(count + 5)
+
+                            count += 5
+
+        # zの変数の長さを更新                   
+        variable_length_map['z'] = (count + 1) - variable_length_map['u']
+
+        # regarding delta variable list
+        for road_order_id in range(1, self.num_roads + 1):
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
+                    continue
+
+                lane_str_list = self.road_combinations_map[road_order_id][combination_order_id]
+
+                if len(lane_str_list) == 1:
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        if idx == 0:
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_1'].append(count + 3)
+                            # variable_list_map['delta_d_prime'].append(count + 4)
+                            variable_list_map['delta_w1'].append(count + 5)
+                            variable_list_map['delta_w2'].append(count + 6)
+                            variable_list_map['delta_c'].append(count + 7)
+
+                            count += 7
+                        else:
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_f'].append(count + 3)
+                            # variable_list_map['delta_1'].append(count + 4)
+                            # variable_list_map['delta_2'].append(count + 5)
+                            # variable_list_map['delta_d_prime'].append(count + 6)
+                            variable_list_map['delta_w1'].append(count + 7)
+                            variable_list_map['delta_w2'].append(count + 8)
+                            variable_list_map['delta_c'].append(count + 9)
+
+                            count += 9
+                    
+                else:
+                    # initialize first_end_flg_map
+                    first_end_flg_map = {lane_str: False for lane_str in lane_str_list}
+
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
+                        if idx == 0:
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_1'].append(count + 3)
+                            # variable_list_map['delta_d_prime'].append(count + 4)
+                            variable_list_map['delta_w1'].append(count + 5)
+                            variable_list_map['delta_w2'].append(count + 6)
+                            variable_list_map['delta_w3'].append(count + 7)
+                            variable_list_map['delta_c'].append(count + 8)
+
+                            count += 8
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+                        
+                        elif not first_end_flg_map[lane_str]:
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_f1'].append(count + 3)
+                            # variable_list_map['delta_b'].append(count + 4)
+                            # variable_list_map['delta_1'].append(count + 5)
+                            # variable_list_map['delta_2'].append(count + 6)
+                            # variable_list_map['delta_d_prime'].append(count + 7)
+                            variable_list_map['delta_w1'].append(count + 8)
+                            variable_list_map['delta_w2'].append(count + 9)
+                            variable_list_map['delta_w3'].append(count + 10)
+                            variable_list_map['delta_c'].append(count + 11)
+
+                            count += 11
+
+                            # update first_end_flg_map
+                            first_end_flg_map[lane_str] = True
+                        
+                        else:
+                            # variable_list_map['delta_d'].append(count + 1)
+                            # variable_list_map['delta_p'].append(count + 2)
+                            # variable_list_map['delta_f1'].append(count + 3)
+                            # variable_list_map['delta_f2'].append(count + 4)
+                            # variable_list_map['delta_b'].append(count + 5)
+                            # variable_list_map['delta_1'].append(count + 6)
+                            # variable_list_map['delta_2'].append(count + 7)
+                            # variable_list_map['delta_3'].append(count + 8)
+                            # variable_list_map['delta_d_prime'].append(count + 9)
+                            variable_list_map['delta_w1'].append(count + 10)
+                            variable_list_map['delta_w2'].append(count + 11)
+                            variable_list_map['delta_w3'].append(count + 12)
+                            variable_list_map['delta_c'].append(count + 13)
+
+                            count += 13
+
+        # calculate length of delta variables
+        variable_length_map['delta'] = (count + 1) - variable_length_map['u'] - variable_length_map['z']
+
+        # calculate total length of variable
+        variable_length_map['v'] = count + 1
+
+        # phiに関して変数リストを更新
+        v_length = variable_length_map['v']
+        const_part = v_length * self.horizon + self.num_phases * self.horizon
+        for step in range(1, self.horizon):
+            variable_list_map['phi'].append(const_part + (self.num_signals + 1) * step - 1)
+
+        if self.signal_change_penalty_type == 'local':
+            for signal_id in range(1, self.num_signals + 1):
+                for step in range(1, self.horizon):
+                    variable_list_map[f"phi_{signal_id}"].append(const_part + signal_id + (self.num_signals + 1) * (step - 1) - 1)
+
+        # フェーズの変数リストを更新
+        const_part = v_length * self.horizon
+        for phase_order_id in range(1, self.num_phases + 1):
+            phase_str = f"p_{phase_order_id}"
+            for step in range(1, self.horizon + 1):
+                variable_list_map[phase_str].append(const_part + self.num_phases * (step - 1) + phase_order_id - 1)
+
+        # 変数リストマップをインスタンスとして保持
+        self.variable_list_map = variable_list_map
+
+        # 変数の長さマップをインスタンスとして保持
+        self.variable_length_map = variable_length_map
+        return
+                    
+    def _updateOptimizationProblem(self):
+        # set optimization_problem to empty
+        self.optimization_problem = {}
+
+        # if no vehicle exist, skip update
+        if not self.vehicle_exist_flg:
+            return
+
+        # update constraints
+        self._updateConstraints()
+
+        # update objective function
+        self._updateSignalChangePenaltyFlg()
+        self._updateObjectiveFunction()
+
+        # update bounds of variables
+        self._updateBounds()
+
+        # update integrality of variables
+        self._updateIntegrality()
+        return 
+    
+    def _updateConstraints(self):
+        # 交通流モデルのホライゾン分のステップを1つの不等式にまとめる
+        P_matrix, q_matrix, Peq_matrix, qeq_matrix = self._reshapeTrafficModel()
+
+        # 信号機制約を足していく
+        P_matrix, q_matrix, Peq_matrix, qeq_matrix = self._updateSignalConstraints(P_matrix, q_matrix, Peq_matrix, qeq_matrix)
+
+        # インスタンスとして保持
+        self.optimization_problem['P'] = P_matrix
+        self.optimization_problem['q'] = q_matrix
+        self.optimization_problem['Peq'] = Peq_matrix
+        self.optimization_problem['qeq'] = qeq_matrix
+        return
+    
+    def _reshapeTrafficModel(self):
+        # 係数を取得
+        A_matrix = self.traffic_flow_model['A']
+        B_matrix = np.block([self.traffic_flow_model['B1'], self.traffic_flow_model['B2'], self.traffic_flow_model['B3']])
+        C_matrix = self.traffic_flow_model['C']
+        D_matrix = np.block([self.traffic_flow_model['D1'], self.traffic_flow_model['D2'], self.traffic_flow_model['D3']])
+        E_matrix = self.traffic_flow_model['E']
+
+        # 初期値を取得
+        pos_vehs = self.traffic_flow_model['pos_vehs']
+
+        # 行列をホライゾン分に拡張
+        A_bar = np.kron(np.ones((self.horizon, 1)), A_matrix)
+        B_bar = np.kron(np.tril(np.ones((self.horizon, self.horizon)), k=-1), B_matrix)
+        C_bar = np.kron(np.eye(self.horizon), C_matrix)
+        D_bar = np.kron(np.eye(self.horizon), D_matrix)
+        E_bar = np.kron(np.ones((self.horizon, 1)), E_matrix)
+
+        # 1つの行列不等式にまとめる
+        P_matrix = C_bar @ B_bar + D_bar
+        q_matrix = E_bar - C_bar @ A_bar @ pos_vehs
+
+        # 信号機の変数分行列を拡張
+        signal_matrix = np.zeros((P_matrix.shape[0], self.num_phases * self.horizon + (self.num_signals + 1) * (self.horizon - 1)))
+        P_matrix = np.block([P_matrix, signal_matrix])
+
+        # 変数の数をインスタンスとして保持
+        self.num_variables = P_matrix.shape[1]
+
+        # delta_c = 1の制約を作成
+        delta_c_list = self.variable_list_map['delta_c']
+        v_length = self.variable_length_map['v']
+
+        for idx in delta_c_list:
+            for step in range(1, self.horizon + 1):
+                peq = np.zeros((1, self.num_variables))
+                peq[:, v_length * (step - 1) + idx] = 1
+                
+                qeq = np.array([[1]])
+
+                # Peq_matrix, qeq_matrixに追加
+                Peq_matrix = np.vstack([Peq_matrix, peq]) if 'Peq_matrix' in locals() else peq
+                qeq_matrix = np.vstack([qeq_matrix, qeq]) if 'qeq_matrix' in locals() else qeq
+
+        return P_matrix, q_matrix, Peq_matrix, qeq_matrix
+
+    def _updateSignalConstraints(self, P_matrix, q_matrix, Peq_matrix, qeq_matrix):
+        # 交通流モデルの1ステップ分の変数を取得
+        v_length = self.variable_length_map['v']
+
+        # フェーズの変数の定義
+        for phase_id in range(1, self.num_phases + 1):
+            signal_id_list = self.phases[phase_id]
+
+            for step in range(1, self.horizon + 1):
+                p = np.zeros((2, self.num_variables))
+
+                for signal_id in signal_id_list:
+                    p[:, v_length * (step - 1) + signal_id - 1] = [-1, 1]
+                
+                p[:, v_length * self.horizon + phase_id + self.num_phases * (step - 1) - 1] = [self.num_roads, -1]
+
+                q = np.array([[0], [self.num_roads - 1]])
+
+                # P_matrix, q_matrixに追加
+                P_matrix = np.vstack([P_matrix, p])
+                q_matrix = np.vstack([q_matrix, q])
+
+        # 信号現示の変化のバイナリ変数を定義
+        for step in range(1, self.horizon):
+            for signal_id in range(1, self.num_signals + 1):
+                p = np.zeros((4, self.num_variables))
+                p[:, v_length * (step - 1) + signal_id - 1] = [1, -1, -1, 1]
+                p[:, v_length * step + signal_id - 1] = [1, -1, 1, -1]
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_id - 1] = [1, 1, -1, -1]
+
+                q = np.array([[2], [0], [0], [0]])
+
+                # P_matrix, q_matrixに追加
+                P_matrix = np.vstack([P_matrix, p])
+                q_matrix = np.vstack([q_matrix, q])
+        
+
+        # 青になっていい信号の数の制限
+        for step in range(1, self.horizon + 1):
+            p = np.zeros((1, self.num_variables))
+            p[:, (v_length * (step - 1)) : (v_length * (step - 1) + self.num_signals)] = [1] * self.num_signals
+
+            q = np.array([[self.num_roads]])
+
+            # P_matrix, q_matrixに追加
+            P_matrix = np.vstack([P_matrix, p])
+            q_matrix = np.vstack([q_matrix, q])
+
+        # 青になっていいフェーズの数の制限
+        for step in range(1, self.horizon + 1):
+            peq = np.zeros((1, self.num_variables))
+            for phase_id in range(1, self.num_phases + 1):
+                peq[:, v_length * self.horizon + self.num_phases * (step - 1) + phase_id - 1] = 1
+            
+            qeq = np.array([[1]])
+
+            # Peq_matrix, qeq_matrixに追加
+            Peq_matrix = np.vstack([Peq_matrix, peq])
+            qeq_matrix = np.vstack([qeq_matrix, qeq])
+        
+        # 信号の変化の回数の制限（一回の予測につき何回変化を許容するか）
+        p = np.zeros((1, self.num_variables))
+        for step in range(1, self.horizon):
+            p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1] = 1
+        
+        q = np.array([[self.num_max_changes]])
+
+        # P_matrix, q_matrixに追加
+        P_matrix = np.vstack([P_matrix, p])
+        q_matrix = np.vstack([q_matrix, q])
+
+        # 信号機全体で変化しているかのバイナリの定義
+        for step in range(1, self.horizon):
+            p = np.zeros((2, self.num_variables))
+            for signal_id in range(1, self.num_signals + 1):
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * (step - 1) + signal_id - 1] = [-1, 1]
+            p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * step - 1] = [1, - self.num_signals]
+
+            q = np.array([[0], [0]])
+
+            # P_matrix, q_matrixに追加
+            P_matrix = np.vstack([P_matrix, p])
+            q_matrix = np.vstack([q_matrix, q])
+        
+        # 最小連続回数についての制約
+        for step in range(1, self.horizon):
+            p = np.zeros((1, self.num_variables))
+            q = np.array([[1.0]])
+
+            for tmp_step in range(1, step + 1):
+                p[:, v_length * self.horizon + self.num_phases * self.horizon + (self.num_signals + 1) * tmp_step - 1] = 1.0
+
+            for tmp_step in range(1, self.min_successive_steps - step + 1):
+                q -= self.phi_record[-tmp_step]
+            
+            # P_matrix, q_matrixに追加
+            P_matrix = np.vstack([P_matrix, p])
+            q_matrix = np.vstack([q_matrix, q])
+
+        # 採用するステップ以降の入力の固定について
+        if self.horizon > self.remained_steps + self.utilize_steps:
+            for step in range(self.remained_steps + self.utilize_steps + 1, self.horizon + 1):
+                peq = np.zeros((self.num_signals, self.num_variables))
+                for signal_id in range(1, self.num_signals + 1):
+                    peq[signal_id - 1, v_length * (self.remained_steps + self.utilize_steps - 1) + signal_id - 1] = 1.0
+                    peq[signal_id - 1, v_length * (step - 1) + signal_id - 1] = - 1.0
+                
+                qeq = np.zeros((self.num_signals, 1))
+
+                Peq_matrix = np.vstack([Peq_matrix, peq])
+                qeq_matrix = np.vstack([qeq_matrix, qeq])
+        
+        self.tmp_P_matrix = P_matrix
+        self.tmp_q_matrix = q_matrix
+        self.tmp_Peq_matrix = Peq_matrix
+        self.tmp_qeq_matrix = qeq_matrix
+
+        # 初期値の固定
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+        if len(future_phase_ids) != 0:
+            for step in range(1, self.remained_steps + 1):
+                peq = np.zeros((self.num_phases, self.num_variables))
+                for phase_id in range(1, self.num_phases + 1):
+                    peq[phase_id - 1, v_length * self.horizon + self.num_phases * (step - 1) + phase_id - 1] = 1.0
+                
+                qeq = np.zeros((self.num_phases, 1))
+                qeq[future_phase_ids[step - 1] - 1, 0] = 1.0
+                    
+                # Peq_matrix, qeq_matrixに追加
+                Peq_matrix = np.vstack([Peq_matrix, peq])
+                qeq_matrix = np.vstack([qeq_matrix, qeq])
+
+        return P_matrix, q_matrix, Peq_matrix, qeq_matrix
+        
+    def _updateObjectiveFunction(self):
+        # set f_matrix to zero matrix
+        f_matrix = np.zeros(self.num_variables)
+
+        if self.objective_function_type == 'waiting_vehicles':
+            delta_w1_list = self.variable_list_map['delta_w1']
+            delta_w2_list = self.variable_list_map['delta_w2']
+            delta_w3_list = self.variable_list_map['delta_w3']
+            v_length = self.variable_length_map['v']
+
+            # number of waiting vehicles = sum of delta_w1, delta_w2, and delta_w3
+            for step in range(1, self.horizon + 1):
+                for idx in range(len(delta_w1_list)):
+                    f_matrix[v_length * (step - 1) + delta_w1_list[idx]] = 1
+
+                for idx in range(len(delta_w2_list)):
+                    f_matrix[v_length * (step - 1) + delta_w2_list[idx]] = 1
+                
+                for idx in range(len(delta_w3_list)):
+                    f_matrix[v_length * (step - 1) + delta_w3_list[idx]] = 1
+        else:
+            raise NotImplementedError(f"Not implemented objective_function_type: {self.objective_function_type}")
+            
+        # add signal change penalty to f_matrix
+        if self.signal_change_penalty_type == 'global':
+            phi_list = self.variable_list_map['phi']
+            if self.signal_change_penalty_flg:
+                for idx in range(len(phi_list)):
+                    f_matrix[phi_list[idx]] = self.signal_change_penalty_weight
+        elif self.signal_change_penalty_type == 'local':
+            weight = self.signal_change_penalty_weight / 2
+            for signal_id in range(1, self.num_signals + 1):
+                phi_list = self.variable_list_map[f"phi_{signal_id}"]
+                if self.signal_change_penalty_flg:
+                    for idx in range(len(phi_list)):
+                        f_matrix[phi_list[idx]] = weight
+        else:
+            raise NotImplementedError(f"Not implemented signal_change_penalty_type: {self.signal_change_penalty_type}")
+
+        # set f to optimization_problem
+        self.optimization_problem['f'] = f_matrix
+        return
+
+    def _updateSignalChangePenaltyFlg(self):
+        # update signal_change_penalty_flg
+        if self.signal_change_penalty_type == 'global':
+            threshold = self.signal_change_penalty_weight
+        elif self.signal_change_penalty_type == 'local':
+            threshold = self.signal_change_penalty_weight * 2 * self.num_roads
+        else:
+            raise NotImplementedError(f"Not implemented signal_change_penalty_type: {self.signal_change_penalty_type}")
+        
+        self.signal_change_penalty_flg = False
+        for road_order_id in range(1, self.num_roads + 1):
+                vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+
+                tmp_num_vehs = 0
+                for _, vehicles_df in vehicles_df_map.items():
+                    tmp_num_vehs += vehicles_df.shape[0]
+                
+                # if there are enough vehicles on the road, set true
+                if tmp_num_vehs * self.utilize_steps > threshold:
+                    self.signal_change_penalty_flg = True
+                    return
+        return
+
+    def _updateBounds(self):
+        # 変数の下限と上限を初期化
+        lb = np.zeros(self.num_variables)
+        ub = np.ones(self.num_variables)
+
+        # zに関する変数のリストを取得
+        z_list = []
+        z_list.extend(self.variable_list_map['z_1'])
+        z_list.extend(self.variable_list_map['z_2'])
+        z_list.extend(self.variable_list_map['z_3'])
+        z_list.extend(self.variable_list_map['z_4'])
+        z_list.extend(self.variable_list_map['z_5'])
+
+        # 交通流モデルの変数の長さを取得
+        v_length = self.variable_length_map['v']
+
+        # z_1, z_2, z_3, z_4, z_5の変数の下限と上限を設定
+        for step in range(1, self.horizon + 1):
+            for idx in z_list:
+                ub[v_length * (step - 1) + idx] = np.inf
+
+        # インスタンスとして保持
+        self.optimization_problem['lb'] = lb
+        self.optimization_problem['ub'] = ub
+        return
+
+    def _updateIntegrality(self):
+        # 変数のタイプを初期化
+        integrality = np.full(self.num_variables, 1) # 1は整数変数である
+
+        # zに関する変数のリストを取得
+        z_list = []
+        z_list.extend(self.variable_list_map['z_1'])
+        z_list.extend(self.variable_list_map['z_2'])
+        z_list.extend(self.variable_list_map['z_3'])
+        z_list.extend(self.variable_list_map['z_4'])
+        z_list.extend(self.variable_list_map['z_5'])
+
+        # 交通流モデルの変数の長さを取得
+        v_length = self.variable_length_map['v']
+
+        # z_1, z_2, z_3, z_4, z_5の変数のタイプを設定
+        for step in range(1, self.horizon + 1):
+            for idx in z_list:
+                integrality[v_length * (step - 1) + idx] = 0 # 0は連続変数を示す
+
+        # インスタンスとして保持
+        self.optimization_problem['integrality'] = integrality
+        return
+
+    def _solveOptimizationProblem(self):
+        # 自動車が存在するかで場合分け
+        if not self.vehicle_exist_flg:
+            return
+        
+        # 目的関数の係数を取得
+        f_matrix = self.optimization_problem['f']
+        P_matrix = self.optimization_problem['P']
+        q_matrix = self.optimization_problem['q'].flatten()
+        Peq_matrix = self.optimization_problem['Peq']
+        qeq_matrix = self.optimization_problem['qeq'].flatten()
+        lb_matrix = self.optimization_problem['lb']
+        ub_matrix = self.optimization_problem['ub']
+        integrality_matrix = self.optimization_problem['integrality']
+
+        # 問題を定義
+        bounds = Bounds(lb=lb_matrix, ub=ub_matrix)
+        constraints_ineq = LinearConstraint(P_matrix, np.full(P_matrix.shape[0], -np.inf), q_matrix)
+        constraints_eq = LinearConstraint(Peq_matrix, qeq_matrix, qeq_matrix)
+        constraints = [constraints_ineq, constraints_eq]
+
+        # オプションを設定
+        options = {
+            'disp': False,
+            'mip_rel_gap': 0.01,
+        }
+
+        # 計算時間の測定開始
+        if self.calc_time_flg:
+            start_time = time.time()
+
+        # 問題を解く（インスタンスとして保持）
+        self.response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints, options=options)
+        
+        # 計算時間の測定終了
+        if self.calc_time_flg:
+            end_time = time.time()
+
+        # 失敗したときのデバッグ用
+        if not self.response.success:
+            constraints_ineq = LinearConstraint(self.tmp_P_matrix, np.full(self.tmp_P_matrix.shape[0], -np.inf), self.tmp_q_matrix.flatten())
+            constraints_eq = LinearConstraint(self.tmp_Peq_matrix, self.tmp_qeq_matrix.flatten(), self.tmp_qeq_matrix.flatten())
+            constraints = [constraints_ineq, constraints_eq]
+            response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
+        
+        # 計算時間の保存
+        if self.calc_time_flg:
+            calc_time = end_time - start_time
+            self.calc_time_record.loc[len(self.calc_time_record)] = [self.current_time, calc_time]
+        return
+    
+    def showOptimizationResult(self):
+        # 計算を行っていないときはスキップ
+        if not self.should_calculate:
+            return
+        
+        # 自動車が存在するかで場合分け
+        if not self.vehicle_exist_flg:
+            return
+        
+        # 最適化結果を表示
+        print(f"intersection id: {self.intersection.get('id')}")
+        print(f"optimization result:")
+        if self.response.success:
+            print(f"  condition: optimization problem solved successfully.")
+            print(f"  optimal objective values: {round(self.response.fun, 1)}")
+        
+        else: 
+            print(f"  condition: optimization problem failed.") 
+
+        return        
+
+    def _updateFuturePhaseIds(self):
+        # signal_controllerから将来のフェーズを取得
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+
+        # 自動車が存在しないときと実行可能解が存在しないときは現在のフェーズを維持
+        if not self.vehicle_exist_flg or not self.response.success:
+            if len(future_phase_ids) == 0:
+                utilize_phase_ids = [1] * (self.remained_steps + self.utilize_steps)
+            else:
+                utilize_phase_ids = [future_phase_ids[-1]] * (self.utilize_steps)
+
+            self.signal_controller.setNextPhases(utilize_phase_ids)
+            return
+        
+        # 最適化が成功しているとき
+        if self.response.success:
+            # 最適化計算の結果からフェーズIDを抽出
+            optimized_phase_ids = []
+            for step in range(1, self.horizon + 1):
+                for phase_id in range(1, self.num_phases + 1):
+                    value = self.response.x[self.variable_list_map['p_' + str(phase_id)][step - 1]]
+                    if round(value) == 1:
+                        optimized_phase_ids.append(phase_id)
+                        break
+            
+            # 初めての最適化計算時とそうでないときで場合分け
+            if len(future_phase_ids) != 0:
+                utilize_phase_ids = optimized_phase_ids[self.remained_steps : (self.remained_steps + self.utilize_steps)]
+            else:
+                # 最初だけ残ってる将来のフェーズが少ないのでその分多く採用
+                utilize_phase_ids = optimized_phase_ids[:(self.remained_steps + self.utilize_steps)]
+            
+            # 利用する結果をプッシュ
+            self.signal_controller.setNextPhases(utilize_phase_ids)
+        return
+    
+    def _updatePhiRecord(self):
+        # 自動車が存在しないときと実行可能解がなかったときは現状維持なので0を追加
+        if not self.vehicle_exist_flg or not self.response.success:
+            phi_values = [0] * self.utilize_steps
+            self.phi_record.extend(phi_values)
+            return
+        
+        # phiの変数リストを取得
+        phi_list = self.variable_list_map['phi']
+
+        # 最適化結果からphiの値を取得
+        phi_values = self.response.x[phi_list]
+
+        # phiの記録を更新
+        self.phi_record.extend(phi_values[: self.utilize_steps])
+        return
+    
+    def updateBcData(self):
+        # 行動クローンのためのデータ集めをしない場合はスキップ
+        if not self.bc_flg:
+            return
+        
+        # 信号変化が起きていない場合は何もしない
+        self.signal_change_flg = self.signal_controller.get('signal_change_flg')
+        if not self.signal_change_flg:
+            return
+        
+        # 対象とするネットワークによって分岐
+        if self.bc_buffer.get('network_id') == 1:
+            # BC用の自動車に関する情報を更新
+            self._updateBcVehicleData()
+
+            # BC用の状態量を更新
+            self._updateBcState()
+
+            # BC用の行動を更新
+            self._updateBcAction()
+
+        return
+
+    def _updateBcVehicleData(self):
+        # 行動クローンのデータ集めをしない場合はスキップ
+        if not self.bc_flg:
+            return
+        
+        # 行動クローン用の車線から車両データへのマップを初期化
+        self.bc_lane_str_vehicle_data_map = {}
+
+        # 信号付近かどうかを判断するため最大キュー長を取得
+        max_queue_length = self.intersection.get('max_queue_length')
+
+        # 道路ごとに走査
+        for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+            # roadオブジェクトとlanesオブジェクトを取得
+            road = self.roads[road_order_id]
+            lanes = self.bc_road_lanes_map[road_order_id]
+
+            # direction_signal_value_mapを取得
+            direction_signal_value_map = road.get('direction_signal_value_map')
+
+            # 信号付近の距離を定義
+            v_max = road.get('max_speed')
+            near_length = max_queue_length if max_queue_length > v_max else v_max
+
+            # 車線を走査
+            for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                # 車線を規定する文字列を作成
+                lane_str = f"{road_order_id}-{lane_order_id}"
+
+                # laneオブジェクトを取得
+                lane = lanes[lane_order_id]
+
+                # vehicle_dataを位置情報でソート
+                vehicle_data = lane.get('vehicle_data').copy()
+                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
+                vehicle_data.reset_index(drop=True, inplace=True)
+
+                # 先頭からnum_vehicles台の車両を取得
+                vehicle_data = vehicle_data.head(self.bc_num_vehicles).copy()
+
+                # 距離情報を信号との距離に変換
+                length_info = lane.get('length_info')
+                vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+
+                # near_flg（交差点に近いかどうか）を初期化
+                near_flgs = []
+                for _, row in vehicle_data.iterrows():
+                    if row['position'] <= near_length:
+                        near_flgs.append(True)
+                    else:
+                        near_flgs.append(False)
+                
+                # near_flgsをvehicle_dataに追加
+                vehicle_data['near_flg'] = near_flgs
+
+                # wait_flg（信号待ちかどうか）を初期化
+                wait_flgs = []
+
+                # direction_idを取得
+                direction_ids = vehicle_data['direction_id']
+                for idx, row in vehicle_data.iterrows():
+                    # 交差点に近くない自動車はスコープから外す
+                    if not near_flgs[idx]:
+                        wait_flgs.append(False)
+                        continue
+
+                    # 信号が赤の場合は信号待ち（3は青信号，1は赤信号を表す）
+                    signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
+                    if signal_value == 1:
+                        wait_flgs.append(True)
+                        continue
+                    
+                    # 先頭車の場合
+                    if len(wait_flgs) == 0:
+                        wait_flgs.append(False)
+                        continue
+
+                    # 先頭車でない場合は進路が異なる先行車を探す
+                    # その自動車が信号待ちをしていたら自分も信号待ちにする
+                    found_flg = False
+                    for tmp_idx in range(len(wait_flgs) - 1, - 1, -1):
+                        if direction_ids[tmp_idx] != row['direction_id']:
+                            wait_flgs.append(True if wait_flgs[tmp_idx] else False)
+                            found_flg = True
+                            break
+                    
+                    # 先行車が見つからないとき
+                    if not found_flg:
+                        wait_flgs.append(False)
+                            
+                # wait_flgsをvehicle_dataに追加
+                vehicle_data['wait_flg'] = wait_flgs
+                
+                self.bc_lane_str_vehicle_data_map[lane_str] = vehicle_data
+        
+        return
+    
+    def _updateBcState(self):
+        # 行動クローンのデータ集めをしない場合はスキップ
+        if not self.bc_flg:
+            return
+        
+        if self.bc_buffer.get('network_id') == 1:
+            # 状態量を初期化
+            self.bc_state = {}
+
+            # 道路群の状態量を初期化
+            roads_state = {}
+
+            # 道路を走査
+            for road_order_id in self.roads.getKeys(container_flg=True, sorted_flg=True):
+                # roadオブジェクトを取得
+                road = self.roads[road_order_id]
+
+                # 道路の状態量を初期化
+                road_state = {}
+                
+                # 車線群の状態量を初期化
+                lanes_state = {}
+
+                # lanesオブジェクトを取得
+                lanes = self.bc_road_lanes_map[road_order_id]
+
+                # 車線を走査
+                for lane_order_id in lanes.getKeys(container_flg=True, sorted_flg=True):
+                    # laneオブジェクトを取得
+                    lane = lanes[lane_order_id]
+
+                    # 車線の状態量を初期化
+                    lane_state = {}
+
+                    # 自動車のデータを取得
+                    vehicle_data = self.bc_lane_str_vehicle_data_map.get(f"{road_order_id}-{lane_order_id}")
+                    
+                    # 車両に関する状態を取得
+                    vehicles_state = {}
+                    for index in range(self.bc_num_vehicles):
+                        if index < vehicle_data.shape[0]:
+                            # レコードを取得
+                            vehicle = vehicle_data.iloc[index]
+
+                            # 車両の状態量を初期化
+                            vehicle_state = []
+
+                            # 特徴量を走査
+                            for feature_name, feature_flg in self.bc_features_info['vehicle'].items():
+                                # 使わない状態量はスキップ
+                                if feature_flg == False:
+                                    continue
+
+                                # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
+                                if feature_name == 'direction':
+                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    direction_vector[int(vehicle['direction_id'])] = 1
+                                    vehicle_state.extend(direction_vector)
+                                else: 
+                                    vehicle_state.append(float(vehicle[feature_name]))
+                            
+                            # 自動車が存在するかどうかのフラグの状態量を追加
+                            vehicle_state.append(1) 
+
+                            # テンソルに変換してからvehicles_stateに追加  
+                            vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state).float()                    
+                        else:
+                            # 車両の状態量を初期化
+                            vehicle_state = []
+
+                            # 特徴量を走査
+                            for feature_name, feature_flg in self.bc_features_info['vehicle'].items():
+                                # 使わない状態量はスキップ
+                                if feature_flg == False:
+                                    continue
+                                
+                                # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
+                                if feature_name == 'direction':
+                                    direction_vector = [0] * (self.intersection.get('num_roads'))
+                                    vehicle_state.extend(direction_vector)
+                                else: 
+                                    vehicle_state.append(0.0)
+                            
+                            # 自動車が存在するかどうかのフラグの状態量を追加
+                            vehicle_state.append(0)
+
+                            # テンソルに変換してからvehicles_stateに追加
+                            vehicles_state[len(vehicles_state) + 1] = torch.tensor(vehicle_state, dtype=torch.float32)
+                    
+                    # 車線の状態量に追加
+                    lane_state['vehicles'] = dict(sorted(vehicles_state.items()))
+
+                    # 評価指標に関する状態量を取得
+                    lane_state['metric'] = torch.tensor([lane.get('num_vehicles')], dtype=torch.float32)
+
+                    # 道路の情報を取得
+                    length_info = lane.get('length_info')
+                    
+                    # 車線情報に関する状態量を取得（長さ，メインリンクかサブリンクか）
+                    if lane.link.get('type') == 'main':
+                        lane_state['shape'] = torch.tensor([int(length_info['length']), 1, 0], dtype=torch.float32)
+                    elif lane.link.get('type') == 'right' or lane.link.get('type') == 'left':
+                        lane_state['shape'] = torch.tensor([int(length_info['length']), 0, 1], dtype=torch.float32)
+
+                    # lanes_stateにlane_stateを追加
+                    lanes_state[lane_order_id] = lane_state
+                
+                # road_stateに車線の状態量を追加
+                road_state['lanes'] = dict(sorted(lanes_state.items()))
+
+                # 評価指標の状態量について
+                metric_state = []
+                metric_state.append(int(road.get('max_queue_length')))
+                metric_state.append(int(road.get('average_delay')))
+
+                # road_stateに評価指標の状態量を追加
+                road_state['metric'] = torch.tensor(metric_state, dtype=torch.float32)
+
+                # roads_stateにroad_stateを追加
+                roads_state[road_order_id] = road_state
+            
+            # statesに道路の状態量を追加
+            self.bc_state['roads'] = dict(sorted(roads_state.items()))
+
+            # フェーズに関する状態量を取得
+            current_phase_id = self.intersection.get('current_phase_id')
+            phase_state = [0] * (self.intersection.get('num_phases'))
+            if current_phase_id is not None:
+                phase_state[current_phase_id - 1] = 1
+            else:
+                phase_state[0] = 1
+
+            # statesに交差点の状態量を追加
+            self.bc_state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
+
+        return
+    
+    def _updateBcAction(self):
+        # 行動クローンのデータ集めをしない場合はスキップ
+        if not self.bc_flg:
+            return
+        
+        # 行動クローン用のアクションを初期化
+        self.bc_action = self.signal_controller.get('next_phase_id')
+        return
+    
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
+
+        

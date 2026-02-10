@@ -28,11 +28,11 @@ class Config(Common):
         # drl_infoの整形
         self.reshapeDrlInfo()
 
-        # initialize save_dir_path_map
-        self._initSaveDirPathMap()
-
         # validation
         self._validation()
+
+        # initialize save_dir_path_map
+        self._initSaveDirPathMap()
         return
     
     def _initProps(self):
@@ -291,4 +291,32 @@ class Config(Common):
         return
     
     def _validation(self):
+        if self.simulator_info['control_method'] == 'mpc':
+            if self.mpc_info['horizon'] <= 0:
+                raise ValueError("MPC horizon must be greater than 0.")
+
+            if self.mpc_info['utilize_steps']*2 > self.mpc_info['horizon']:
+                raise ValueError("MPC utilize_steps must be less than or equal to half of horizon.")
+
+            if self.mpc_info['utilize_steps'] < self.mpc_info['remained_steps']:
+                raise ValueError("MPC utilize_steps must be greater than or equal to remained_steps.")
+            
+            if self.mpc_info['branch_gap'] < 0:
+                raise ValueError("MPC branch_gap must be greater than or equal to 0.")
+
+            if self.mpc_info['phases']['3-road'] != 4:
+                raise NotImplementedError(f"Not supported number of phases for 3-road intersection: {self.mpc_info['mpc']['phases']['3-road']}")
+        
+            if self.mpc_info['phases']['4-road'] not in [4, 8, 17]:
+                raise NotImplementedError(f"Not supported number of phases for 4-road intersection: {self.mpc_info['mpc']['phases']['4-road']}")
+            
+            if self.mpc_info['phases']['5-road'] != 10:
+                raise NotImplementedError(f"Not supported number of phases for 5-road intersection: {self.mpc_info['mpc']['phases']['5-road']}")
+            
+            if self.mpc_info['objective_function']['type'] != 'waiting_vehicles':
+                raise NotImplementedError(f"Not supported MPC objective function: {self.mpc_info['mpc']['objective_function']['type']}")
+            
+            if self.mpc_info['objective_function']['waiting_vehicles']['definition'] == 4:
+                if self.mpc_info['objective_function']['waiting_vehicles']['leader_detection']['type'] == 'single':
+                    raise ValueError("MPC objective function definition 4 does not support single leader detection.")
         return

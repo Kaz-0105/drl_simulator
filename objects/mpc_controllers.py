@@ -1,6 +1,7 @@
 from libs.container import Container
 from libs.object import Object
 from objects.links import Lanes
+from objects.new_mpc_controllers import NewMpcController
 
 import numpy as np
 import scipy.linalg as la
@@ -21,6 +22,7 @@ class MpcControllers(Container):
 
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
+            self._initProps()
             self._makeElements()
         elif upper_object.__class__.__name__ == 'BcBuffer':
             self.bc_buffer = upper_object
@@ -29,10 +31,22 @@ class MpcControllers(Container):
     
         return
     
+    def _initProps(self):
+        mpc_info = self.config.get('mpc_info')
+        objective_function_info = mpc_info['objective_function']
+        self.type = objective_function_info['type']
+
+        if self.type == 'waiting_vehicles':
+            self.definition = objective_function_info['waiting_vehicles']['definition']
+        return
+    
     def _makeElements(self):
         for intersection_order_id in self.network.intersections.getKeys(container_flg=True, sorted_flg=True):
             intersection = self.network.intersections[intersection_order_id]
-            self.add(MpcController(self, intersection))
+            if self.type == 'waiting_vehicles' and self.definition == 4:
+                self.add(NewMpcController(self, intersection))
+            else:
+                self.add(MpcController(self, intersection))
         return
         
     def optimize(self):
