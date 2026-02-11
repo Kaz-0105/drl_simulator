@@ -117,7 +117,7 @@ layout_dir_path = root_dir_path / 'layout'
 
 # set bar_graph_df_map
 metric_bar_graph_df_map = {}
-for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_delay', 'calc_time', 'speed']:
+for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_delay', 'calc_time', 'speed', 'phases']:
     metric_bar_graph_df_map[performance_metric] = {}
     for keys, path_info in target_dir_paths_map.items():
         # set bar_graph_data
@@ -172,6 +172,8 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
                             performance_metric_list[intersection_id - 1] = float(performance_metric_df['calculation_time'].mean())
                         elif performance_metric == 'speed':
                             performance_metric_list[intersection_id - 1] = float(performance_metric_df['value'].mean())
+                        elif performance_metric == 'phases':
+                            performance_metric_list[intersection_id - 1] = (performance_metric_df['phase'] != performance_metric_df['phase'].shift()).sum() - 1
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                         
@@ -204,6 +206,8 @@ for performance_metric in ['average_queue', 'max_queue', 'average_delay', 'max_d
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['delay'].mean())
                     elif performance_metric == 'speed':
                         performance_metric_list[intersection_id - 1] = float(performance_metric_df['value'].mean())
+                    elif performance_metric == 'phases':
+                        performance_metric_list[intersection_id - 1] = (performance_metric_df['phase'] != performance_metric_df['phase'].shift()).sum() - 1
                     else:
                         raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 
@@ -246,6 +250,8 @@ for performance_metric, bar_graph_df_map in metric_bar_graph_df_map.items():
             y_axis_label = f"{y_axis_label} [s]" 
         elif performance_metric == 'speed':
             y_axis_label = f"{y_axis_label} [km/h]"
+        elif performance_metric == 'phases':
+            y_axis_label = "Number of Phase Changes"
         else:
             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
         
