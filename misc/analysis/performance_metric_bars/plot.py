@@ -224,10 +224,10 @@ for performance_metric, bar_graph_df_map in metric_bar_graph_df_map.items():
     for keys, bar_graph_df in bar_graph_df_map.items():
         # set save_dir_path
         save_dir_path = analysis_dir_path
+        save_dir_path /= 'performance_metric_bars'
         save_dir_path /= keys[0]  # layout_name
         save_dir_path /= keys[1]  # inflow_name
         save_dir_path /= f"simulator_{keys[2]}"  # simulator_id
-        save_dir_path /= 'performance_metric_bars'
         save_dir_path.mkdir(parents=True, exist_ok=True)
 
         # set figure and axis

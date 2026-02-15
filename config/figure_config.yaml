@@ -10,9 +10,11 @@ axes:
   title:
     size: 24
     weight: normal # normal, bold
+    pad: 20
   label:
     size: 20
     weight: normal # normal, bold
+    pad: 15
   linewidth: 3
   grid:
     flg: true
@@ -30,9 +32,11 @@ ticks:
   major:
     width: 3
     size: 8
+    pad: 10
   minor:
     width: 1.5
     size: 4
+    pad: 10
 lines:
   width: 2
   markersize: 6
