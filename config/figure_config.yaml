@@ -3,31 +3,31 @@ dpi:
   save: 100
   display: 100
 font: 
-  family: sans # sans, serif
+  family: serif # sans, serif
   mathtext: regular
-  size: 18
+  size: 32
 axes:
   title:
-    size: 24
-    weight: normal # normal, bold
+    size: 32
+    weight: bold # normal, bold
     pad: 20
   label:
-    size: 20
+    size: 32
     weight: normal # normal, bold
     pad: 15
   linewidth: 3
   grid:
     flg: true
     style: --
-    alpha: 0.5
+    alpha: 1.0
   spines:
     top: true
     right: true
 legend: 
-  fontsize: 20
+  fontsize: 28
 ticks: 
   label:
-    size: 20
+    size: 28
   direction: in # in, out, inout
   major:
     width: 3

@@ -125,6 +125,50 @@ performance_metric_df = pd.DataFrame(
     columns=['id', 'method'] + plot_config['figure']['performance_metrics']
 )
 
+# make save_dir
+save_dir_path = data_dir_path / 'analysis' / 'performance_box_plot' / plot_config['figure']['layout']
+save_dir_path.mkdir(parents=True, exist_ok=True)
+
+# save statistical data
+performance_metric_stat_map_list = []
+for method in ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']:
+    tmp_performance_metric_df = performance_metric_df[performance_metric_df['method'] == method]
+    if tmp_performance_metric_df.empty:
+        continue
+    for performance_metric in plot_config['figure']['performance_metrics']:
+        performance_metric_stat_map_list.append({
+            'id': len(performance_metric_stat_map_list) + 1,
+            'performance_metric': performance_metric,
+            'method': method,
+            'mean': tmp_performance_metric_df[performance_metric].mean(),
+            'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric == 'speed' else tmp_performance_metric_df[performance_metric].max(),
+            'std': tmp_performance_metric_df[performance_metric].std(),
+        })
+performance_metric_stat_df = pd.DataFrame(
+    performance_metric_stat_map_list, 
+    columns=['id', 'performance_metric', 'method', 'mean', 'worst', 'std']
+)
+
+improve_rate_list = [0] * len(performance_metric_stat_df)
+scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == 'SCOOT'].copy()
+for _, scoot_stat_row in scoot_stat_df.iterrows():
+    performance_metric = scoot_stat_row['performance_metric']
+    reference_value = scoot_stat_row['mean']
+    for method in ['4-phase MPC', '8-phase MPC', '17-phase MPC']:
+        target_stat_row = performance_metric_stat_df[
+            (performance_metric_stat_df['method'] == method) &
+            (performance_metric_stat_df['performance_metric'] == performance_metric)
+        ]
+        if target_stat_row.empty:
+            continue
+        target_id = target_stat_row['id'].values[0]
+        target_value = target_stat_row['mean'].values[0]
+        improve_rate_list[target_id - 1] = (target_value - reference_value) / reference_value * 100
+performance_metric_stat_df['improve_rate'] = improve_rate_list
+        
+performance_metric_stat_df[['mean', 'worst', 'std', 'improve_rate']] = performance_metric_stat_df[['mean', 'worst', 'std', 'improve_rate']].round(2)
+performance_metric_stat_df.to_csv(save_dir_path / 'performance_metric_stat.csv', index=False, encoding='utf-8')
+
 # make information used for making plots
 order_list = []
 if plot_config['figure']['control_method']['scoot']:
@@ -136,16 +180,12 @@ for num_phases in [4, 8, 17]:
 yaxis_label_map = {
     'average_queue': 'Average Queue Length',
     'max_queue': 'Maximum Queue Length',
-    'average_delay': 'Average Delay',
-    'max_delay': 'Maximum Delay',
+    'average_delay': 'Average Delay Time',
+    'max_delay': 'Maximum Delay Time',
     'speed': 'Average Speed',
 }
 
-
-
 # plot figure
-save_dir_path = data_dir_path / 'analysis' / 'performance_box_plot' / plot_config['figure']['layout']
-save_dir_path.mkdir(parents=True, exist_ok=True)
 for performance_metric in plot_config['figure']['performance_metrics']:
     fig, ax = plt.subplots()
 
@@ -183,17 +223,19 @@ for performance_metric in plot_config['figure']['performance_metrics']:
         size=8,
     )
 
-    ax.set_title(f"{yaxis_label_map[performance_metric]} Comparison across All Traffic Scenarios")
-    ax.set_xlabel('Control Method')
+    ax.set_title(f"{yaxis_label_map[performance_metric]} Comparison Across All Traffic Scenarios")
+    ax.set_xlabel('')
     if performance_metric in ['average_queue', 'max_queue']:
-        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [m]")
+        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [m]", fontsize=32)
     elif performance_metric in ['average_delay', 'max_delay']:
-        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [s]")
+        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [s]", fontsize=32)
     elif performance_metric in ['speed']:
-        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [km/h]")
+        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [km/h]", fontsize=32)
+
+    ax.set_ylim(bottom=0)
 
     fig.tight_layout()
-    fig.savefig(save_dir_path / f"{performance_metric}.png")
+    fig.savefig(save_dir_path / f"{performance_metric}.png", format='png')
     plt.close(fig)
 
-print('test')
+print('Finished!')

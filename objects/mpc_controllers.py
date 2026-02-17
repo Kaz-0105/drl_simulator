@@ -43,7 +43,7 @@ class MpcControllers(Container):
     def _makeElements(self):
         for intersection_order_id in self.network.intersections.getKeys(container_flg=True, sorted_flg=True):
             intersection = self.network.intersections[intersection_order_id]
-            if self.type == 'waiting_vehicles' and self.definition == 4:
+            if self.type == 'waiting_vehicles' and self.definition in [4, 5]:
                 self.add(NewMpcController(self, intersection))
             else:
                 self.add(MpcController(self, intersection))

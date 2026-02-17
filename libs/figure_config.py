@@ -18,7 +18,9 @@ def initFigureConfig():
         # font
         'font.size': figure_info['font']['size'],
         'font.family': figure_info['font']['family'],
+        'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif'],
         'mathtext.default': figure_info['font']['mathtext'],
+        'mathtext.fontset': 'stix' if figure_info['font']['family'] == 'serif' else 'cm',
 
         # lines
         'lines.linewidth': figure_info['lines']['width'],

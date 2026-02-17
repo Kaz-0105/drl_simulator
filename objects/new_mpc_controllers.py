@@ -1,4 +1,3 @@
-from libs.container import Container
 from libs.object import Object
 from objects.links import Lanes
 
@@ -1858,7 +1857,7 @@ class NewMpcController(Object):
             'z_4': [],
             'z_5': [],
             # 'delta_d': [],
-            # 'delta_p': [],
+            'delta_p': [],
             # 'delta_f': [],
             # 'delta_f1': [],
             # 'delta_f2': [],
@@ -1980,7 +1979,7 @@ class NewMpcController(Object):
                     for idx, vehicle_row in vehicles_df.iterrows():
                         if idx == 0:
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
                             # variable_list_map['delta_d_prime'].append(count + 4)
                             variable_list_map['delta_w1'].append(count + 5)
@@ -1990,7 +1989,7 @@ class NewMpcController(Object):
                             count += 7
                         else:
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f'].append(count + 3)
                             # variable_list_map['delta_1'].append(count + 4)
                             # variable_list_map['delta_2'].append(count + 5)
@@ -2009,7 +2008,7 @@ class NewMpcController(Object):
                         lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         if idx == 0:
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_1'].append(count + 3)
                             # variable_list_map['delta_d_prime'].append(count + 4)
                             variable_list_map['delta_w1'].append(count + 5)
@@ -2024,7 +2023,7 @@ class NewMpcController(Object):
                         
                         elif not first_end_flg_map[lane_str]:
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f1'].append(count + 3)
                             # variable_list_map['delta_b'].append(count + 4)
                             # variable_list_map['delta_1'].append(count + 5)
@@ -2042,7 +2041,7 @@ class NewMpcController(Object):
                         
                         else:
                             # variable_list_map['delta_d'].append(count + 1)
-                            # variable_list_map['delta_p'].append(count + 2)
+                            variable_list_map['delta_p'].append(count + 2)
                             # variable_list_map['delta_f1'].append(count + 3)
                             # variable_list_map['delta_f2'].append(count + 4)
                             # variable_list_map['delta_b'].append(count + 5)
@@ -2308,7 +2307,7 @@ class NewMpcController(Object):
         # set f_matrix to zero matrix
         f_matrix = np.zeros(self.num_variables)
 
-        if self.objective_function_type == 'waiting_vehicles':
+        if self.definition == 4:
             delta_w1_list = self.variable_list_map['delta_w1']
             delta_w2_list = self.variable_list_map['delta_w2']
             delta_w3_list = self.variable_list_map['delta_w3']
@@ -2324,6 +2323,26 @@ class NewMpcController(Object):
                 
                 for idx in range(len(delta_w3_list)):
                     f_matrix[v_length * (step - 1) + delta_w3_list[idx]] = 1
+        elif self.definition == 5:
+            delta_w1_list = self.variable_list_map['delta_w1']
+            delta_w2_list = self.variable_list_map['delta_w2']
+            delta_w3_list = self.variable_list_map['delta_w3']
+            delta_p_list = self.variable_list_map['delta_p']
+            v_length = self.variable_length_map['v']
+
+            # number of waiting vehicles = sum of delta_w1, delta_w2, and delta_w3
+            for step in range(1, self.horizon + 1):
+                for idx in range(len(delta_w1_list)):
+                    f_matrix[v_length * (step - 1) + delta_w1_list[idx]] = 1
+
+                for idx in range(len(delta_w2_list)):
+                    f_matrix[v_length * (step - 1) + delta_w2_list[idx]] = 1
+                
+                for idx in range(len(delta_w3_list)):
+                    f_matrix[v_length * (step - 1) + delta_w3_list[idx]] = 1
+                
+                for idx in range(len(delta_p_list)):
+                    f_matrix[v_length * (step - 1) + delta_p_list[idx]] = - 1
         else:
             raise NotImplementedError(f"Not implemented objective_function_type: {self.objective_function_type}")
             
