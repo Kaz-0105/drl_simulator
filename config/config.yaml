@@ -1,7 +1,7 @@
 simulator :
   control_method : mpc              # mpc, drl, scoot
   layout_name : 7-4-1               # layout folder name
-  inflow_name : balanced_600        # inflow file name
+  inflow_name : balanced_700        # inflow file name
   num_simulations: 1                # number of simulations to run
   simulation_time: 500              # simulation time for each simulation (seconds)
   seed:
@@ -73,8 +73,8 @@ mpc:
   utilize_steps: 2             # number of steps acutually used in optimized steps (<= horizon / 2)
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
-  num_max_changes: 3           # maximum number of phase changes within a single optimization 
-  branch_gap: 0                # to avoid errors between vissim and mpc regarding the branching point
+  num_max_changes: 1           # maximum number of phase changes within a single optimization 
+  branch_gap: 1                # to avoid errors between vissim and mpc regarding the branching point
   bc_buffer: 
     flg: false                  # flg of saving data for behavioral cloning
     size: 1000                  # size of dataset for each buffer file
@@ -87,7 +87,7 @@ mpc:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:
       definition: 4             # 1: delta_w2 is calculated with using delta_p, 2: delta_w2 is calculated without using delta_p, 3: delta_w1 and delta_w2 are both calculated without using delta_p 4: devide delta_w2 into separete binaries for before branching point and after branching point
-      range_type: separate       # common: use common range for all roads, separate: use separate range for each route 
+      range_type: common       # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
         type: ema               # vissim: use vissim's built-in function, ema: use exponential moving average
         ema:  

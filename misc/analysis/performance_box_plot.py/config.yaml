@@ -16,8 +16,6 @@ figure:
   seed:
     fix_flg: true
     fix_value: 1
-  
-
 
 simulator:
   num_red_steps: 1            
