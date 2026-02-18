@@ -11,8 +11,8 @@ mpc:
   utilize_steps: 2             # number of steps acutually used in optimized steps (<= horizon / 2)
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
-  num_max_changes: 3           # maximum number of phase changes within a single optimization 
-  branch_gap: 0                # to avoid errors between vissim and mpc regarding the branching point
+  num_max_changes: 1           # maximum number of phase changes within a single optimization 
+  branch_gap: 1                # to avoid errors between vissim and mpc regarding the branching point
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:
