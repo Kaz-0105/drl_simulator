@@ -111,11 +111,19 @@ scoot:
     
 save:
   performance_metrics:         
-    queue: true
-    delay: true
-    speed: true
-    phase: true
-    calc_time: true
+    queue: 
+      intersection: true
+      road: true
+      main_link: true
+      sub_link: true
+    delay: 
+      intersection: true
+    speed: 
+      intersection: true
+    phase: 
+      intersection: true
+    calc_time:
+      intersection: true
   drl:
     model: true
     buffer: true
