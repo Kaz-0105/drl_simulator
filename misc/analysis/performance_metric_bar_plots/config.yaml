@@ -1,0 +1,84 @@
+figure:
+  layout: 7-4-1
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  performance_metrics: [
+    average_queue,
+    max_queue,
+    average_delay,
+    max_delay,
+    speed,
+    phases,
+  ]
+  title:
+    balanced_500: 'Balanced: 500 veh/h'
+    balanced_600: 'Balanced: 600 veh/h'
+    balanced_700: 'Balanced: 700 veh/h'
+    balanced_800: 'Balanced: 800 veh/h'
+    main-minor: 'Main-Minor: NS 900 veh/h, EW 500 veh/h'
+    unbalanced: 'Unbalanced: NE 900 veh/h, SW 500 veh/h'
+  x_axis:
+    label: Turning Rate Patterns (Left-Straight-Right)
+    tick_labels: [
+      1-1-1,
+      3-1-1,
+      1-3-1,
+      1-1-3,
+      1-3-3,
+      3-1-3,
+      3-3-1,
+    ]
+  y_axis:
+    label:
+      average_queue: Average Queue Length [m]
+      max_queue: Maximum Queue Length [m]
+      average_delay: Average Delay Time [s]
+      max_delay: Maximum Delay Tiem [s]
+      speed: Average Vehicle Speed [km/h]
+      phases: Number of Phase Changes 
+  seed:
+    fix_flg: true
+    fix_value: 1
+  palette: viridis # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: 1
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+      weight: 10
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 4                
+  spacing_threshold: 20  

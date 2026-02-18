@@ -1,0 +1,56 @@
+figure:
+  layout: '7-4-1'
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  performance_metrics: [
+    'average_queue',
+    'max_queue',
+    'average_delay',
+    'max_delay',
+    'speed',
+  ]
+  seed:
+    fix_flg: true
+    fix_value: 1
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: 1
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+      weight: 10
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 4                
+  spacing_threshold: 20
