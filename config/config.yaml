@@ -6,7 +6,7 @@ simulator :
   simulation_time: 500              # simulation time for each simulation (seconds)
   seed:
     is_random: false                # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
-    value: 2                        # if is_random is false, this value is used (you should select from 1 to 100.)
+    value: 1                        # if is_random is false, this value is used (you should select from 1 to 100.)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
   max_workers: 7                    # the number of parallel workers
