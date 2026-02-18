@@ -17,6 +17,6 @@ objective_function:
       type: ema
     range_type: separate
 phases:
-  4-road: 8
+  4-road: 4
 remained_steps: 2
 utilize_steps: 2

@@ -96,7 +96,7 @@ mpc:
         type: multiple                 # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
-      weight: 12                  # weights for the term of signal change penalty
+      weight: 10                 # weights for the term of signal change penalty
 
 scoot:
   initial_parameters:          
