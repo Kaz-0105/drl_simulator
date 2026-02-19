@@ -1,0 +1,22 @@
+branch_gap: 0
+horizon: 5
+min_successive_steps: 4
+num_max_changes: 1
+objective_function:
+  signal_change:
+    type: global
+    weight: 10
+  type: waiting_vehicles
+  waiting_vehicles:
+    definition: 4
+    leader_detection:
+      type: multiple
+    queue_measurement:
+      ema:
+        alpha: 0.3
+      type: ema
+    range_type: separate
+phases:
+  4-road: 4
+remained_steps: 2
+utilize_steps: 2
