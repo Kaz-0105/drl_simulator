@@ -1,7 +1,7 @@
 simulator :
-  control_method : scoot              # mpc, drl, scoot
+  control_method : mpc              # mpc, drl, scoot
   layout_name : 7-4-1               # layout folder name
-  inflow_name : balanced_800        # inflow file name
+  inflow_name : balanced_700        # inflow file name
   num_simulations: 1                # number of simulations to run
   simulation_time: 500               # simulation time for each simulation (seconds)
   seed:

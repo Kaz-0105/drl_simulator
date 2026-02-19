@@ -15,7 +15,7 @@ from libs.figure_config import initFigureConfig
 initFigureConfig()
 
 # get config_yaml
-config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_bars' / 'config.yaml'
+config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_bar_plots' / 'config.yaml'
 with open(config_file_path, 'r', encoding='utf-8') as f:
     config_yaml = yaml.safe_load(f)
 
@@ -73,22 +73,18 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                 'inflow': inflow,
                 'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
             }
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(f)
             for performance_metric in config_yaml['figure']['performance_metrics']:
-                with open(intersection_dir_path / f"{performance_metric}.csv", 'r', encoding='utf-8'):
-                    time_series_df = pd.read_csv(intersection_dir_path / f"{performance_metric}.csv")
-                    
-                    if performance_metric in ['average_queue', 'max_queue']:
-                        performance_value = time_series_df['queue_length'].mean()
-                    elif performance_metric in ['average_delay', 'max_delay']:
-                        performance_value = time_series_df['delay'].mean()
-                    elif performance_metric == 'speed':
-                        performance_value = time_series_df['value'].mean()
-                    elif performance_metric == 'phases':
-                        time_series_df['change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
-                        time_series_df.loc[0, 'change'] = False
-                        performance_value = time_series_df['change'].sum()
-                    else:
-                        raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+            
+                if performance_metric == 'phase':
+                    time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
+                    time_series_df.loc[0, 'phase_change'] = False
+                    performance_value = time_series_df['phase_change'].sum()
+                elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                    performance_value = time_series_df[performance_metric].mean()        
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 
                 performance_metric_map[performance_metric] = performance_value
             
@@ -117,22 +113,17 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                 'inflow': inflow,
                 'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
             }
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(f)
             for performance_metric in config_yaml['figure']['performance_metrics']:
-                with open(intersection_dir_path / f"{performance_metric}.csv", 'r', encoding='utf-8'):
-                    time_series_df = pd.read_csv(intersection_dir_path / f"{performance_metric}.csv")
-                    
-                    if performance_metric in ['average_queue', 'max_queue']:
-                        performance_value = time_series_df['queue_length'].mean()
-                    elif performance_metric in ['average_delay', 'max_delay']:
-                        performance_value = time_series_df['delay'].mean()
-                    elif performance_metric == 'speed':
-                        performance_value = time_series_df['value'].mean()
-                    elif performance_metric == 'phases':
-                        time_series_df['change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
-                        time_series_df.loc[0, 'change'] = False
-                        performance_value = time_series_df['change'].sum()
-                    else:
-                        raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                if performance_metric == 'phase':
+                    time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
+                    time_series_df.loc[0, 'phase_change'] = False
+                    performance_value = time_series_df['phase_change'].sum()
+                elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                    performance_value = time_series_df[performance_metric].mean()
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 
                 performance_metric_map[performance_metric] = performance_value
             
