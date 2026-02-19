@@ -20,7 +20,7 @@ class ScootControllers(Container):
         self._initElements()
         return
     
-    def makeElements(self):
+    def _initElements(self):
         intersections = self.network.intersections
 
         for intersection_order_id in intersections.getKeys(container_flg=True, sorted_flg=True):
