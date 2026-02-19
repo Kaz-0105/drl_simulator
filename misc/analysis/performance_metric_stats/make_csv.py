@@ -3,8 +3,6 @@ from pathlib import Path
 root_dir_path = (Path(__file__).parent / '..' / '..' / '..').resolve()
 sys.path.append(str(root_dir_path))
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import yaml
 import re

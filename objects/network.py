@@ -181,13 +181,12 @@ class Network(Common):
                 if data_map == {}:
                     data_map['time'] = self.queue_records_map['roads'][road.get('id')]['time'].values
                 
-                data_map[f"road_{road.get('id')}_avg"] = self.queue_records_map['roads'][road.get('id')]['avg'].values
                 data_map[f"road_{road.get('id')}_max"] = self.queue_records_map['roads'][road.get('id')]['max'].values
             
             record_df = pd.DataFrame(data_map)
-            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_avg", key)]].mean(axis=1)
+            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_max", key)]].mean(axis=1)
             record_df['max'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_max", key)]].max(axis=1)
-            record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_avg", key) or re.match(rf"road_(\d+)_max", key)])
+            record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_max", key)])
 
             self.queue_records_map['intersections'][intersection.get('id')] = record_df
         
@@ -224,12 +223,23 @@ class Network(Common):
                 data_map[key] = np.mean(data_map[key], axis=0)
             
             record_df = pd.DataFrame(data_map)
-            record_df['avg'] = record_df[[key for key in data_map.keys() if key != 'time']].mean(axis=1)
-            record_df['max'] = record_df[[key for key in data_map.keys() if key != 'time']].max(axis=1)
+
+            # calculate average delay
+            turn_ratios = road.get('turn_ratios')
+            sum_ratio = sum(turn_ratios.values())
+            avg_delay = 0
+            for direction_id, turn_ratio in turn_ratios.items():
+                avg_delay += record_df[f"direction_{direction_id}"] * turn_ratio / sum_ratio
+            record_df['avg'] = avg_delay
+
+            # calculate max delay
+            record_df['max'] = record_df[[key for key in data_map.keys() if key not in ['time', 'avg']]].max(axis=1)
             self.delay_records_map['roads'][road.get('id')] = record_df
 
         for intersection in self.intersections.getAll():
             data_map = {}
+            input_volume_map = {}
+            sum_input_volume = 0
             for road in intersection.input_roads.getAll():
                 if road.get('id') not in self.delay_records_map['roads']:
                     continue
@@ -239,9 +249,20 @@ class Network(Common):
                 
                 data_map[f"road_{road.get('id')}_avg"] = self.delay_records_map['roads'][road.get('id')]['avg'].values
                 data_map[f"road_{road.get('id')}_max"] = self.delay_records_map['roads'][road.get('id')]['max'].values
-            
+
+                input_volume_map[road.get('id')] = road.get('input_volume')
+                sum_input_volume += road.get('input_volume')
+
             record_df = pd.DataFrame(data_map)
-            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_avg", key)]].mean(axis=1)
+
+            # calculate average delay
+            avg_delay_array = 0
+            for road_id, input_volume in input_volume_map.items():
+                avg_delay_array += record_df[f"road_{road_id}_avg"] * input_volume / sum_input_volume
+
+            record_df['avg'] = avg_delay_array
+            
+            # calculate max delay
             record_df['max'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_max", key)]].max(axis=1)
             record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_avg", key) or re.match(rf"road_(\d+)_max", key)])
             self.delay_records_map['intersections'][intersection.get('id')] = record_df
@@ -270,6 +291,7 @@ class Network(Common):
         for intersection in self.intersections.getAll():
             data_map = {}
             total_num_vehs_array = 0
+            max_speed_list = []
             for road in intersection.input_roads.getAll():
                 if road.get('id') not in self.speed_records_map['roads']:
                     continue
@@ -284,9 +306,13 @@ class Network(Common):
                 data_map[f"road_{road.get('id')}_sum"] = avg_speed_array * num_vehs_array
 
                 total_num_vehs_array += num_vehs_array
+                max_speed_list.append(road.get('max_speed'))
 
             record_df = pd.DataFrame(data_map)
-            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_sum", key)]].sum(axis=1) / total_num_vehs_array
+            numerator = record_df[[key for key in data_map.keys() if "_sum" in key]].sum(axis=1)
+            denominator = total_num_vehs_array
+            default_speed = np.mean(max_speed_list)
+            record_df['avg'] = np.where(denominator > 0, numerator / denominator, default_speed)
             record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_sum", key)])
             self.speed_records_map['intersections'][intersection.get('id')] = record_df
         return

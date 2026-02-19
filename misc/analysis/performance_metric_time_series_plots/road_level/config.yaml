@@ -1,0 +1,26 @@
+target:
+  layout: 7-4-1
+  intersection: 1
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  seed:
+    fix_flg: true
+    fix_value: 1
+
+figure:
+  performance_metrics: [
+    average_queue,
+  ]
+
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+
+
+
