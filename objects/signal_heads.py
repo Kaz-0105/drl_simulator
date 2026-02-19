@@ -17,7 +17,7 @@ class SignalHeads(Container):
             self.com = self.network.com.SignalHeads
 
             # 下位の紐づくオブジェクトを初期化
-            self.makeElements()
+            self._initElements()
 
             # laneと紐づける
             self.makeLaneConnections()
@@ -36,7 +36,7 @@ class SignalHeads(Container):
             # comオブジェクトを取得
             self.com = self.signal_group.com.SigHeads
     
-    def makeElements(self):
+    def _initElements(self):
         for signal_head_com in self.com.GetAll():
             self.add(SignalHead(signal_head_com, self))
 

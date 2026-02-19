@@ -43,7 +43,7 @@ class Simulation(Common):
     def _setParametersToVissim(self):
         # Vissimにパラメータを設定
         self.com.SetAttValue('RandSeed', self.seed)
-        self.com.SetAttValue('SimPeriod', self.end_time + 1)
+        self.com.SetAttValue('SimPeriod', self.end_time + 2)
 
         # シミュレーションの速度について
         self.com.SetAttValue('UseAllCores', True)
@@ -53,17 +53,17 @@ class Simulation(Common):
         evaluation_com = self.vissim.com.Evaluation
         evaluation_com.SetAttValue('DelaysCollectData', True)
         evaluation_com.SetAttValue('DelaysFromTime', 0)
-        evaluation_com.SetAttValue('DelaysToTime', self.end_time + 1)
+        evaluation_com.SetAttValue('DelaysToTime', self.end_time + 2)
         evaluation_com.SetAttValue('DelaysInterval', self.time_step)
 
         evaluation_com.SetAttValue('QueuesCollectData', True)
         evaluation_com.SetAttValue('QueuesFromTime', 0)
-        evaluation_com.SetAttValue('QueuesToTime', self.end_time + 1)
+        evaluation_com.SetAttValue('QueuesToTime', self.end_time + 2)
         evaluation_com.SetAttValue('QueuesInterval', self.time_step)
 
         evaluation_com.SetAttValue('DataCollCollectData', True)
         evaluation_com.SetAttValue('DataCollFromTime', 0)
-        evaluation_com.SetAttValue('DataCollToTime', self.end_time + 1)
+        evaluation_com.SetAttValue('DataCollToTime', self.end_time + 2)
         evaluation_com.SetAttValue('DataCollInterval', self.time_step)
         return
 
@@ -106,7 +106,7 @@ class Simulation(Common):
                     break
             
             # 最後のネットワーク更新
-            self.network.update()
+            self.network.update(last_flg=True)
 
             # トータルの報酬を更新し，データを保存
             master_agents.updateSessionData()
@@ -138,7 +138,7 @@ class Simulation(Common):
                 bc_buffers.writeToFile()
             
             # 最後のネットワーク更新
-            self.network.update()
+            self.network.update(last_flg=True)
         
         elif self.control_method == 'bc':
             # 行動クローンを行う
@@ -158,7 +158,7 @@ class Simulation(Common):
                 self._runSingleStep()
             
             # 最後のネットワーク更新
-            self.network.update()
+            self.network.update(last_flg=True)
 
             # トータルの報酬を表示し、モデルを保存
             bc_agent.showTotalReward()

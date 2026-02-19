@@ -12,7 +12,7 @@ class QueueCounters(Container):
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
             self.com = self.network.com.QueueCounters
-            self.makeElements()
+            self._initElements()
         elif upper_object.__class__.__name__ == 'Road':
             self.road = upper_object
         else:
@@ -20,7 +20,7 @@ class QueueCounters(Container):
         
         return
 
-    def makeElements(self):
+    def _initElements(self):
         for queue_counter_com in self.com.GetAll():
             self.add(QueueCounter(queue_counter_com, self))
         return
@@ -32,14 +32,18 @@ class QueueCounters(Container):
 
         # update queue_length_record for each queue counter
         for index, queue_counter_id in enumerate(queue_counter_ids):
-            queue_counter = self[queue_counter_id]
-            self.executor.submit(queue_counter.update, queue_lengths[index])
+            self.executor.submit(self[queue_counter_id].update, queue_lengths[index])
+        return
+
+    def syncDataFrame(self):
+        for queue_counter in self.getAll():
+            self.executor.submit(queue_counter.syncDataFrame)
+
+        self.executor.wait()
         return
     
     @property
     def max_queue_length(self):
-        if self.count() == 0:
-            raise ValueError("No QueueCounter object in the QueueCounters object.")
         queue_length_list = [queue_counter.get('current_queue_length') for queue_counter in self.getAll()]
         return max(queue_length_list)
 
@@ -47,6 +51,7 @@ class QueueCounter(Object):
     def __init__(self, com, queue_counters):
         super().__init__()
 
+        # set objects
         self.config = queue_counters.config
         self.executor = queue_counters.executor
         self.queue_counters = queue_counters
@@ -60,34 +65,48 @@ class QueueCounter(Object):
         return
 
     def _initProps(self):
+        # set id
         self.id = self.com.AttValue('No')
-        self.queue_length_record = pd.DataFrame(columns=['time', 'queue_length'])
+
+        # initialize queue_length_list
+        self.record_list = []
+        self.record_df = None
+
+        # connect to link and road object
         self.link = self.network.links[self.com.Link.AttValue('No')]
         self.link.set('queue_counter', self)
         self.road = self.link.road
         self.road.queue_counters.add(self)
         return
 
-    def update(self, queue_length): 
-        queue_length = 0.0 if queue_length is None else round(queue_length, 1)
-        self.queue_length_record.loc[len(self.queue_length_record)] = [self.current_time, queue_length]
+    def update(self, value):
+        self.record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': 0.0 if value is None else value,
+        })
+        return
+
+    def syncDataFrame(self):
+        self.record_df = pd.DataFrame(self.record_list)
         return
 
     @property
-    def current_time(self):
-        return self.network.simulation.get('current_time')
-
-    @property
     def current_queue_length(self):
-        if len(self.queue_length_record) == 0:
+        if len(self.record_list) == 0:
             return 0.0
-        return self.queue_length_record.iloc[-1]['queue_length']
+        else: 
+            return self.record_list[-1]['value']
 
     @property
     def delta_queue_length(self):
-        if len(self.queue_length_record) < 2:
-            return self.current_queue_length
-        return self.queue_length_record.iloc[-1]['queue_length'] - self.queue_length_record.iloc[-2]['queue_length']
+        if len(self.record_list) > 1:
+            return self.record_list[-1]['value'] - self.record_list[-2]['value']
+
+        if len(self.record_list) == 1:
+            return self.record_list[-1]['value']
+
+        if len(self.record_list) == 0:
+            return 0.0
 
         
         

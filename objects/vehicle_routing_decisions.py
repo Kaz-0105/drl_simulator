@@ -20,7 +20,7 @@ class VehicleRoutingDecisions(Container):
         self.com = self.network.com.VehicleRoutingDecisionsStatic
 
         # 要素オブジェクトを初期化
-        self.makeElements()
+        self._initElements()
 
         # linkクラスに紐づける
         self.makeLinkConnections()
@@ -37,7 +37,7 @@ class VehicleRoutingDecisions(Container):
             
         return
     
-    def makeElements(self):
+    def _initElements(self):
         for vehicle_routing_decision_com in self.com.GetAll():
             self.add(VehicleRoutingDecision(vehicle_routing_decision_com, self))
     
@@ -183,9 +183,9 @@ class VehicleRoutes(Container):
         self.com = self.vehicle_routing_decision.com.VehRoutSta
 
         # 要素オブジェクトを初期化
-        self.makeElements()
+        self._initElements()
 
-    def makeElements(self):
+    def _initElements(self):
         for vehicle_route_com in self.com.GetAll():
             self.add(VehicleRoute(vehicle_route_com, self))
 

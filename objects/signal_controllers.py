@@ -7,15 +7,14 @@ import copy
 
 class SignalControllers(Container):
     def __init__(self, network):
-        # 継承
         super().__init__()
         
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = network.config
         self.network = network
         self.executor = network.executor
         
-        # comオブジェクトを取得
+        # set com object
         self.com = self.network.com.SignalControllers
 
         # initialize signal_controller objects
@@ -27,19 +26,28 @@ class SignalControllers(Container):
     def setNextPhaseToVissim(self):
         for signal_controller in self.getAll():
             signal_controller.setNextPhaseToVissim()
+        
+    def syncDataFrame(self):
+        for signal_controller in self.getAll():
+            self.executor.submit(signal_controller.syncDataFrame)
+        self.executor.wait()
+        return
 
+    def lastUpdate(self):
+        for signal_controller in self.getAll():
+            self.executor.submit(signal_controller.lastUpdate)
+        return
 class SignalController(Object):
     def __init__(self, com, signal_controllers):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = signal_controllers.config
         self.signal_controllers = signal_controllers
         self.network = signal_controllers.network
         self.executor = signal_controllers.executor
 
-        # set com
+        # set com object
         self.com = com
 
         # set properties
@@ -78,7 +86,8 @@ class SignalController(Object):
             raise NotImplementedError(f"Not supported control method: {simulation_info['control_method']}")
 
         # initialize phase_record_df
-        self.phase_record_df = pd.DataFrame(columns=['time', 'phase'])
+        self.record_list = []
+        self.record_df = None
         return
 
     def _initIntersection(self):
@@ -121,10 +130,10 @@ class SignalController(Object):
         return
         
     def setNextPhases(self, phase_ids):
-        # フェーズをセット
+        # add to future_phase_ids
         self.future_phase_ids.extend(phase_ids)
 
-        # signal_groupにフェーズをセット
+        # add to signal_groups
         self.signal_groups.setNextPhases(phase_ids)
         return
     
@@ -145,16 +154,26 @@ class SignalController(Object):
         # set next phase to vissim
         self.signal_groups.setNextPhaseToVissim()
 
-        # update phase_record_df
-        self.phase_record_df.loc[len(self.phase_record_df)] = [self.current_time, self.future_phase_ids[0]]
+        # update record_list
+        self.record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': int(self.next_phase_id),
+        })
 
         # remove the first phase from future_phase_ids
         self.future_phase_ids.popleft()
         return
 
-    @property
-    def current_time(self):
-        return self.network.simulation.get('current_time')
+    def lastUpdate(self):
+        self.record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': int(self.next_phase_id) if self.next_phase_id is not None else self.record_list[-1]['value'],
+        })
+        return
+
+    def syncDataFrame(self):
+        self.record_df = pd.DataFrame(self.record_list)
+        return
     
     @property
     def next_phase_id(self):
@@ -162,11 +181,7 @@ class SignalController(Object):
 
     @property
     def current_phase_id(self):
-        if self.phase_record_df.shape[0] == 0:
-            raise Exception("No phase record found.")
-        
-        phase_record_row = self.phase_record_df.iloc[-1]
-        return phase_record_row['phase']
+        return self.record_list[-1]['value']
 
     @property
     def signal_change_flg(self):
@@ -184,35 +199,41 @@ class SignalController(Object):
 
 class SignalGroups(Container):
     def __init__(self, upper_object):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトを取得
+        # set objects
         self.config = upper_object.config
         self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'SignalController':
+            # set signal_controller and network
             self.signal_controller = upper_object
+            self.network = self.signal_controller.network
 
-            # comオブジェクトを取得
+            # set com object
             self.com = self.signal_controller.com.SGs
 
-            # 下位の紐づくオブジェクトを初期化
-            self._makeElements()
+            # initialize signal_group
+            self._initElements()
 
-            # signal_groupとsignal_headを紐づける
+            # connect to signal_head and road objects
             self._makeSignalHeadConnections()
-
-            # signal_groupとroadを紐づける
             self._makeRoadConnections()
         
         elif upper_object.__class__.__name__ == 'Road':
-            # 上位の紐づくオブジェクトを取得
+            # set road and network
             self.road = upper_object
+            self.network = self.road.network
+
+        else:
+            raise NotImplementedError(f"Not supported upper object type: {upper_object.__class__.__name__}")
+        
+        return
     
-    def _makeElements(self):
+    def _initElements(self):
         for signal_group_com in self.com.GetAll():
             self.add(SignalGroup(signal_group_com, self))
+        return
     
     def _makeSignalHeadConnections(self):
         for signal_group in self.getAll():
@@ -221,13 +242,7 @@ class SignalGroups(Container):
             for signal_head_com in signal_heads.com.GetAll():
                 signal_head_id = int(signal_head_com.AttValue('No'))
                 signal_heads.add(self.network.signal_heads[signal_head_id])
-
-    @property
-    def network(self):
-        if self.has('signal_controller'):
-            return self.signal_controller.signal_controllers.network
-        elif self.has('road'):
-            return self.road.roads.network
+        return
     
     def _makeRoadConnections(self):
         for signal_group in self.getAll():
@@ -287,11 +302,12 @@ class SignalGroup(Object):
     def __init__(self, com, signal_groups):
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = signal_groups.config
         self.executor = signal_groups.executor
         self.signal_groups = signal_groups
         self.signal_controller = signal_groups.signal_controller
+        self.network = signal_groups.network
 
         # set com object
         self.com = com
@@ -308,7 +324,8 @@ class SignalGroup(Object):
         self.id = int(self.com.AttValue('No'))
 
         # set signal_colors_df
-        self.signal_colors_df = pd.DataFrame(columns=['time', 'signal_color'])
+        self.record_list = []
+        self.record_df = None
 
         # set future_signal_colors
         simulatior_info = self.config.get('simulator_info')
@@ -333,8 +350,8 @@ class SignalGroup(Object):
         # get previous signal color
         if self.future_signal_colors:
             previous_signal_color = self.future_signal_colors[-1]
-        elif self.signal_colors_df.shape[0] > 0:
-            previous_signal_color = self.signal_colors_df.iloc[-1]['signal_color']
+        elif len(self.record_list) > 0:
+            previous_signal_color = self.record_list[-1]['value']
         else:
             previous_signal_color = None
 
@@ -364,26 +381,35 @@ class SignalGroup(Object):
         return
 
     def setNextPhaseToVissim(self):
-        # update signal_colors_df
-        self.signal_colors_df.loc[len(self.signal_colors_df)] = [self.current_time, self.future_signal_colors.popleft()]
+        # update record_list
+        signal_color = self.future_signal_colors.popleft()
+        if signal_color == self.RED:
+            signal_color_str = 'R'
+        elif signal_color == self.GREEN:
+            signal_color_str = 'G'
+        else:
+            raise NotImplementedError(f"Not supported signal color: {signal_color}")
+        self.record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': signal_color_str,
+        })
 
-        # no need to set the new signal color to vissim
-        if self.signal_colors_df.shape[0] > 1 and self.signal_colors_df.iloc[-2]['signal_color'] != self.current_signal_color:
+        # if the signal color does not change, no need to set the signal color to Vissim
+        if len(self.record_list) > 1 and self.record_list[-2]['value'] == self.record_list[-1]['value']:
             return
         
         self.com.SetAttValue('SigState', self.current_signal_color)
         return
-
+    
     @property
     def current_signal_color(self):
-        if self.signal_colors_df.shape[0] == 0:
-            raise Exception("No signal color record found.")
-
-        return  self.signal_colors_df.iloc[-1]['signal_color']
-
-    @property
-    def current_time(self):
-        return self.signal_controller.get('current_time')
+        current_signal_color_str = self.record_list[-1]['value']
+        if current_signal_color_str == 'R':
+            return self.RED
+        elif current_signal_color_str == 'G':
+            return self.GREEN
+        else:
+            raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
 
     @property
     def direction_id(self):

@@ -18,7 +18,7 @@ class TravelTimeMeasurements(Container):
             self.com = self.network.com.VehicleTravelTimeMeasurements
 
             # 要素オブジェクトの初期化
-            self.makeElements()
+            self._initElements()
 
             # linkと紐づける
             self.makeLinkConnections()
@@ -34,7 +34,7 @@ class TravelTimeMeasurements(Container):
             # 上位の紐づくオブジェクトを取得
             self.link = upper_object
     
-    def makeElements(self):
+    def _initElements(self):
         for travel_time_measurement_com in self.com.GetAll():
             self.add(TravelTimeMeasurement(travel_time_measurement_com, self))
     

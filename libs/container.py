@@ -37,6 +37,16 @@ class Container(Common):
             elements.append(self[key])
         
         return elements
+
+    def items(self, sorted_flg = False):
+        if sorted_flg == False:
+            return self.elements.items()
+
+        items = []
+        for key in self.getKeys(container_flg=True, sorted_flg=True):
+            items.append((key, self[key]))
+        
+        return items
     
     def add(self, element, element_id = None):
         if element_id is None:

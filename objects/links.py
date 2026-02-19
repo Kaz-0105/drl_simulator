@@ -3,60 +3,63 @@ from libs.object import Object
 from objects.data_collections import DataCollectionPoints
 
 from pandas import DataFrame
+import re
 
 class Links(Container):
     def __init__(self, upper_object, options = None):
-        # 継承
         super().__init__()
         
-        # 設定オブジェクトと非同期オブジェクトを取得
+        # set objects
         self.config = upper_object.config
         self.executor = upper_object.executor
         
-        # 上位のオブジェクトによって分岐
         if upper_object.__class__.__name__ == 'Network':
-            # 上位の紐づくオブジェクトを取得
+            # set network
             self.network = upper_object
 
-            # comオブジェクトを取得
+            # set com object
             self.com = self.network.com.Links
 
-            # 下位の紐づくオブジェクトを初期化
-            self.makeElements()
+            # initialize link objects
+            self._initElements()
 
-            # 設定ファイルから流入量に関する情報を取得
-            self.setInputs()
+            # set inputs
+            self._initInputs()
 
-            # link同士を紐づける
-            self.makeLinkConnections()
+            # connect links based on from_link and to_link information in vissim
+            self._makeLinkConnections()
 
-            # roadオブジェクトと紐づける
-            self.makeRoadConnections()
+            # connect links and roads based on road_link_tags in config file
+            self._makeRoadConnections()
 
         elif upper_object.__class__.__name__ == 'Link':
-            # 上位の紐づくオブジェクトを取得
+            # set link
             self.link = upper_object
 
-            # タイプを取得（from or to）
+            # set type
             self.type = options['type']
 
         elif upper_object.__class__.__name__ == 'Road':
-            # 上位の紐づくオブジェクトを取得
+            # set road
             self.road = upper_object
         
         elif upper_object.__class__.__name__ == 'TravelTimeMeasurement':
-            # 上位の紐づくオブジェクトを取得
+            # set travel_time_measurement
             self.travel_time_measurement = upper_object
         
         elif upper_object.__class__.__name__ == 'DelayMeasurement':
-            # 上位の紐づくオブジェクトを取得
+            # set delay_measurement
             self.delay_measurement = upper_object
+        
+        else:
+            raise NotImplementedError(f"Not supported upper object: {upper_object.__class__.__name__}")
+        return
 
-    def makeElements(self):
+    def _initElements(self):
         for link_com in self.com.GetAll():
             self.add(Link(link_com, self))
     
-    def setInputs(self):
+    def _initInputs(self):
         # get inflows_df
         inflow_name = self.network.simulation.get('inflow_name')
         link_input_tags_map = self.config.get('link_input_tags_map')
@@ -69,301 +72,274 @@ class Links(Container):
 
         return
     
-    def makeLinkConnections(self):
-        for link in self.getAll():
-            if link.type == 'link':
+    def _makeLinkConnections(self):
+        for connector in self.getAll():
+            if connector.get('type') != 'connector':
                 continue
 
-            from_link = self[int(link.com.AttValue('FromLink'))]
-            to_link = self[int(link.com.AttValue('ToLink'))]
-
-            link.from_links.add(from_link)
-            link.to_links.add(to_link)
-
-            from_link.to_links.add(link)
-            to_link.from_links.add(link)
-        
-    def makeRoadConnections(self):
-        tags = self.config.get('road_link_tags')
-        network = self.network
-        roads = network.roads
-
-        for _, tag in tags.iterrows():
-            road = roads[tag['road_id']]
-            link = self[tag['link_id']]
+            from_link = self[int(connector.com.AttValue('FromLink'))]
+            to_link = self[int(connector.com.AttValue('ToLink'))]
             
-            road.addLink(link, tag['type'])
-
-            link.set('type', tag['type'])
+            # set from_link, to_link and to_lane for connector
+            connector.from_links.add(from_link)
+            connector.to_links.add(to_link)
+            connector.set('from_link', from_link)
+            connector.set('to_link', to_link)
+            connector.set('to_lane', to_link.lanes[connector.get('to_lane_id')])
+            
+            # set connector for from_link and to_link
+            from_link.to_links.add(connector)
+            to_link.from_links.add(connector)
+        return
+        
+    def _makeRoadConnections(self):
+        for _, tag_row in self.config.get('road_link_tags').iterrows():
+            road = self.network.roads[tag_row['road_id']]
+            link = self[tag_row['link_id']]
+            
+            # set type to link
+            link.set('type', tag_row['type'])
             link.set('road', road)
 
-        for link in self.findAll({'type': 'connector'}):
+            road.links.add(link)
+            if tag_row['type'] == 'main':
+                road.set('main_link', link)
+            elif tag_row['type'] == 'right':
+                road.set('right_link', link)
+            elif tag_row['type'] == 'left':
+                road.set('left_link', link)
+            else:
+                raise NotImplementedError(f"Not supported link type: {tag_row['type']}")
+
+        for link in self.getAll():
+            if link.get('type') != 'connector':
+                continue
+
             from_link = link.from_links.getAll()[0]
             to_link = link.to_links.getAll()[0]
 
             if from_link.road == to_link.road:
                 road = from_link.road
+
+                # connect link and road
+                link.set('road', road)
+                road.links.add(link)
                 
-                road.addLink(link, 'connector')
-                link.set('type', 'connector')
-                link.set('road', from_link.road)
+                if to_link == road.right_link:
+                    road.set('right_connector', link)
+                elif to_link == road.left_link:
+                    road.set('left_connector', link)
+                else:
+                    raise ValueError(f"Something wrong in layout design: road_id = {road.get('id')}, connector_id = {link.get('id')}")
 
         return
     
     def update(self):
-        # 要素オブジェクトの更新
         for link in self.getAll():
             link.update()
-        
-        # 終わるまで待機
+    
         self.executor.wait()
 
-        # 車線ごとに車両データを分割
         for link in self.getAll():
             link.lanes.update()
         
+        return
+        
 class Link(Object):
     def __init__(self, com, links):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = links.config
         self.executor = links.executor
         self.links = links
+        self.network = self.links.network
 
-        # comオブジェクトを取得
+        # set com objects
         self.com = com
 
-        # IDを取得
-        self.id = self.com.AttValue('No')
+        # set properties
+        self._initProps()
 
-        # リンクの種類を設定（リンク, コネクタ，リンクは後でRoadオブジェクトの設定ファイルからさらに分岐する）
-        if self.com.AttValue('ToLink') is None:
-            self.type = 'link'
-        else:
-            self.type = 'connector'
-            self.to_lane_id = self.com.ToLane.AttValue('Index')
-            self.to_lane_id = self.com.ToLane.AttValue('Index')
-
-        
-        # 紐づくリンクを格納するコンテナを初期化
-        self.from_links = Links(self, {'type': 'from'})
-        self.to_links = Links(self, {'type': 'to'})
-
-        # 下位の紐づくオブジェクトを初期化
+        # init lane objects
         self.lanes = Lanes(self)
 
-        # linkの長さを取得
-        self.length_info = {'length': self.com.AttValue('Length2D')}
-        if self.type == 'connector':
-            self.length_info['to_pos'] = self.com.AttValue('ToPos')
-            self.length_info['from_pos'] = self.com.AttValue('FromPos')
-        
-        # data_collection_pointsオブジェクトを初期化
+        # initialize from_links, to_links, and data_collection_points
+        self.from_links = Links(self, options={'type': 'from'})
+        self.to_links = Links(self, options={'type': 'to'})
         self.data_collection_points = DataCollectionPoints(self)
+        return
+
+    def _initProps(self):
+        self.id = int(self.com.AttValue('No'))
+        self.type = 'link' if self.com.AttValue('ToLink') is None else 'connector'
+
+        self.length_info = {}
+        self.length_info['length'] = float(self.com.AttValue('Length2D'))
+        self.length = self.length_info['length']
+
+        if self.type == 'link':
+            return
+
+        self.to_lane_id = self.com.ToLane.AttValue('Index')
+        self.length_info['to_pos'] = float(self.com.AttValue('ToPos'))
+        self.length_info['from_pos'] = float(self.com.AttValue('FromPos'))
+        self.to_pos = self.length_info['to_pos']
+        self.from_pos = self.length_info['from_pos']
+        
+        return
     
     def update(self):
-        # 車両データを取得
         self._getVehicleDataFromVissim()
-
-        # 非同期処理で車両データを整形
         self.executor.submit(self._makeFormattedVehicleData)
-
         return
     
     def _getVehicleDataFromVissim(self):
-        # Vissimから車両データを取得
-        self.vehicle_data = {}
-        self.vehicle_data['id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('No')]
-        self.vehicle_data['position'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Pos')]
-        self.vehicle_data['in_queue'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('InQueue')]
-        self.vehicle_data['speed'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Speed')]
-        self.vehicle_data['lane_id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Lane')]
-        self.vehicle_data['vehicle_route'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('VehRoutSta')]
-        self.vehicle_data['next_link_id'] = [int(tmp_data[1]) if tmp_data[1] != None else None for tmp_data in self.com.Vehs.GetMultiAttValues('NextLink')]
+        # get data from vissim
+        self.vehicles_df = {}
+        self.vehicles_df['id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('No')]
+        self.vehicles_df['position'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Pos')]
+        self.vehicles_df['in_queue'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('InQueue')]
+        self.vehicles_df['speed'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Speed')]
+        self.vehicles_df['lane_id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Lane')]
+        self.vehicles_df['vehicle_route'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('VehRoutSta')]
+        self.vehicles_df['next_link_id'] = [int(tmp_data[1]) if tmp_data[1] != None else None for tmp_data in self.com.Vehs.GetMultiAttValues('NextLink')]
         return
     
     def _makeFormattedVehicleData(self):
-        # 車両が存在しない場合は空のDataFrameを返す
-        if len(self.vehicle_data['id']) == 0:
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'next_link_id', 'road_id', 'direction_id', 'go_flg']
-            self.vehicle_data = DataFrame(columns = column_names)
+        # if there is no vehicle, return empty DataFrame
+        if len(self.vehicles_df['id']) == 0:
+            self.vehicles_df = DataFrame(columns=[
+                'id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 
+                'next_link_id', 'road_id', 'direction_id'
+            ])
             return
         
-        # linkのIDを追加
-        self.vehicle_data['link_id'] = [self.id] * len(self.vehicle_data['id'])
+        # add link_id
+        self.vehicles_df['link_id'] = [self.id] * len(self.vehicles_df['id'])
 
-        # roadのIDを追加
-        if self.has('road'):
-            self.vehicle_data['road_id'] = [self.road.get('id')] * len(self.vehicle_data['id'])
-        else:
-            self.vehicle_data['road_id'] = [None] * len(self.vehicle_data['id'])
+        # add road_id
+        road_id = None if not self.has('road') else self.road.get('id')
+        self.vehicles_df['road_id'] = [road_id] * len(self.vehicles_df['id'])
 
-        # positionとspeedを少数点第1位までに丸める
-        self.vehicle_data['position'] = [round(position, 1) for position in self.vehicle_data['position']]
-        self.vehicle_data['speed'] = [round(speed, 1) for speed in self.vehicle_data['speed']]
+        # round position and speed to 1 decimal place
+        self.vehicles_df['position'] = [round(position, 1) for position in self.vehicles_df['position']]
+        self.vehicles_df['speed'] = [round(speed, 1) for speed in self.vehicles_df['speed']]
 
-        # in_queueをbool型に変換
-        self.vehicle_data['in_queue'] = [bool(in_queue) for in_queue in self.vehicle_data['in_queue']]
+        # in_queue to bool
+        self.vehicles_df['in_queue'] = [bool(in_queue) for in_queue in self.vehicles_df['in_queue']]
 
-        # laneをint型に変換
-        lane_ids = [int(lane.replace(str(self.id) + '-', '')) for lane in self.vehicle_data['lane_id']]
-        self.vehicle_data['lane_id'] = lane_ids
+        # lane to int
+        self.vehicles_df['lane_id'] = [int(re.match(rf"{self.id}-(\d+)", lane_str).group(1)) for lane_str in self.vehicles_df['lane_id']]
         
-        # vehicle_routeを方向に変換
+        # add direction_id
         vehicle_routing_decisions = self.links.network.vehicle_routing_decisions
         direction_ids = []
-        for vehicle_route_str in self.vehicle_data['vehicle_route']:
+        for vehicle_route_str in self.vehicles_df['vehicle_route']:
             if vehicle_route_str is None:
                 direction_ids.append(0)
-            else:
-                vehicle_routing_decision_id, vehicle_route_id = tuple([int(id) for id in vehicle_route_str.split('-')])
-                vehicle_route = vehicle_routing_decisions[vehicle_routing_decision_id].vehicle_routes[vehicle_route_id]
-                direction_ids.append(vehicle_route.get('direction_id'))
+                continue
+            match_obj = re.match(rf"(\d+)-(\d+)", vehicle_route_str)
+            vehicle_route = vehicle_routing_decisions[int(match_obj.group(1))].vehicle_routes[int(match_obj.group(2))]
+            direction_ids.append(vehicle_route.get('direction_id'))
         
-        self.vehicle_data['direction_id'] = direction_ids
-        self.vehicle_data.pop('vehicle_route')
-            
-        self.vehicle_data = DataFrame(self.vehicle_data)
-        self.vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-        self.vehicle_data.reset_index(drop=True, inplace=True)
-        
-        return
-    
-    @property
-    def to_lane(self):
-        if self.type == 'connector':
-            to_link = self.to_links.getAll()[0]
-            to_lane = to_link.lanes[self.to_lane_id]
-            return to_lane
-        else:
-            return None
+        self.vehicles_df['direction_id'] = direction_ids
 
-    @property
-    def length(self):
-        return self.length_info['length']
-    
-    @property
-    def to_pos(self):
-        if self.type == 'connector':
-            return self.length_info['to_pos']
-        else:
-            return None
+        # remove vehicle_route column
+        self.vehicles_df.pop('vehicle_route')
         
-    @property
-    def from_pos(self):
-        if self.type == 'connector':
-            return self.length_info['from_pos']
-        else:
-            return None
+        # change to dataframe
+        self.vehicles_df = DataFrame(self.vehicles_df)
+        self.vehicles_df = self.vehicles_df.sort_values(by='position', ascending=False)
+        self.vehicles_df = self.vehicles_df.reset_index(drop=True)
+        return
 
     @property
     def queue_length(self):
         return self.queue_counter.get('current_queue_length')
 
-    @property
-    def from_link(self):
-        if self.type != 'connector':
-            return None
-        
-        return self.from_links.getAll()[0]
-
-    @property
-    def to_link(self):
-        if self.type != 'connector':
-            return None
-        
-        return self.to_links.getAll()[0]
-
 class Lanes(Container):
     def __init__(self, upper_object):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理用のオブジェクトを取得
+        # set objects
         self.config = upper_object.config
         self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Link':
-            # 上位の紐づくオブジェクトを取得
+            # set link
             self.link = upper_object
+            self.network = self.link.network
 
-            # comオブジェクトを取得
+            # set com object
             self.com = self.link.com.Lanes
 
-            # 下位の紐づくオブジェクトを初期化
-            self.makeElements()
+            # initialize lane objects
+            self._initElements()
         
         elif upper_object.__class__.__name__ == 'LocalAgent':
-            # 上位の紐づくオブジェクトを取得
-            self.drl_controller = upper_object
+            # set local_agent
+            self.local_agent = upper_object
         
         elif upper_object.__class__.__name__ == 'MpcController':
-            # 上位の紐づくオブジェクトを取得
+            # set mpc_controller
             self.mpc_controller = upper_object
         
         elif upper_object.__class__.__name__ == 'BcAgent':
-            # 上位の紐づくオブジェクトを取得
+            # set bc_agent
             self.bc_agent = upper_object
+        
+        else:
+            raise NotImplementedError(f"Not supported upper object: {upper_object.__class__.__name__}")
 
         return   
     
-    def makeElements(self):
+    def _initElements(self):
         for lane_com in self.com.GetAll():
             self.add(Lane(lane_com, self))
     
     def update(self):
-        # 要素オブジェクトの更新
         for lane in self.getAll():
-            # 車両データを取得（非同期処理）
             self.executor.submit(lane.update)
+        return
 
 class Lane(Object):
     def __init__(self, com, lanes):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = lanes.config
         self.executor = lanes.executor
         self.lanes = lanes
+        self.link = lanes.link
+        self.network = lanes.network
 
-        # comオブジェクトを取得
+        # set com objects
         self.com = com
 
-        # IDを取得
+        # set id, length_info
         self.id = int(self.com.AttValue('Index'))
-
-    @property
-    def length_info(self):
-        return self.lanes.link.length_info
-    
-    @property
-    def link(self):
-        return self.lanes.link
+        self.length_info = self.link.get('length_info')
     
     @property
     def num_vehicles(self):
-        return self.vehicle_data.shape[0]
+        return self.vehicles_df.shape[0]
 
     @property
     def num_vehs_in_queue(self):
-        in_queue_vehicle_data = self.vehicle_data[self.vehicle_data['in_queue']]
-        return in_queue_vehicle_data.shape[0]
+        return self.vehicles_df[self.vehicles_df['in_queue']].shape[0]
 
     def update(self):
-        # 車両データを取得
-        vehicle_data = self.lanes.link.get('vehicle_data')
+        # get vehicles_df from link
+        vehicles_df = self.link.get('vehicles_df')
 
-        if vehicle_data.shape[0] == 0:
-            # 車両データが存在しない場合は空のDataFrameを返す
-            column_names = ['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg']
-            self.vehicle_data = DataFrame(columns = column_names)
+        if vehicles_df.empty:
+            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id'])
             return
 
-        # 車両データを取得
-        self.vehicle_data = vehicle_data[vehicle_data['lane_id'] == self.id].copy()
+        # set vehicles_df for each lane
+        self.vehicles_df = vehicles_df[vehicles_df['lane_id'] == self.id].copy()
+        return
 
     
     def __eq__(self, other):
@@ -371,9 +347,6 @@ class Lane(Object):
             return False
         
         if self.get('id') != other.get('id'):
-            return False
-        
-        if other.has('link') == False:
             return False
         
         if self.link != other.link:

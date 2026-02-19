@@ -2,17 +2,15 @@ import copy
 
 class Common:
     def get(self, property_name, type='reference'):
-        try:
-            val = getattr(self, property_name)
-            if type == 'reference':
-                return val
-            elif type == 'copy':
-                return copy.deepcopy(val)
-            else:
-                raise ValueError(f"Not supported type: {type}")
-            
-        except AttributeError:
-            raise AttributeError(f"Property '{property_name}' not found in {self.__class__.__name__}.")
+        if not self.has(property_name):
+            raise AttributeError(f"Not found property '{property_name}' in {self.__class__.__name__}.")
+        
+        if type == 'reference':
+            return getattr(self, property_name)
+        elif type == 'copy':
+            return copy.deepcopy(getattr(self, property_name))
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
     
     def set(self, property_name, value):
         setattr(self, property_name, value)

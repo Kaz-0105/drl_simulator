@@ -20,7 +20,7 @@ class DataCollectionPoints(Container):
             self.com = self.network.com.DataCollectionPoints
 
             # 要素オブジェクトを初期化
-            self.makeElements()
+            self._initElements()
         
         elif upper_object.__class__.__name__ == 'Link':
             # 上位の紐づくオブジェクトを取得
@@ -32,7 +32,7 @@ class DataCollectionPoints(Container):
         
         return
     
-    def makeElements(self):
+    def _initElements(self):
         for data_collection_point_com in self.com.GetAll():
             self.add(DataCollectionPoint(data_collection_point_com, self))
 
@@ -139,7 +139,7 @@ class DataCollectionMeasurements(Container):
             self.com = self.network.com.DataCollectionMeasurements
 
             # 要素オブジェクトを初期化
-            self._makeElements()
+            self._initElements()
         
         elif upper_object.__class__.__name__ == 'DataCollectionPoint':
             # 上位の紐づくオブジェクトを取得
@@ -147,7 +147,7 @@ class DataCollectionMeasurements(Container):
         
         return
 
-    def _makeElements(self):
+    def _initElements(self):
         for data_collection_measurement_com in self.com.GetAll():
             self.add(DataCollectionMeasurement(data_collection_measurement_com, self))
     

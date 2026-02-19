@@ -33,9 +33,9 @@ class MasterAgents(Container):
         self.network = network
 
         # 要素オブジェクトを初期化
-        self._makeElements()
+        self._initElements()
     
-    def _makeElements(self):
+    def _initElements(self):
         # intersectionsオブジェクトを取得
         intersections = self.network.intersections
         self.intersections_map = {}
