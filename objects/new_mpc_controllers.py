@@ -94,12 +94,12 @@ class NewMpcController(Object):
             self.bc_features_info = drl_info['features']
             self.bc_num_vehicles = drl_info['num_vehicles']
 
-        # set calc_time_record if needed
+        # set record_list if needed
         save_info = self.config.get('save_info')
-        self.calc_time_flg = save_info['performance_metrics']['calc_time']
+        self.calc_time_flg = save_info['common']['performance_metrics']['calc_time']
         if self.calc_time_flg:
-            self.calc_time_record = pd.DataFrame(columns=['time', 'calculation_time'])
-        
+            self.record_list = []
+            self.record_df = None
         return
 
     def _initRoadParameters(self):
@@ -301,6 +301,10 @@ class NewMpcController(Object):
             self.road_combinations_map[road_order_id] = combination_lane_list_map
         return
 
+    def syncDataFrame(self):
+        self.record_df = pd.DataFrame(self.record_list, columns=['time', 'value'])
+        return
+
     def optimize(self):
         # 残りのステップ数がfixed_stepsと等しくなるまではスキップ
         if not self._shouldCalculate():
@@ -343,21 +347,21 @@ class NewMpcController(Object):
         return False
 
     def _updateVehicleData(self):
-        # initialize road_vehicle_data_map
+        # initialize road_vehicles_df_map
         self.road_vehicles_df_map = {}
         for road_order_id in range(1, self.num_roads + 1):
             # get road object
             road = self.roads[road_order_id]
 
             # get vehicles_df
-            vehicles_df = road.get('vehicle_data').copy()
+            vehicles_df = road.get('vehicles_df').copy()
 
             # if there is no vehicle, make empty dataframes
             if vehicles_df.shape[0] == 0:
-                vehicle_data_map = {}
+                vehicles_df_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
-                    vehicle_data_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
-                self.road_vehicles_df_map[road_order_id] = vehicle_data_map
+                    vehicles_df_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
+                self.road_vehicles_df_map[road_order_id] = vehicles_df_map
                 continue
             
             # recalculate position based on road start point and sort by position
@@ -407,7 +411,7 @@ class NewMpcController(Object):
             vehicles_df['signal_id'] = signal_id_list
             
             # devide vehicles_df by lane combinations
-            vehicle_data_map = {}
+            vehicles_df_map = {}
             for combination_order_id, lane_str_list in self.road_combinations_map[road_order_id].items():
                 # make vehicles_df for the lane combination
                 vehicles_df_list = []
@@ -432,9 +436,9 @@ class NewMpcController(Object):
                     tmp_vehicles_df = tmp_vehicles_df.sort_values(by='position', ascending=False)
                     tmp_vehicles_df = tmp_vehicles_df.reset_index(drop=True)
 
-                vehicle_data_map[combination_order_id] = tmp_vehicles_df
+                vehicles_df_map[combination_order_id] = tmp_vehicles_df
             
-            self.road_vehicles_df_map[road_order_id] = vehicle_data_map
+            self.road_vehicles_df_map[road_order_id] = vehicles_df_map
         return
     
     def _updateRoadMaxQueueMap(self):
@@ -520,19 +524,19 @@ class NewMpcController(Object):
         return
     
     def _updateA(self):
+        A_matrix = None
         for road_order_id in range(1, self.num_roads + 1):
-            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
-            for _, vehicle_data in vehicle_data_map.items():
-                num_vehicles = vehicle_data.shape[0]
-                if num_vehicles == 0:
+            for _, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.empty:
                     continue
                 
-                tmp_A = np.eye((num_vehicles))
-                A_matrix = la.block_diag(A_matrix, tmp_A) if 'A_matrix' in locals() else tmp_A
+                tmp_A = np.eye(vehicles_df.shape[0])
+                A_matrix = tmp_A if A_matrix is None else la.block_diag(A_matrix, tmp_A)
         
         # set vehicle_exist_flg and A_matrix
-        if 'A_matrix' not in locals():
+        if A_matrix is None:
             self.vehicle_exist_flg = False
         else:
             self.vehicle_exist_flg = True
@@ -544,16 +548,16 @@ class NewMpcController(Object):
         if not self.vehicle_exist_flg:
             return
         
+        B1_matrix = None
         for road_order_id in range(1, self.num_roads + 1):
-            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
-            for combination_order_id, vehicle_data in vehicle_data_map.items():
-                num_vehicles = vehicle_data.shape[0]
-                if num_vehicles == 0:
+            for _, vehicles_df in vehicles_df_map.items():
+                if vehicles_df.shape[0] == 0:
                     continue
 
-                tmp_B1 = np.zeros((num_vehicles, self.num_signals))
-                B1_matrix = np.vstack([B1_matrix, tmp_B1]) if 'B1_matrix' in locals() else tmp_B1
+                tmp_B1 = np.zeros((vehicles_df.shape[0], self.num_signals))
+                B1_matrix = tmp_B1 if B1_matrix is None else np.vstack([B1_matrix, tmp_B1])
         
         self.traffic_flow_model['B1'] = B1_matrix    
         return
@@ -1823,24 +1827,22 @@ class NewMpcController(Object):
         if not self.vehicle_exist_flg:
             return
 
-        # 道路ごとに走査
+        pos_vehs = None
         for road_order_id in range(1, self.num_roads + 1):
-            # 道路に紐づくvehicle_data_mapを取得
-            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
-
-            # 各車線の組み合わせごとに走査
-            for combination_order_id, vehicle_data in vehicle_data_map.items():
-                # 車両データが空の場合はスキップ
-                if vehicle_data.shape[0] == 0:
+            # get vehicles_df_map
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
+            for _, vehicles_df in vehicles_df_map.items():
+                # skip if vehicles_df is empty
+                if vehicles_df.empty:
                     continue
                 
-                # 車両の位置を取得
-                tmp_pos_vehs = vehicle_data['position'].values.reshape(-1, 1)
+                # get positions
+                tmp_pos_vehs = vehicles_df['position'].values.reshape(-1, 1)
 
-                # pos_vehsに追加
-                pos_vehs = np.vstack([pos_vehs, tmp_pos_vehs]) if 'pos_vehs' in locals() else tmp_pos_vehs
+                # push to pos_vehs
+                pos_vehs = tmp_pos_vehs if pos_vehs is None else np.vstack([pos_vehs, tmp_pos_vehs])
 
-        # 位置ベクトルを交通流モデルに追加
+        # push to traffic_flow_model
         self.traffic_flow_model['pos_vehs'] = pos_vehs
         return
 
@@ -1878,10 +1880,11 @@ class NewMpcController(Object):
             for signal_id in range(1, self.num_signals + 1):
                 variable_list_map[f"phi_{signal_id}"] = []
 
-        # フェーズの変数リストを追加
+        # initialize phase variables for each phase
         for phase_order_id in range(1, self.num_phases + 1):
             variable_list_map['p_' + str(phase_order_id)] = []
 
+        # initialize variable length map
         variable_length_map = {
             'u': self.num_signals,
             'z': None,
@@ -1889,28 +1892,28 @@ class NewMpcController(Object):
             'v': None,
         }
 
-        # 現在の変数の数を初期化
+        # initialize counter
         count = variable_length_map['u'] - 1
 
         # zに関して変数リストを更新
         for road_order_id in range(1, self.num_roads + 1):
-            # 道路に紐づくvehicle_data_mapを取得
-            vehicle_data_map = self.road_vehicles_df_map[road_order_id]
+            # 道路に紐づくvehicles_df_mapを取得
+            vehicles_df_map = self.road_vehicles_df_map[road_order_id]
 
             # 道路に紐づく組み合わせのマップを取得
             combination_lane_list_map = self.road_combinations_map[road_order_id]
 
             # 各車線の組み合わせごとに走査
-            for combination_order_id, vehicle_data in vehicle_data_map.items():
+            for combination_order_id, vehicles_df in vehicles_df_map.items():
                 # 車両データが空の場合はスキップ
-                if vehicle_data.shape[0] == 0:
+                if vehicles_df.empty:
                     continue
 
                 # 組み合わせを取得
                 lane_str_list = combination_lane_list_map[combination_order_id]
 
                 if len(lane_str_list) == 1:
-                    for idx, vehicle in vehicle_data.iterrows():
+                    for idx in range(vehicles_df.shape[0]):
                         if idx == 0:
                             # 先頭車の変数を追加
                             variable_list_map['z_1'].append(count + 1)
@@ -1930,8 +1933,8 @@ class NewMpcController(Object):
                     for lane_str in lane_str_list:
                         first_end_flg[lane_str] = False
 
-                    for idx, vehicle in vehicle_data.iterrows():
-                        lane_str = str(int(vehicle['wait_link_id'])) + '-' + str(int(vehicle['wait_lane_id']))
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
                         if idx == 0:
                             # 先頭車の変数を追加
                             variable_list_map['z_1'].append(count + 1)
@@ -2484,10 +2487,12 @@ class NewMpcController(Object):
             constraints = [constraints_ineq, constraints_eq]
             response = milp(c=f_matrix, integrality=integrality_matrix, bounds=bounds, constraints=constraints)
         
-        # 計算時間の保存
+        # update record_list
         if self.calc_time_flg:
-            calc_time = end_time - start_time
-            self.calc_time_record.loc[len(self.calc_time_record)] = [self.current_time, calc_time]
+            self.record_list.append({
+                'time': int(self.network.get('current_time')),
+                'value': end_time - start_time,
+            })
         return
     
     def showOptimizationResult(self):
@@ -2593,7 +2598,7 @@ class NewMpcController(Object):
             return
         
         # 行動クローン用の車線から車両データへのマップを初期化
-        self.bc_lane_str_vehicle_data_map = {}
+        self.bc_lane_str_vehicles_df_map = {}
 
         # 信号付近かどうかを判断するため最大キュー長を取得
         max_queue_length = self.intersection.get('max_queue_length')
@@ -2619,35 +2624,35 @@ class NewMpcController(Object):
                 # laneオブジェクトを取得
                 lane = lanes[lane_order_id]
 
-                # vehicle_dataを位置情報でソート
-                vehicle_data = lane.get('vehicle_data').copy()
-                vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-                vehicle_data.reset_index(drop=True, inplace=True)
+                # vehicles_dfを位置情報でソート
+                vehicles_df = lane.get('vehicles_df').copy()
+                vehicles_df = vehicles_df.sort_values(by='position', ascending=False)
+                vehicles_df = vehicles_df.reset_index(drop=True)
 
                 # 先頭からnum_vehicles台の車両を取得
-                vehicle_data = vehicle_data.head(self.bc_num_vehicles).copy()
+                vehicles_df = vehicles_df.head(self.bc_num_vehicles).copy()
 
                 # 距離情報を信号との距離に変換
                 length_info = lane.get('length_info')
-                vehicle_data['position'] = length_info['length'] - vehicle_data['position']
+                vehicles_df['position'] = length_info['length'] - vehicles_df['position']
 
                 # near_flg（交差点に近いかどうか）を初期化
                 near_flgs = []
-                for _, row in vehicle_data.iterrows():
+                for _, row in vehicles_df.iterrows():
                     if row['position'] <= near_length:
                         near_flgs.append(True)
                     else:
                         near_flgs.append(False)
                 
-                # near_flgsをvehicle_dataに追加
-                vehicle_data['near_flg'] = near_flgs
+                # near_flgsをvehicles_dfに追加
+                vehicles_df['near_flg'] = near_flgs
 
                 # wait_flg（信号待ちかどうか）を初期化
                 wait_flgs = []
 
                 # direction_idを取得
-                direction_ids = vehicle_data['direction_id']
-                for idx, row in vehicle_data.iterrows():
+                direction_ids = vehicles_df['direction_id']
+                for idx, row in vehicles_df.iterrows():
                     # 交差点に近くない自動車はスコープから外す
                     if not near_flgs[idx]:
                         wait_flgs.append(False)
@@ -2677,10 +2682,10 @@ class NewMpcController(Object):
                     if not found_flg:
                         wait_flgs.append(False)
                             
-                # wait_flgsをvehicle_dataに追加
-                vehicle_data['wait_flg'] = wait_flgs
+                # wait_flgsをvehicles_dfに追加
+                vehicles_df['wait_flg'] = wait_flgs
                 
-                self.bc_lane_str_vehicle_data_map[lane_str] = vehicle_data
+                self.bc_lane_str_vehicles_df_map[lane_str] = vehicles_df
         
         return
     
@@ -2719,14 +2724,14 @@ class NewMpcController(Object):
                     lane_state = {}
 
                     # 自動車のデータを取得
-                    vehicle_data = self.bc_lane_str_vehicle_data_map.get(f"{road_order_id}-{lane_order_id}")
+                    vehicles_df = self.bc_lane_str_vehicles_df_map.get(f"{road_order_id}-{lane_order_id}")
                     
                     # 車両に関する状態を取得
                     vehicles_state = {}
                     for index in range(self.bc_num_vehicles):
-                        if index < vehicle_data.shape[0]:
+                        if index < vehicles_df.shape[0]:
                             # レコードを取得
-                            vehicle = vehicle_data.iloc[index]
+                            vehicle = vehicles_df.iloc[index]
 
                             # 車両の状態量を初期化
                             vehicle_state = []

@@ -12,7 +12,7 @@ class Intersections(Container):
 
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
-            self.makeElements()
+            self._initElements()
         elif upper_object.__class__.__name__ == 'MasterAgent':
             self.master_agent = upper_object
         else:
@@ -20,16 +20,10 @@ class Intersections(Container):
         
         return
 
-    def makeElements(self):
+    def _initElements(self):
         intersections_df = self.config.get('intersections')
         for _, intersection_row in intersections_df.iterrows():
             self.add(Intersection(intersection_row, self))
-        return
-
-    def update(self):
-        for intersection in self.getAll():
-            self.executor.submit(intersection.update)
-        self.executor.wait()
         return
 class Intersection(Object):
     def __init__(self, intersection_row, intersections):
@@ -48,30 +42,6 @@ class Intersection(Object):
 
         self.input_roads = Roads(self, {'type': 'input'})
         self.output_roads = Roads(self, {'type': 'output'})
-
-        self.speed_df = pd.DataFrame(columns=['time', 'value'])
-        return
-
-    def update(self):
-        speed_list = []
-        max_speed_list = []
-        for road in self.input_roads.getAll():
-            # update max_speed_list
-            max_speed_list.append(road.get('max_speed'))
-
-            # update speed_list
-            vehicles_df = road.get('vehicle_data')
-            if vehicles_df.shape[0] == 0:
-                continue
-            speed_list.extend(vehicles_df['speed'].tolist())
-        
-        # if there is no vehicle, use max speed of input roads
-        if len(speed_list) == 0:
-            speed = sum(max_speed_list) / len(max_speed_list)
-        else:
-            speed = sum(speed_list) / len(speed_list)
-        
-        self.speed_df.loc[self.speed_df.shape[0]] = [self.current_time, speed]
         return
 
     @property

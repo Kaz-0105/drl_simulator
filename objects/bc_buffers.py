@@ -13,9 +13,9 @@ class BcBuffers(Container):
         self.config = network.config
         self.executor = network.executor
 
-        self._makeElements()
+        self._initElements()
     
-    def _makeElements(self):
+    def _initElements(self):
         mpc_controllers = self.network.mpc_controllers
         num_lanes_list_map =[]
         for mpc_controller in mpc_controllers.getAll():

@@ -8,9 +8,9 @@ class VehicleInputs(Container):
         self.network = network
         self.com = self.network.com.VehicleInputs
 
-        self.makeElements()
+        self._initElements()
 
-    def makeElements(self):
+    def _initElements(self):
         for vehicle_input_com in self.com.GetAll():
             self.add(VehicleInput(vehicle_input_com, self))
 

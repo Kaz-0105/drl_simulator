@@ -17,7 +17,7 @@ class ScootControllers(Container):
         self.network = network
 
         # 要素オブジェクトを初期化
-        self.makeElements()
+        self._initElements()
         return
     
     def makeElements(self):

@@ -19,23 +19,23 @@ class Roads(Container):
 
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
-            self.makeElements()
+            self._initElements()
 
         elif upper_object.__class__.__name__ == 'Intersection':
             self.intersection = upper_object
             self.type = options['type']
-            self.makeElements()
+            self._initElements()
         
         else:
             raise NotImplementedError(f"Not supported upper_object: {upper_object.__class__.__name__}")
         
         return
     
-    def makeElements(self):
+    def _initElements(self):
         if self.has('network'):
             roads = self.config.get('roads')
-            for _, road in roads.iterrows():
-                self.add(Road(road, self))
+            for _, road_row in roads.iterrows():
+                self.add(Road(road_row, self))
 
         elif self.has('intersection'):
             tags = self.config.get('intersection_road_tags')
@@ -84,53 +84,55 @@ class Roads(Container):
         self.executor.wait()        
         return
 
+    def syncDataFrame(self):
+        for road in self.getAll():
+            self.executor.submit(road.syncDataFrame)
+        
+        self.executor.wait()
+        return
+
 class Road(Object):
-    def __init__(self, road, roads):
-        # 継承
+    def __init__(self, road_row, roads):
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = roads.config
         self.executor = roads.executor
         self.roads = roads
+        self.network = roads.network
 
-        # IDを取得
-        self.id = int(road['id'])
+        self._initProps(road_row)
+        return
 
-        # 法定速度を設定
-        self.max_speed = int(road['max_speed'])
+    def _initProps(self, road_row):
+        # set id, max_speed, type
+        self.id = int(road_row['id'])
+        self.max_speed = int(road_row['max_speed'])
+        self.type = road_row['type']
 
-        # タイプを取得
-        self.type = road['type']
-
-        # 紐づくlinkオブジェクトを格納するコンテナを初期化
+        # initialize links
         self.links = Links(self)
 
-        # リンクのタイプを格納する辞書型配列を初期化
-        self.link_types = {}
-
-        # queue_countersオブジェクトを初期化
+        # initialize queue_counters, delay_measurements, signal_groups
         self.queue_counters = QueueCounters(self)
-
-        # delay_measurementsオブジェクトを初期化
         self.delay_measurements = DelayMeasurements(self)
-
-        # signal_groupsオブジェクトを初期化
         self.signal_groups = SignalGroups(self)
 
-        # SignalGroupオブジェクトの信号方向との対応関係を示す辞書型配列を初期化
+        # initialize direction_signal_group_map
         self.direction_signal_group_map = {}
 
-        # data_collection_pointを初期化
+        # initialize data_collection_points
         self.data_collection_points = DataCollectionPoints(self)
 
-    def addLink(self, link, link_type):
-        self.links.add(link)
-        self.link_types[link.get('id')] = link_type
+        # initialize records
+        self.speed_record_list = []
+        self.speed_record_df = None
+        self.num_vehs_record_list = []
+        self.num_vehs_record_df = None
         return
 
     def initEffectiveStorageLengths(self):
-        # 流出道路は考える必要なし
+        # skip if the road is not input road
         if not self.has('output_intersection'):
             return
         
@@ -185,82 +187,65 @@ class Road(Object):
 
         return
 
-    def getVehicleRoutingDecision(self):
-        main_link = self.get('main_link')
-        if main_link.has('vehicle_routing_decision'):
-            return main_link.vehicle_routing_decision
-        else:
-            return None
-    
     def update(self):
-        # 紐づくlinkオブジェクトのデータを更新
         self.links.update()
-
-        # linksのデータをroadにまとめる
         self.executor.submit(self.summarizeData)
+        return
     
     def summarizeData(self):
-        # 車両データを初期化
-        self.vehicle_data = None
+        # initialize vehicles_df
+        self.vehicles_df = None
         
         for link in self.links.getAll():
-            # 車両データを取得
-            vehicle_data = link.get('vehicle_data')
+            # get vehicles_df
+            vehicles_df = link.get('vehicles_df').copy()
 
-            # 車両データが空の場合はスキップ
-            if vehicle_data.shape[0] == 0:
+            # skip if vehicles_df is empty
+            if vehicles_df.empty:
                 continue
                 
-            # 車両データをroadにまとめる
-            if self.vehicle_data is None:
-                self.vehicle_data = vehicle_data
-            else:
-                self.vehicle_data = pd.concat([self.vehicle_data, vehicle_data], ignore_index=True)
+            # update vehicles_df
+            self.vehicles_df = vehicles_df if self.vehicles_df is None else pd.concat([self.vehicles_df, vehicles_df], ignore_index=True)
         
-        # 位置でソートする
-        if self.vehicle_data is not None:
-            self.vehicle_data.sort_values(by='position', ascending=False, inplace=True)
-            self.vehicle_data.reset_index(drop=True, inplace=True)
+        # sort
+        if self.vehicles_df is not None:
+            self.vehicles_df = self.vehicles_df.sort_values(by='position', ascending=False)
+            self.vehicles_df = self.vehicles_df.reset_index(drop=True)
 
-        # 1台も車両がいないときNoneになるので、DataFrameを初期化
-        if self.vehicle_data is None:
-            self.vehicle_data = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id', 'go_flg'])
+        # initialize vehicles_df if it is None
+        if self.vehicles_df is None:
+            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id'])
 
-        # 流出道路のときはここで終了    
+        # if the road is not input road, skip the rest of the process    
         if not self.has('output_intersection'):
             return
         
-        # route_num_vehs_mapを作成
+        # calculate route_num_vehs_map
         self.route_num_vehs_map = {}
         for direction_id in range(self.output_intersection.get('num_roads')):
             self.route_num_vehs_map[direction_id] = 0        
 
-        for _, tmp_vehicle_data in self.vehicle_data.iterrows():
-            direction_id = tmp_vehicle_data['direction_id']
+        for _, tmp_vehicles_df in self.vehicles_df.iterrows():
+            direction_id = tmp_vehicles_df['direction_id']
             self.route_num_vehs_map[int(direction_id)] += 1
-        
+
+        # update speed_record_list
+        self.speed_record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': self.vehicles_df['speed'].mean() if not self.vehicles_df.empty else self.max_speed,
+        })
+
+        # update num_vehs_record_list
+        self.num_vehs_record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': self.vehicles_df.shape[0],
+        })
         return
-    
-    @property
-    def main_link(self):
-        for link in self.links.getAll():
-            if link.get('type') == 'main':
-                return link
-        return None
-    
-    @property
-    def right_link(self):
-        for link in self.links.getAll():
-            if link.get('type') == 'right':
-                return link        
-        return None
-    
-    @property
-    def right_connector(self):
-        for link in self.links.getAll():
-            if link.get('type') == 'connector' and link.to_link.get('id') == self.right_link.get('id'):
-                return link
-        return None
+
+    def syncDataFrame(self):
+        self.speed_record_df = DataFrame(self.speed_record_list)
+        self.num_vehs_record_df = DataFrame(self.num_vehs_record_list)
+        return
                 
     @property
     def max_queue_length(self):
@@ -273,18 +258,10 @@ class Road(Object):
             delays.append(delay_measurement.get('current_delay'))
         
         return sum(delays) / len(delays) if len(delays) > 0 else 0
-
-    @property
-    def length(self):
-        return self.main_link.get('length')
     
     @property
     def num_vehicles(self):
-        return self.vehicle_data.shape[0]
-
-    @property
-    def num_going_vehicles(self):
-        return self.vehicle_data[self.vehicle_data['go_flg']].shape[0]
+        return self.vehicles_df.shape[0]
 
     @property
     def direction_signal_value_map(self):

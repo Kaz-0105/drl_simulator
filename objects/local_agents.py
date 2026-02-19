@@ -22,7 +22,7 @@ class LocalAgents(Container):
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object # networkオブジェクトを設定
             self.device = device # cuda or cpuを取得
-            self._makeElements() # 要素オブジェクトを作成
+            self._initElements() # 要素オブジェクトを作成
 
         elif upper_object.__class__.__name__ == 'MasterAgent':
             self.master_agent = upper_object # master_agentオブジェクトを取得
@@ -33,7 +33,7 @@ class LocalAgents(Container):
         return
     
     # local_agentオブジェクトを初期化するメソッド
-    def _makeElements(self):
+    def _initElements(self):
         intersections = self.network.intersections
         for intersection in intersections.getAll(sorted_flg=True):
             self.add(LocalAgent(self, intersection))

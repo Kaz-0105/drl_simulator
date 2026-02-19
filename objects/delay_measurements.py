@@ -20,7 +20,7 @@ class DelayMeasurements(Container):
             self.com = self.network.com.DelayMeasurements
 
             # 要素オブジェクトの初期化
-            self.makeElements()
+            self._initElements()
 
             # travel_time_measurementと紐づける
             self.makeTravelTimeConnections()
@@ -45,7 +45,7 @@ class DelayMeasurements(Container):
 
         return
     
-    def makeElements(self):
+    def _initElements(self):
         for delay_measurement_com in self.com.GetAll():
             self.add(DelayMeasurement(delay_measurement_com, self))
         
@@ -111,46 +111,70 @@ class DelayMeasurements(Container):
             delay_measurement.set('vehicle_routing_decision', vehicle_routing_decision)
     
     def update(self):
-        # Comオブジェクトからデータを取得
+        # get data from com object
         delay_measurement_ids = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('No')]
         delays = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('VehDelay(Current, Last, All)')]
 
-        # データを要素オブジェクトにセット（非同期処理）
+        # set current_delay for each delay measurement
         for index, delay_measurement_id in enumerate(delay_measurement_ids):
             delay_measurement = self[delay_measurement_id]
             self.executor.submit(delay_measurement.update, delays[index])
+        
+        return
+
+    def syncDataFrame(self):
+        for delay_measurement in self.getAll():
+            self.executor.submit(delay_measurement.syncDataFrame)
+        
+        self.executor.wait()
+        return
     
 
 class DelayMeasurement(Object):
     def __init__(self, com, delay_measurements):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
+        # set objects
         self.config = delay_measurements.config
         self.executor = delay_measurements.executor
         self.delay_measurements = delay_measurements
-
-        # 対応するComオブジェクトを取得
-        self.com = com
-
-        # IDを取得
-        self.id = self.com.AttValue('No')
-
-        # networkオブジェクトと紐づける
         self.network = delay_measurements.network
 
-        # linkオブジェクトを格納するためのコンテナを初期化
+        # set com object
+        self.com = com
+        
+        # initialize links
         self.links = Links(self)
-        self.type_link_map = {}
-
-        # 現在の遅れの値を初期化
-        self.current_delay = 0
-
-        # delays（時系列データ）を初期化
-        self.delay_record = pd.DataFrame(columns=['time', 'delay'])
+        
+        # initialize properties
+        self._initProps()
         return
-    
+
+    def _initProps(self):
+        self.id = self.com.AttValue('No')
+        self.record_list = []
+        self.record_df = None
+        self.type_link_map = {}
+        return
+
+    def update(self, value): 
+        self.record_list.append({
+            'time': int(self.network.get('current_time')),
+            'value': value if value is not None else self.current_delay,
+        })
+        return
+
+    def syncDataFrame(self):
+        self.record_df = pd.DataFrame(self.record_list)
+        return
+
+    @property
+    def current_delay(self):
+        if len(self.record_list) == 0:
+            return 0.0
+        else:
+            return self.record_list[-1]['value']
+
     @property
     def start_link(self):
         return self.links[self.type_link_map['start']]
@@ -162,18 +186,5 @@ class DelayMeasurement(Object):
     @property
     def direction_id(self):
         return self.travel_time_measurement.get('direction_id')
-    
-    @property
-    def current_time(self):
-        return self.network.simulation.get('current_time')
-    
-    def update(self, delay):
-        # current_delayを更新
-        self.current_delay = self.current_delay if delay is None else round(delay, 1)
-
-        # delaysを更新
-        self.delay_record.loc[len(self.delay_record)] = [self.current_time, self.current_delay]
-
-        return
 
     

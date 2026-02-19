@@ -19,8 +19,7 @@ from objects.scoot_controllers import ScootControllers
 
 import numpy as np
 import torch
-import copy
-import yaml
+import pandas as pd
 import re
 
 class Network(Common):
@@ -53,11 +52,8 @@ class Network(Common):
         self.num_simulations = simulator_info['num_simulations']
 
         save_info = self.config.get('save_info')
-        self.queue_flg = save_info['performance_metrics']['queue']
-        self.delay_flg = save_info['performance_metrics']['delay']
-        self.speed_flg = save_info['performance_metrics']['speed']
-        self.calc_time_flg = save_info['performance_metrics']['calc_time']
-        self.phase_flg = save_info['performance_metrics']['phase']
+        self.save_flg_map = save_info['common']['performance_metrics']
+        self.road_scale_flg = save_info['common']['road_scale_flg']
 
         save_dir_path_map = self.config.get('save_dir_path_map')
         self.save_dir_path = save_dir_path_map['metrics']
@@ -122,148 +118,325 @@ class Network(Common):
         
         return
     
-    def update(self):
-        # ネットワークの更新
+    def update(self, last_flg=False):
         self.roads.update()
-        self.intersections.update()
         self.queue_counters.update()
         self.delay_measurements.update()
         self.data_collection_measurements.update()
-
-        # 並列処理が終わるまで待機
+        if last_flg:
+            self.signal_controllers.lastUpdate()
         self.executor.wait()
         return
 
     def save(self):
-        # save queue, delay, and phase records
-        for intersection in self.intersections.getAll():
-            roads = intersection.input_roads
-
-            tmp_save_dir_path = self.save_dir_path / f"intersection_{intersection.get('id')}"
-            tmp_save_dir_path.mkdir(parents=True, exist_ok=True)
-
-            if self.queue_flg:
-                max_queue_df = None
-                average_queue_df = None
-                for road_order_id in range(1, roads.count() + 1):
-                    road = roads[road_order_id]
-                    
-                    tmp_queue_df = None
-                    for queue_counter in road.queue_counters.getAll():
-                        if tmp_queue_df is None:
-                            tmp_queue_df = copy.deepcopy(queue_counter.get('queue_length_record'))
-                        else:
-                            tmp_queue_df['queue_length'] = np.maximum(
-                                tmp_queue_df['queue_length'].to_numpy(),
-                                queue_counter.get('queue_length_record')['queue_length'].to_numpy(),
-                            )
-                    
-                    # update max_queue_df
-                    if max_queue_df is None:
-                        max_queue_df = copy.deepcopy(tmp_queue_df)
-                    else:
-                        max_queue_df['queue_length'] = np.maximum(
-                            max_queue_df['queue_length'].to_numpy(),
-                            tmp_queue_df['queue_length'].to_numpy(),
-                        )
-                    
-                    # update average_queue_df
-                    if average_queue_df is None:
-                        average_queue_df = copy.deepcopy(tmp_queue_df)
-                    else:
-                        average_queue_df['queue_length'] += tmp_queue_df['queue_length']
-                
-                # sum to average
-                average_queue_df['queue_length'] /= roads.count()
-
-                # save
-                max_queue_df.to_csv(tmp_save_dir_path / 'max_queue.csv', index=False)
-                average_queue_df.to_csv(tmp_save_dir_path / 'average_queue.csv', index=False)   
-
-            if self.delay_flg:
-                # save max_delay.csv and average_delay.csv
-                max_delay_df = None
-                average_delay_df = None
-
-                for road_order_id in range(1, roads.count() + 1):
-                    road = roads[road_order_id]
-
-                    tmp_max_delay_df = None
-                    tmp_average_delay_df = None
-                    for delay_measurement in road.delay_measurements.getAll():
-                        tmp_delay_df = delay_measurement.get('delay_record')
-
-                        if tmp_max_delay_df is None:
-                            tmp_max_delay_df = copy.deepcopy(tmp_delay_df)
-                        else:
-                            tmp_max_delay_df['delay'] = np.maximum(
-                                tmp_max_delay_df['delay'].to_numpy(),
-                                tmp_delay_df['delay'].to_numpy(),
-                            )
-                        
-                        if tmp_average_delay_df is None:
-                            tmp_average_delay_df = copy.deepcopy(tmp_delay_df)
-                        else:
-                            tmp_average_delay_df['delay'] += tmp_delay_df['delay']
-                    
-                    # sum to average
-                    tmp_average_delay_df['delay'] /= road.delay_measurements.count()
-
-                    # update max_delay_df
-                    if max_delay_df is None:
-                        max_delay_df = copy.deepcopy(tmp_max_delay_df)
-                    else:
-                        max_delay_df['delay'] = np.maximum(
-                            max_delay_df['delay'].to_numpy(),
-                            tmp_max_delay_df['delay'].to_numpy(),
-                        )
-
-                    # update average_delay_df
-                    if average_delay_df is None:
-                        average_delay_df = copy.deepcopy(tmp_average_delay_df)
-                    else:
-                        average_delay_df['delay'] += tmp_average_delay_df['delay']
-                
-                # sum to average
-                average_delay_df['delay'] /= roads.count()
-
-                # save
-                max_delay_df.to_csv(tmp_save_dir_path / 'max_delay.csv', index=False)
-                average_delay_df.to_csv(tmp_save_dir_path / 'average_delay.csv', index=False)
-
-            if self.speed_flg:
-                speed_df = intersection.get('speed_df')
-                speed_df.to_csv(tmp_save_dir_path / 'speed.csv', index=False)
-            
-            if self.phase_flg:
-                signal_controller = intersection.signal_controller
-                phase_df = signal_controller.get('phase_record_df')
-                phase_df.to_csv(tmp_save_dir_path / 'phases.csv', index=False)
-        
-        
-        # scoot doesn't have calculation time record
-        if self.control_method == 'scoot':
+        # skip if all save flags are false
+        if not any(flg for flg in self.save_flg_map.values()):
             return
+        
+        # make time series data as dataframe
+        self._makeQueueRecordsMap()
+        self._makeDelayRecordsMap()
+        self._makeSpeedRecordsMap()
+        self._makeCalcTimeRecordsMap()
+        self._makePhaseRecordsMap()
 
-        # save calculation time
+        # save csv files
+        self._saveCSV()
+        return
+
+    def _makeQueueRecordsMap(self):
+        if self.save_flg_map['queue'] == False:
+            return
+        
+        # make records_map
+        self.queue_records_map = {
+            'roads': {},
+            'intersections': {},
+        }
+
+        self.queue_counters.syncDataFrame()
+        for road in self.roads.getAll():
+            if road.queue_counters.count() == 0:
+                continue
+
+            data_map = {}
+            for queue_counter in road.queue_counters.getAll():
+                link_type = queue_counter.link.get('type')
+                tmp_record_df = queue_counter.get('record_df')
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                data_map[link_type] = tmp_record_df['value'].values
+
+            record_df = pd.DataFrame(data_map)
+            record_df['avg'] = record_df[[key for key in data_map.keys() if key != 'time']].mean(axis=1)
+            record_df['max'] = record_df[[key for key in data_map.keys() if key != 'time']].max(axis=1)
+            self.queue_records_map['roads'][road.get('id')] = record_df
+        
         for intersection in self.intersections.getAll():
-            roads = intersection.input_roads
+            data_map = {}
+            for road in intersection.input_roads.getAll():
+                if road.get('id') not in self.queue_records_map['roads']:
+                    continue
 
-            if self.control_method == 'mpc':
-                controller = intersection.mpc_controller
-            elif self.control_method == 'drl':
-                raise NotImplementedError("Calculation time saving for DRL is not implemented yet.")
-            else:
-                raise NotImplementedError(f"Not supported control method: {self.control_method}")
+                if data_map == {}:
+                    data_map['time'] = self.queue_records_map['roads'][road.get('id')]['time'].values
+                
+                data_map[f"road_{road.get('id')}_avg"] = self.queue_records_map['roads'][road.get('id')]['avg'].values
+                data_map[f"road_{road.get('id')}_max"] = self.queue_records_map['roads'][road.get('id')]['max'].values
+            
+            record_df = pd.DataFrame(data_map)
+            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_avg", key)]].mean(axis=1)
+            record_df['max'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_max", key)]].max(axis=1)
+            record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_avg", key) or re.match(rf"road_(\d+)_max", key)])
 
-            tmp_save_dir_path = self.save_dir_path / f"intersection_{intersection.get('id')}"
-            tmp_save_dir_path.mkdir(parents=True, exist_ok=True)
+            self.queue_records_map['intersections'][intersection.get('id')] = record_df
+        
+    def _makeDelayRecordsMap(self):
+        if self.save_flg_map['delay'] == False:
+            return
+        
+        self.delay_records_map = {
+            'roads': {},
+            'intersections': {},
+        }
 
-            if self.calc_time_flg and self.control_method in ['mpc', 'drl', 'bc']:
-                calc_time_df = controller.get('calc_time_record')
-                calc_time_df.to_csv(tmp_save_dir_path / 'calc_time.csv', index=False)
+        self.delay_measurements.syncDataFrame()
+
+        for road in self.roads.getAll():
+            if road.delay_measurements.count() == 0:
+                continue
+
+            data_map = {}
+            for delay_measurement in road.delay_measurements.getAll():
+                direction_id = delay_measurement.get('direction_id')
+                tmp_record_df = delay_measurement.get('record_df')
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                
+                if f"direction_{direction_id}" not in data_map:
+                    data_map[f"direction_{direction_id}"] = []
+                data_map[f"direction_{direction_id}"].append(tmp_record_df['value'].values)
+            
+            # average for each direction
+            for key in data_map.keys():
+                if key == 'time':
+                    continue
+                data_map[key] = np.mean(data_map[key], axis=0)
+            
+            record_df = pd.DataFrame(data_map)
+            record_df['avg'] = record_df[[key for key in data_map.keys() if key != 'time']].mean(axis=1)
+            record_df['max'] = record_df[[key for key in data_map.keys() if key != 'time']].max(axis=1)
+            self.delay_records_map['roads'][road.get('id')] = record_df
+
+        for intersection in self.intersections.getAll():
+            data_map = {}
+            for road in intersection.input_roads.getAll():
+                if road.get('id') not in self.delay_records_map['roads']:
+                    continue
+
+                if data_map == {}:
+                    data_map['time'] = self.delay_records_map['roads'][road.get('id')]['time'].values
+                
+                data_map[f"road_{road.get('id')}_avg"] = self.delay_records_map['roads'][road.get('id')]['avg'].values
+                data_map[f"road_{road.get('id')}_max"] = self.delay_records_map['roads'][road.get('id')]['max'].values
+            
+            record_df = pd.DataFrame(data_map)
+            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_avg", key)]].mean(axis=1)
+            record_df['max'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_max", key)]].max(axis=1)
+            record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_avg", key) or re.match(rf"road_(\d+)_max", key)])
+            self.delay_records_map['intersections'][intersection.get('id')] = record_df
 
         return
+    
+    def _makeSpeedRecordsMap(self):
+        if self.save_flg_map['speed'] == False:
+            return
+        
+        self.speed_records_map = {
+            'roads': {},
+            'intersections': {},
+        }
+
+        self.roads.syncDataFrame()
+
+        for road in self.roads.getAll():
+            if not road.has('output_intersection'):
+                continue
+            
+            record_df = road.get('speed_record_df')
+            record_df = record_df.rename(columns={'value': 'avg'})
+            self.speed_records_map['roads'][road.get('id')] = record_df
+
+        for intersection in self.intersections.getAll():
+            data_map = {}
+            total_num_vehs_array = 0
+            for road in intersection.input_roads.getAll():
+                if road.get('id') not in self.speed_records_map['roads']:
+                    continue
+
+                if data_map == {}:
+                    data_map['time'] = self.speed_records_map['roads'][road.get('id')]['time'].values
+                
+                avg_speed_array = self.speed_records_map['roads'][road.get('id')]['avg'].values
+                
+                tmp_record_df = road.get('num_vehs_record_df')
+                num_vehs_array = tmp_record_df['value'].values
+                data_map[f"road_{road.get('id')}_sum"] = avg_speed_array * num_vehs_array
+
+                total_num_vehs_array += num_vehs_array
+
+            record_df = pd.DataFrame(data_map)
+            record_df['avg'] = record_df[[key for key in data_map.keys() if re.match(rf"road_(\d+)_sum", key)]].sum(axis=1) / total_num_vehs_array
+            record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_sum", key)])
+            self.speed_records_map['intersections'][intersection.get('id')] = record_df
+        return
+
+    def _makeCalcTimeRecordsMap(self):
+        if not self.save_flg_map['calc_time'] or self.control_method == 'scoot':
+            return
+
+        self.calc_time_records_map = {}
+
+        if self.control_method == 'mpc':
+            self.mpc_controllers.syncDataFrame()
+        elif self.control_method == 'drl':
+            self.local_agents.syncDataFrame()
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
+        
+        for intersection in self.intersections.getAll():
+            if self.control_method == 'mpc':
+                self.calc_time_records_map[intersection.get('id')] = intersection.mpc_controller.get('record_df')
+            elif self.control_method == 'drl':
+                self.calc_time_records_map[intersection.get('id')] = intersection.local_agent.get('record_df')
+            else:
+                raise NotImplementedError(f"Not supported control method: {self.control_method}")
+        
+        return
+
+    def _makePhaseRecordsMap(self):
+        if not self.save_flg_map['phase']:
+            return
+
+        self.signal_controllers.syncDataFrame()
+        self.phase_records_map = {}
+        for intersection in self.intersections.getAll():
+            self.phase_records_map[intersection.get('id')] = intersection.signal_controller.get('record_df')
+        
+        return
+
+    def _saveCSV(self):
+        # skip if all save flags are false
+        if not any(flg for flg in self.save_flg_map.values()):
+            return
+        
+        # intersection scale
+        for intersection in self.intersections.getAll():
+            save_dir_path = self.save_dir_path / f"intersection_{intersection.get('id')}"
+            save_dir_path.mkdir(parents=True, exist_ok=True)
+
+            data_map = {}
+            if self.save_flg_map['queue']:
+                tmp_record_df = self.queue_records_map['intersections'][intersection.get('id')]
+                
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                
+                data_map['queue_avg'] = tmp_record_df['avg'].values
+                data_map['queue_max'] = tmp_record_df['max'].values
+            
+            if self.save_flg_map['delay']:
+                tmp_record_df = self.delay_records_map['intersections'][intersection.get('id')]
+
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                
+                data_map['delay_avg'] = tmp_record_df['avg'].values
+                data_map['delay_max'] = tmp_record_df['max'].values
+            
+            if self.save_flg_map['speed']:
+                tmp_record_df = self.speed_records_map['intersections'][intersection.get('id')]
+
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                
+                data_map['speed_avg'] = tmp_record_df['avg'].values
+            
+            if self.save_flg_map['phase']:
+                tmp_record_df = self.phase_records_map[intersection.get('id')]
+
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                
+                data_map['phase'] = tmp_record_df['value'].values
+            
+            record_df = pd.DataFrame(data_map)
+            record_df.to_csv(
+                path_or_buf=save_dir_path / 'performance_metrics.csv', 
+                float_format='%.2f',
+                index=False
+            )
+
+            if self.save_flg_map['calc_time'] and self.control_method != 'scoot':
+                tmp_record_df = self.calc_time_records_map[intersection.get('id')]
+                tmp_record_df.to_csv(
+                    path_or_buf=save_dir_path / 'calc_time.csv', 
+                    float_format='%.2f',
+                    index=False)
+
+        # road scale
+        if not self.road_scale_flg:
+            return
+        
+        for intersection in self.intersections.getAll():
+            for road_order_id, road in intersection.input_roads.items():
+                save_dir_path = self.save_dir_path / f"intersection_{intersection.get('id')}" / f"road_{road_order_id}"
+                save_dir_path.mkdir(parents=True, exist_ok=True)
+
+                data_map = {}
+                if self.save_flg_map['queue']:
+                    tmp_record_df = self.queue_records_map['roads'][road.get('id')]
+                    if data_map == {}:
+                        data_map['time'] = tmp_record_df['time'].values
+                    
+                    data_map["queue_main"] = tmp_record_df['main'].values
+                    if 'right' in tmp_record_df.columns:
+                        data_map["queue_right"] = tmp_record_df['right'].values
+                    if 'left' in tmp_record_df.columns:
+                        data_map["queue_left"] = tmp_record_df['left'].values
+                    
+                if self.save_flg_map['delay']:
+                    tmp_record_df = self.delay_records_map['roads'][road.get('id')]
+                    if data_map == {}:
+                        data_map['time'] = tmp_record_df['time'].values
+                    
+                    direction_list = []
+                    for column in tmp_record_df.columns:
+                        match_obj = re.match(rf"direction_(\d+)", column)
+                        if match_obj:
+                            direction_list.append(int(match_obj.group(1)))
+                    
+                    for direction_id in direction_list:
+                        data_map[f"delay_direction_{direction_id}"] = tmp_record_df[f"direction_{direction_id}"].values
+                
+                if self.save_flg_map['speed']:
+                    tmp_record_df = self.speed_records_map['roads'][road.get('id')]
+                    if data_map == {}:
+                        data_map['time'] = tmp_record_df['time'].values
+                    
+                    data_map['speed'] = tmp_record_df['avg'].values
+                
+                record_df = pd.DataFrame(data_map)
+                record_df.to_csv(
+                    path_or_buf=save_dir_path / 'performance_metrics.csv', 
+                    float_format='%.2f',
+                    index=False
+                )
+        return
+    
+    @property
+    def current_time(self):
+        return self.simulation.get('current_time')
 
 
 
