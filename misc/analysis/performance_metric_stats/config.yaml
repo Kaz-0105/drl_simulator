@@ -1,4 +1,4 @@
-figure:
+target:
   layout: '7-4-1'
   control_method:
     mpc:
@@ -28,7 +28,7 @@ mpc:
   num_max_changes: 1
   remained_steps: 2
   utilize_steps: 2
-  branch_gap: 1
+  branch_gap: 3
   objective_function:
     type: waiting_vehicles
     waiting_vehicles:
