@@ -17,16 +17,27 @@ target:
     fix_value: 1
 
 figure:
-  title: Road-Level Queue Length Time Series
+  title:
+    mpc:
+      4-phase: Temporal Variation of Road-Wise Queue Lengths under 4-Phase MPC
+      8-phase: Temporal Variation of Road-Wise Queue Lengths under 8-Phase MPC
+      17-phase: Temporal Variation of Road-Wise Queue Lengths under 17-Phase MPC
+    scoot: Temporal Variation of Road-Wise Queue Lengths under SCOOT 
   x_axis:
     label: Time [s]
   y_axis:
     label: Queue Length [m]
   legend:
-    1: North Road
-    2: East Road
-    3: South Road
-    4: West Road
+    1: North
+    2: East
+    3: South
+    4: West
+  line_style:
+    1: solid
+    2: solid
+    3: dashed
+    4: dashed
+  palette: Set1 # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
 simulator:
   num_red_steps: 1            
   simulation_time: 500

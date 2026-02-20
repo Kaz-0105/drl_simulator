@@ -3,6 +3,7 @@ from pathlib import Path
 root_dir_path = (Path(__file__).parent / '..' / '..' / '..' / '..').resolve()
 sys.path.append(str(root_dir_path))
 
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -81,13 +82,18 @@ for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
 
             with open(road_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 tmp_time_series_df = pd.read_csv(f) 
-
+            
+            # add road column and queue_max column
             tmp_time_series_df['road'] = road_id
+            exist_queue_columns = [column for column in ['queue_main', 'queue_right', 'queue_left'] if column in tmp_time_series_df.columns]
+            tmp_time_series_df['queue_max'] = tmp_time_series_df[exist_queue_columns].max(axis=1)
 
+            # push to time_series_df
+            target_time_series_df = tmp_time_series_df[['time', 'road', 'queue_max'] + exist_queue_columns]
             if time_series_df is None:
-                time_series_df = tmp_time_series_df.copy()
+                time_series_df = target_time_series_df.copy()
             else:
-                time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
+                time_series_df = pd.concat([time_series_df, target_time_series_df], ignore_index=True)
 
         time_series_df_map[f"{num_phases}_phase_mpc"] = time_series_df
 
@@ -123,58 +129,72 @@ for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
             with open(road_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 tmp_time_series_df = pd.read_csv(f) 
 
+            # add road column and queue_max column
             tmp_time_series_df['road'] = road_id
-
+            exist_queue_columns = [column for column in ['queue_main', 'queue_right', 'queue_left'] if column in tmp_time_series_df.columns]
+            tmp_time_series_df['queue_max'] = tmp_time_series_df[exist_queue_columns].max(axis=1)
+            
+            # push to time_series_df
+            target_time_series_df = tmp_time_series_df[['time', 'road', 'queue_max'] + exist_queue_columns]
             if time_series_df is None:
-                time_series_df = tmp_time_series_df.copy()
+                time_series_df = target_time_series_df.copy()
             else:
-                time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
+                time_series_df = pd.concat([time_series_df, target_time_series_df], ignore_index=True)
 
         time_series_df_map['scoot'] = time_series_df
-
-max_queue_value = 0
-for method, time_series_df in time_series_df_map.items():
-        tmp_time_series_df = pd.DataFrame(tmp_time_series_data_map)
-
-        road_id_list = list(set([int(re.match(rf"road_(\d+)_*", column).group(1)) for column in tmp_time_series_df.columns if column != 'time']))
-        
-        for road_id in road_id_list:
-            tmp_time_series_df[f"road_{road_id}_queue_max"] = tmp_time_series_df[[column for column in tmp_time_series_df.columns if re.match(rf"road_{road_id}_queue_*", column)]].sum(axis=1)
-            max_queue_value = max(max_queue_value, tmp_time_series_df[f"road_{road_id}_queue_max"].max())
-        
-        tmp_time_series_df = tmp_time_series_df.melt(
-            id_vars='time',
-            value_vars=[column for column in tmp_time_series_df.columns if column != 'time'],
-            var_name='group',
-            value_name='value'
-        )
-        time_series_df_map[method] = tmp_time_series_df
 
 save_dir_path = save_base_dir_path / config_yaml['target']['layout'] / f"intersection_{config_yaml['target']['intersection_id']}"
 save_dir_path.mkdir(parents=True, exist_ok=True)
 
+# calculate max queue length for setting y axis limit
+max_queue_length = 0
+for method, tmp_time_series_df in time_series_df_map.items():
+    max_queue_length = max(max_queue_length, tmp_time_series_df['queue_max'].max())
+
 # for each road
 for method, tmp_time_series_df in time_series_df_map.items():
+    # add line_style column
+    tmp_time_series_df['line_style'] = ''
+    for road_id in tmp_time_series_df['road'].unique():
+        tmp_time_series_df.loc[tmp_time_series_df['road'] == road_id, 'line_style'] = config_yaml['figure']['line_style'][road_id]
     fig, ax = plt.subplots()
-    target_time_series_df = tmp_time_series_df[tmp_time_series_df['group'].str.contains('queue_max')]
+    
     sns.lineplot(
-        data=target_time_series_df,
+        ax=ax,
+        data=tmp_time_series_df,
         x='time',
-        y='value',
-        hue='group',
-        ax=ax
+        y='queue_max',
+        hue='road',
+        style='line_style',
+        dashes={
+            'solid': (None, None),
+            'dashed': (2, 2),
+        },
+        palette=config_yaml['figure']['palette'],
     )
-    ax.set_title(config_yaml['figure']['title'])
+
+    if method == 'scoot':
+        figure_title = config_yaml['figure']['title']['scoot']
+    elif method.endswith('_phase_mpc'):
+        num_phases = int(re.match(r"(\d+)_phase_mpc", method).group(1))
+        figure_title = config_yaml['figure']['title']['mpc'][f"{num_phases}-phase"]
+    else: 
+        raise NotImplementedError(f"Not supported method: {method}")
+    ax.set_title(figure_title)
     ax.set_xlabel(config_yaml['figure']['x_axis']['label'])
     ax.set_ylabel(config_yaml['figure']['y_axis']['label'])
-    ax.set_xlim(left=0, right=target_time_series_df['time'].max())
-    ax.set_ylim(bottom=0, top=max_queue_value * 1.1)
+    ax.set_xlim(left=0, right=tmp_time_series_df['time'].max())
+    ax.set_ylim(bottom=0, top= max_queue_length* 1.1)
     
     handles, labels = ax.get_legend_handles_labels()
-    for id, label in enumerate(copy.deepcopy(labels)):
-        road_id = int(re.match(rf"road_(\d+)_queue_max", label).group(1))
-        labels[id] = config_yaml['figure']['legend'][road_id]
-    ax.legend(handles, labels, title='')
+    new_handles = []
+    new_labels = []
+    for handle, label in zip(handles, labels):
+        match_obj = re.match(r"(\d+)", label)
+        if match_obj:
+            new_handles.append(handle)
+            new_labels.append(config_yaml['figure']['legend'][int(match_obj.group(1))])
+    ax.legend(new_handles, new_labels, title='', ncol=len(new_labels) / 2)
 
     fig.tight_layout()
     fig.savefig(save_dir_path / f"{method}_queue_time_series.png")
