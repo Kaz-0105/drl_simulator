@@ -1,4 +1,4 @@
-figure:
+target:
   layout: 7-4-1
   control_method:
     mpc:
@@ -14,6 +14,11 @@ figure:
     speed_avg,
     phase,
   ]
+  seed:
+    fix_flg: true
+    fix_value: 1
+
+figure:
   title:
     balanced_500: 'Balanced: 500 veh/h'
     balanced_600: 'Balanced: 600 veh/h'
@@ -40,10 +45,8 @@ figure:
       delay_max: Maximum Delay Tiem [s]
       speed_avg: Average Vehicle Speed [km/h]
       phase: Number of Phase Changes 
-  seed:
-    fix_flg: true
-    fix_value: 1
   palette: viridis # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+
 
 simulator:
   num_red_steps: 1            
