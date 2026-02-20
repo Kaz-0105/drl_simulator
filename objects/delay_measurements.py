@@ -2,6 +2,7 @@ from libs.container import Container
 from libs.object import Object
 from objects.links import Links
 import pandas as pd
+import numpy as np
 
 class DelayMeasurements(Container):
     def __init__(self, upper_object):
@@ -161,14 +162,14 @@ class DelayMeasurement(Object):
     def update(self, value): 
         self.record_list.append({
             'time': int(self.network.get('current_time')),
-            'value': value,
+            'value': value if value is not None else np.nan,
         })
 
         if value is None:
             return
 
         for record in reversed(self.record_list[:-1]):
-            if record['value'] is not None:
+            if not np.isnan(record['value']):
                 break
 
             record['value'] = max(value - self.record_list[-1]['time'] + record['time'], 0)
