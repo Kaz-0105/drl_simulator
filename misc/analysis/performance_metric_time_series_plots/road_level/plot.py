@@ -26,7 +26,7 @@ performance_metrics_dir_path = data_dir_path / 'performance_metrics'
 save_base_dir_path = data_dir_path / 'analysis' / 'performance_metric_time_series_plots' / 'road_level'
 
 # make time_series_df_map
-time_series_data_map = {}
+time_series_df_map = {}
 layout_dir_path = performance_metrics_dir_path / config_yaml['target']['layout']
 inflow_dir_path = layout_dir_path / config_yaml['target']['inflow']
 for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
@@ -75,20 +75,21 @@ for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
         if not found_flg:
             continue
         
-        tmp_time_series_data_map = {}
+        time_series_df = None
         for road_dir_path in intersection_dir_path.glob('road_*'):
             road_id = int(re.match(rf"road_(\d+)", road_dir_path.name).group(1))
 
             with open(road_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 tmp_time_series_df = pd.read_csv(f) 
 
-            if tmp_time_series_data_map == {}:
-                tmp_time_series_data_map['time'] = tmp_time_series_df['time'].values
+            tmp_time_series_df['road'] = road_id
 
-            for column in config_yaml['target']['performance_metrics']:
-                tmp_time_series_data_map[f"road_{road_id}_{column}"] = tmp_time_series_df[column].values
+            if time_series_df is None:
+                time_series_df = tmp_time_series_df.copy()
+            else:
+                time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
 
-        time_series_data_map[f"{num_phases}_phase_mpc"] = tmp_time_series_data_map
+        time_series_df_map[f"{num_phases}_phase_mpc"] = time_series_df
 
     # regarding scoot
     if not config_yaml['target']['control_method']['scoot']:
@@ -115,24 +116,24 @@ for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
         if not found_flg:
             continue
         
-        tmp_time_series_data_map = {}
+        time_series_df = None
         for road_dir_path in intersection_dir_path.glob('road_*'):
             road_id = int(re.match(rf"road_(\d+)", road_dir_path.name).group(1))
 
             with open(road_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 tmp_time_series_df = pd.read_csv(f) 
 
-            if tmp_time_series_data_map == {}:
-                tmp_time_series_data_map['time'] = tmp_time_series_df['time'].values
+            tmp_time_series_df['road'] = road_id
 
-            for column in config_yaml['target']['performance_metrics']:
-                tmp_time_series_data_map[f"road_{road_id}_{column}"] = tmp_time_series_df[column].values
+            if time_series_df is None:
+                time_series_df = tmp_time_series_df.copy()
+            else:
+                time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
 
-        time_series_data_map['scoot'] = tmp_time_series_data_map
+        time_series_df_map['scoot'] = time_series_df
 
-time_series_df_map = {}
 max_queue_value = 0
-for method, tmp_time_series_data_map in time_series_data_map.items():
+for method, time_series_df in time_series_df_map.items():
         tmp_time_series_df = pd.DataFrame(tmp_time_series_data_map)
 
         road_id_list = list(set([int(re.match(rf"road_(\d+)_*", column).group(1)) for column in tmp_time_series_df.columns if column != 'time']))
