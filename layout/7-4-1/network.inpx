@@ -8867,339 +8867,339 @@
 	</vehicleRoutingDecisionsStatic>
 	<vehicleTravelTimeMeasurements>
 		<vehicleTravelTimeMeasurement name="" no="1">
-			<end link="10005" pos="0"/>
+			<end link="10005" pos="0.1"/>
 			<start link="5" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="2">
-			<end link="10004" pos="0"/>
+			<end link="10004" pos="0.1"/>
 			<start link="5" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="3">
-			<end link="10006" pos="0"/>
+			<end link="10006" pos="0.1"/>
 			<start link="5" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="4">
-			<end link="10008" pos="0"/>
+			<end link="10008" pos="0.1"/>
 			<start link="4" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="5">
-			<end link="10007" pos="0"/>
+			<end link="10007" pos="0.1"/>
 			<start link="4" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="6">
-			<end link="10009" pos="0"/>
+			<end link="10009" pos="0.1"/>
 			<start link="4" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="7">
-			<end link="10011" pos="0"/>
+			<end link="10011" pos="0.1"/>
 			<start link="8" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="8">
-			<end link="10010" pos="0"/>
+			<end link="10010" pos="0.1"/>
 			<start link="8" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="9">
-			<end link="10012" pos="0"/>
+			<end link="10012" pos="0.1"/>
 			<start link="8" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="10">
-			<end link="10014" pos="0"/>
+			<end link="10014" pos="0.1"/>
 			<start link="1" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="11">
-			<end link="10013" pos="0"/>
+			<end link="10013" pos="0.1"/>
 			<start link="1" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="12">
-			<end link="10015" pos="0"/>
+			<end link="10015" pos="0.1"/>
 			<start link="1" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="13">
-			<end link="10021" pos="0"/>
+			<end link="10021" pos="0.1"/>
 			<start link="17" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="14">
-			<end link="10020" pos="0"/>
+			<end link="10020" pos="0.1"/>
 			<start link="17" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="15">
-			<end link="10022" pos="0.00000000000000710543"/>
+			<end link="10022" pos="0.1"/>
 			<start link="17" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="16">
-			<end link="10024" pos="0"/>
+			<end link="10024" pos="0.1"/>
 			<start link="16" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="17">
-			<end link="10023" pos="0"/>
+			<end link="10023" pos="0.1"/>
 			<start link="16" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="18">
-			<end link="10025" pos="0"/>
+			<end link="10025" pos="0.1"/>
 			<start link="16" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="19">
-			<end link="10027" pos="0"/>
+			<end link="10027" pos="0.1"/>
 			<start link="20" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="20">
-			<end link="10026" pos="0"/>
+			<end link="10026" pos="0.1"/>
 			<start link="20" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="21">
-			<end link="10028" pos="0.00000000000000710543"/>
+			<end link="10028" pos="0.1"/>
 			<start link="20" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="22">
-			<end link="10030" pos="0"/>
+			<end link="10030" pos="0.1"/>
 			<start link="13" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="23">
-			<end link="10029" pos="0"/>
+			<end link="10029" pos="0.1"/>
 			<start link="13" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="24">
-			<end link="10031" pos="0"/>
+			<end link="10031" pos="0.1"/>
 			<start link="13" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="25">
-			<end link="10037" pos="0.00000000000002131628"/>
+			<end link="10037" pos="0.1"/>
 			<start link="29" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="26">
-			<end link="10036" pos="0"/>
+			<end link="10036" pos="0.1"/>
 			<start link="29" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="27">
-			<end link="10038" pos="0"/>
+			<end link="10038" pos="0.1"/>
 			<start link="29" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="28">
-			<end link="10040" pos="0.00000000000000355271"/>
+			<end link="10040" pos="0.1"/>
 			<start link="28" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="29">
-			<end link="10039" pos="0"/>
+			<end link="10039" pos="0.1"/>
 			<start link="28" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="30">
-			<end link="10041" pos="0"/>
+			<end link="10041" pos="0.1"/>
 			<start link="28" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="31">
-			<end link="10043" pos="0.00000000000001776357"/>
+			<end link="10043" pos="0.1"/>
 			<start link="32" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="32">
-			<end link="10042" pos="0"/>
+			<end link="10042" pos="0.1"/>
 			<start link="32" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="33">
-			<end link="10044" pos="0.00000000000000710543"/>
+			<end link="10044" pos="0.1"/>
 			<start link="32" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="34">
-			<end link="10046" pos="0"/>
+			<end link="10046" pos="0.1"/>
 			<start link="25" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="35">
-			<end link="10045" pos="0"/>
+			<end link="10045" pos="0.1"/>
 			<start link="25" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="36">
-			<end link="10047" pos="0"/>
+			<end link="10047" pos="0.1"/>
 			<start link="25" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="37">
-			<end link="10053" pos="0"/>
+			<end link="10053" pos="0.1"/>
 			<start link="41" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="38">
-			<end link="10052" pos="0"/>
+			<end link="10052" pos="0.1"/>
 			<start link="41" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="39">
-			<end link="10054" pos="0.00000000000005684342"/>
+			<end link="10054" pos="0.1"/>
 			<start link="41" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="40">
-			<end link="10056" pos="0.00000000000002842171"/>
+			<end link="10056" pos="0.1"/>
 			<start link="40" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="41">
-			<end link="10055" pos="0"/>
+			<end link="10055" pos="0.1"/>
 			<start link="40" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="42">
-			<end link="10057" pos="0.000000000000024869"/>
+			<end link="10057" pos="0.1"/>
 			<start link="40" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="43">
-			<end link="10059" pos="0"/>
+			<end link="10059" pos="0.1"/>
 			<start link="44" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="44">
-			<end link="10058" pos="0"/>
+			<end link="10058" pos="0.1"/>
 			<start link="44" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="45">
-			<end link="10060" pos="0"/>
+			<end link="10060" pos="0.1"/>
 			<start link="44" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="46">
-			<end link="10062" pos="0.00000000000002842171"/>
+			<end link="10062" pos="0.1"/>
 			<start link="37" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="47">
-			<end link="10061" pos="0"/>
+			<end link="10061" pos="0.1"/>
 			<start link="37" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="48">
-			<end link="10063" pos="0"/>
+			<end link="10063" pos="0.1"/>
 			<start link="37" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="49">
-			<end link="10069" pos="0"/>
+			<end link="10069" pos="0.1"/>
 			<start link="53" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="50">
-			<end link="10068" pos="0"/>
+			<end link="10068" pos="0.1"/>
 			<start link="53" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="51">
-			<end link="10070" pos="0.00000000000006394885"/>
+			<end link="10070" pos="0.1"/>
 			<start link="53" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="52">
-			<end link="10072" pos="0"/>
+			<end link="10072" pos="0.1"/>
 			<start link="52" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="53">
-			<end link="10071" pos="0"/>
+			<end link="10071" pos="0.1"/>
 			<start link="52" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="54">
-			<end link="10073" pos="0.00000000000000710543"/>
+			<end link="10073" pos="0.1"/>
 			<start link="52" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="55">
-			<end link="10075" pos="0"/>
+			<end link="10075" pos="0.1"/>
 			<start link="56" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="56">
-			<end link="10074" pos="0"/>
+			<end link="10074" pos="0.1"/>
 			<start link="56" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="57">
-			<end link="10076" pos="0"/>
+			<end link="10076" pos="0.1"/>
 			<start link="56" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="58">
-			<end link="10078" pos="0"/>
+			<end link="10078" pos="0.1"/>
 			<start link="49" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="59">
-			<end link="10077" pos="0"/>
+			<end link="10077" pos="0.1"/>
 			<start link="49" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="60">
-			<end link="10079" pos="0"/>
+			<end link="10079" pos="0.1"/>
 			<start link="49" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="61">
-			<end link="10085" pos="0.00000000000002131628"/>
+			<end link="10085" pos="0.1"/>
 			<start link="65" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="62">
-			<end link="10084" pos="0.00000000000005684342"/>
+			<end link="10084" pos="0.1"/>
 			<start link="65" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="63">
-			<end link="10086" pos="0"/>
+			<end link="10086" pos="0.1"/>
 			<start link="65" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="64">
-			<end link="10088" pos="0"/>
+			<end link="10088" pos="0.1"/>
 			<start link="64" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="65">
-			<end link="10087" pos="0"/>
+			<end link="10087" pos="0.1"/>
 			<start link="64" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="66">
-			<end link="10089" pos="0.00000000000000710543"/>
+			<end link="10089" pos="0.1"/>
 			<start link="64" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="67">
-			<end link="10091" pos="0.00000000000002131628"/>
+			<end link="10091" pos="0.1"/>
 			<start link="68" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="68">
-			<end link="10090" pos="0"/>
+			<end link="10090" pos="0.1"/>
 			<start link="68" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="69">
-			<end link="10092" pos="0"/>
+			<end link="10092" pos="0.1"/>
 			<start link="68" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="70">
-			<end link="10094" pos="0"/>
+			<end link="10094" pos="0.1"/>
 			<start link="61" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="71">
-			<end link="10093" pos="0"/>
+			<end link="10093" pos="0.1"/>
 			<start link="61" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="72">
-			<end link="10095" pos="0"/>
+			<end link="10095" pos="0.1"/>
 			<start link="61" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="73">
-			<end link="10101" pos="0"/>
+			<end link="10101" pos="0.1"/>
 			<start link="77" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="74">
-			<end link="10100" pos="0"/>
+			<end link="10100" pos="0.1"/>
 			<start link="77" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="75">
-			<end link="10102" pos="0.00000000000000710543"/>
+			<end link="10102" pos="0.1"/>
 			<start link="77" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="76">
-			<end link="10104" pos="0"/>
+			<end link="10104" pos="0.1"/>
 			<start link="76" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="77">
-			<end link="10103" pos="0"/>
+			<end link="10103" pos="0.1"/>
 			<start link="76" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="78">
-			<end link="10105" pos="0.00000000000000710543"/>
+			<end link="10105" pos="0.1"/>
 			<start link="76" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="79">
-			<end link="10107" pos="0.0000000000001030287"/>
+			<end link="10107" pos="0.1"/>
 			<start link="80" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="80">
-			<end link="10106" pos="0.00000000000011368684"/>
+			<end link="10106" pos="0.1"/>
 			<start link="80" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="81">
-			<end link="10108" pos="0"/>
+			<end link="10108" pos="0.1"/>
 			<start link="80" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="82">
-			<end link="10110" pos="0"/>
+			<end link="10110" pos="0.1"/>
 			<start link="73" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="83">
-			<end link="10109" pos="0"/>
+			<end link="10109" pos="0.1"/>
 			<start link="73" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="84">
-			<end link="10111" pos="0"/>
+			<end link="10111" pos="0.1"/>
 			<start link="73" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 	</vehicleTravelTimeMeasurements>

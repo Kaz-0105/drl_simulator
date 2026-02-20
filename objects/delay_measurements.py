@@ -167,13 +167,11 @@ class DelayMeasurement(Object):
         if value is None:
             return
 
-        counter = 1
         for record in reversed(self.record_list[:-1]):
             if record['value'] is not None:
                 break
 
-            record['value'] = max(value - counter * self.time_step, 0)
-            counter += 1
+            record['value'] = max(value - self.record_list[-1]['time'] + record['time'], 0)
             
         return
 

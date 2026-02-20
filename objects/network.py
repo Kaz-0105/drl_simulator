@@ -221,7 +221,18 @@ class Network(Common):
             for key in data_map.keys():
                 if key == 'time':
                     continue
-                data_map[key] = np.nanmean(data_map[key], axis=0)
+                
+                weighted_sum = np.zeros_like(data_map[key][0])
+                total_weight = np.zeros_like(data_map[key][0])
+
+                for array in data_map[key]:
+                    mask = ~np.isnan(array)
+                    weighted_sum[mask] += array[mask]
+                    total_weight[mask] += 1
+                
+                data_map[key] = np.full(shape=weighted_sum.shape, fill_value=np.nan, dtype=np.float64)
+                valid_mask = total_weight > 0
+                data_map[key][valid_mask] = weighted_sum[valid_mask] / total_weight[valid_mask]
             
             record_df = pd.DataFrame(data_map)
 
@@ -270,17 +281,17 @@ class Network(Common):
             record_df = pd.DataFrame(data_map)
 
             # make weighted_sum and total_weight for intersection to calculate average delay
-            inter_weighted_sum = pd.Series(0.0, index=record_df.index)
-            inter_total_weight = pd.Series(0.0, index=record_df.index)
+            weighted_sum = pd.Series(0.0, index=record_df.index)
+            total_weight = pd.Series(0.0, index=record_df.index)
             for road_id, input_volume in input_volume_map.items():
                 avg_col = f"road_{road_id}_avg"
                 mask = record_df[avg_col].notna()
-                inter_weighted_sum.loc[mask] += record_df.loc[mask, avg_col] * input_volume
-                inter_total_weight.loc[mask] += input_volume
+                weighted_sum.loc[mask] += record_df.loc[mask, avg_col] * input_volume
+                total_weight.loc[mask] += input_volume
 
             record_df['avg'] = np.nan
-            valid_mask = inter_total_weight > 0
-            record_df.loc[valid_mask, 'avg'] = inter_weighted_sum[valid_mask] / inter_total_weight[valid_mask]
+            valid_mask = total_weight > 0
+            record_df.loc[valid_mask, 'avg'] = weighted_sum[valid_mask] / total_weight[valid_mask]
             
             # calculate max delay
             max_cols = [key for key in data_map.keys() if "_max" in key]

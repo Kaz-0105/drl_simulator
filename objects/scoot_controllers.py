@@ -409,12 +409,6 @@ class ScootController(Object):
             self.remain_steps_info['cycle'] = self.params['cycle']
         
         self.remain_steps_info['cycle'] -= 1
-
-        # debug
-        print(f"len(self.signal_controller.get('future_phase_ids'): {len(self.signal_controller.get('future_phase_ids'))}")
-        print(f"self.remained_steps_info['split'][0]['steps']: {self.remain_steps_info['split'][0]['steps']}")
-        if len(self.signal_controller.get('future_phase_ids')) - self.remain_steps_info['split'][0]['steps'] != 1:
-            raise ValueError('Inconsistent remaining steps between ScootController and SignalController.')
         return
 
     @property

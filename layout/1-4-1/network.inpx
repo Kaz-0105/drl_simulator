@@ -2916,51 +2916,51 @@
 	</vehicleRoutingDecisionsStatic>
 	<vehicleTravelTimeMeasurements>
 		<vehicleTravelTimeMeasurement name="" no="1">
-			<end link="10005" pos="0"/>
+			<end link="10005" pos="1"/>
 			<start link="5" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="2">
-			<end link="10004" pos="0"/>
+			<end link="10004" pos="1"/>
 			<start link="5" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="3">
-			<end link="10006" pos="0"/>
+			<end link="10006" pos="1"/>
 			<start link="5" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="4">
-			<end link="10008" pos="0"/>
+			<end link="10008" pos="1"/>
 			<start link="4" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="5">
-			<end link="10007" pos="0"/>
+			<end link="10007" pos="1"/>
 			<start link="4" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="6">
-			<end link="10009" pos="0"/>
+			<end link="10009" pos="1"/>
 			<start link="4" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="7">
-			<end link="10011" pos="0"/>
+			<end link="10011" pos="1"/>
 			<start link="8" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="8">
-			<end link="10010" pos="0"/>
+			<end link="10010" pos="1"/>
 			<start link="8" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="9">
-			<end link="10012" pos="0"/>
+			<end link="10012" pos="1"/>
 			<start link="8" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="10">
-			<end link="10014" pos="0"/>
+			<end link="10014" pos="1"/>
 			<start link="1" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="11">
-			<end link="10013" pos="0"/>
+			<end link="10013" pos="1"/>
 			<start link="1" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 		<vehicleTravelTimeMeasurement name="" no="12">
-			<end link="10015" pos="0"/>
+			<end link="10015" pos="1"/>
 			<start link="1" pos="0.01"/>
 		</vehicleTravelTimeMeasurement>
 	</vehicleTravelTimeMeasurements>
