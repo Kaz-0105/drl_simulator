@@ -277,29 +277,28 @@ class Network(Common):
 
             if not data_map:
                 continue
+   
+        record_df = pd.DataFrame(data_map)
 
-            record_df = pd.DataFrame(data_map)
+        all_valid_mask = pd.Series(True, index=record_df.index)
+        weighted_sum = pd.Series(0.0, index=record_df.index)
+        sum_input_volume = sum(input_volume_map.values())
 
-            # make weighted_sum and total_weight for intersection to calculate average delay
-            weighted_sum = pd.Series(0.0, index=record_df.index)
-            total_weight = pd.Series(0.0, index=record_df.index)
-            for road_id, input_volume in input_volume_map.items():
-                avg_col = f"road_{road_id}_avg"
-                mask = record_df[avg_col].notna()
-                weighted_sum.loc[mask] += record_df.loc[mask, avg_col] * input_volume
-                total_weight.loc[mask] += input_volume
+        for road_id, input_volume in input_volume_map.items():
+            all_valid_mask &= record_df[f"road_{road_id}_avg"].notna()
+            weighted_sum += record_df[f"road_{road_id}_avg"] * (input_volume / sum_input_volume)
 
-            record_df['avg'] = np.nan
-            valid_mask = total_weight > 0
-            record_df.loc[valid_mask, 'avg'] = weighted_sum[valid_mask] / total_weight[valid_mask]
-            
-            # calculate max delay
-            max_cols = [key for key in data_map.keys() if "_max" in key]
-            record_df['max'] = record_df[max_cols].max(axis=1)
-            
-            # push to delay_records_map
-            final_df = record_df[['time', 'avg', 'max']].copy()
-            self.delay_records_map['intersections'][intersection.get('id')] = final_df
+        record_df['avg'] = np.nan
+        record_df.loc[all_valid_mask, 'avg'] = weighted_sum[all_valid_mask]
+
+        # calculate max delay
+        max_cols = [key for key in data_map.keys() if "_max" in key]
+        record_df['max'] = record_df[max_cols].max(axis=1)
+        record_df.loc[~all_valid_mask, 'max'] = np.nan
+
+        # push to delay_records_map
+        final_df = record_df[['time', 'avg', 'max']].copy()
+        self.delay_records_map['intersections'][intersection.get('id')] = final_df
 
         return
     
