@@ -43,7 +43,7 @@ mpc:
   num_max_changes: 1
   remained_steps: 2
   utilize_steps: 2
-  branch_gap: 3
+  branch_gap: 1
   objective_function:
     type: waiting_vehicles
     waiting_vehicles:
@@ -51,7 +51,7 @@ mpc:
       leader_detection:
         type: multiple
       queue_measurement:
-        type: ema
+        type: vissim
         ema:
           alpha: 0.3
       range_type: separate
