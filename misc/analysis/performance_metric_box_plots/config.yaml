@@ -44,7 +44,7 @@ mpc:
   num_max_changes: 1
   remained_steps: 2
   utilize_steps: 2
-  branch_gap: 0
+  branch_gap: -1
   objective_function:
     type: waiting_vehicles
     waiting_vehicles:

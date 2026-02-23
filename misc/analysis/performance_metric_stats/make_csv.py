@@ -74,8 +74,10 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
             for performance_metric in config_yaml['target']['performance_metrics']:
-                if performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                     performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
             
@@ -107,8 +109,10 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
             for performance_metric in config_yaml['target']['performance_metrics']:
-                if performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                     performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
             
