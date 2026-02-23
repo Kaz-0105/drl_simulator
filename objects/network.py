@@ -456,7 +456,8 @@ class Network(Common):
                 if data_map == {}:
                     data_map['time'] = tmp_record_df['time'].values
                 
-                data_map['delay_avg'] = tmp_record_df['avg'].values
+                data_map['delay_avg_1'] = tmp_record_df['avg_1'].values
+                data_map['delay_avg_2'] = tmp_record_df['avg_2'].values
                 data_map['delay_max'] = tmp_record_df['max'].values
             
             if self.save_flg_map['speed']:
@@ -504,11 +505,14 @@ class Network(Common):
                     if data_map == {}:
                         data_map['time'] = tmp_record_df['time'].values
                     
-                    data_map["queue_main"] = tmp_record_df['main'].values
+                    data_map['queue_main'] = tmp_record_df['main'].values
                     if 'right' in tmp_record_df.columns:
-                        data_map["queue_right"] = tmp_record_df['right'].values
+                        data_map['queue_right'] = tmp_record_df['right'].values
                     if 'left' in tmp_record_df.columns:
-                        data_map["queue_left"] = tmp_record_df['left'].values
+                        data_map['queue_left'] = tmp_record_df['left'].values
+                    
+                    data_map['queue_avg'] = tmp_record_df['avg'].values
+                    data_map['queue_max'] = tmp_record_df['max'].values
                     
                 if self.save_flg_map['delay']:
                     tmp_record_df = self.delay_records_map['roads'][road.get('id')]
@@ -523,6 +527,10 @@ class Network(Common):
                     
                     for direction_id in direction_list:
                         data_map[f"delay_direction_{direction_id}"] = tmp_record_df[f"direction_{direction_id}"].values
+                    
+                    data_map['delay_avg_1'] = tmp_record_df['avg_1'].values
+                    data_map['delay_avg_2'] = tmp_record_df['avg_2'].values
+                    data_map['delay_max'] = tmp_record_df['max'].values
                 
                 if self.save_flg_map['speed']:
                     tmp_record_df = self.speed_records_map['roads'][road.get('id')]

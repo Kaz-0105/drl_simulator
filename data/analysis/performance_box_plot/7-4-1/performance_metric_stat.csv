@@ -1,16 +1,11 @@
 id,performance_metric,method,mean,worst,std,improve_rate
-1,queue_avg,SCOOT,26.35,55.34,12.37,0.0
-2,queue_max,SCOOT,57.68,136.21,29.63,0.0
-3,delay_avg,SCOOT,16.35,31.74,6.33,0.0
-4,delay_max,SCOOT,41.86,70.91,11.08,0.0
-5,speed_avg,SCOOT,21.52,29.05,3.3,0.0
-6,queue_avg,4-phase MPC,19.23,49.82,12.12,-27.01
-7,queue_max,4-phase MPC,38.94,109.22,24.84,-32.5
-8,delay_avg,4-phase MPC,14.22,32.4,7.86,-13.0
-9,delay_max,4-phase MPC,47.81,72.97,15.76,14.21
-10,speed_avg,4-phase MPC,24.4,35.18,4.78,13.38
-11,queue_avg,8-phase MPC,15.59,51.37,10.59,-40.83
-12,queue_max,8-phase MPC,29.62,82.96,17.28,-48.65
-13,delay_avg,8-phase MPC,12.06,37.02,7.23,-26.26
-14,delay_max,8-phase MPC,43.97,83.79,16.89,5.02
-15,speed_avg,8-phase MPC,26.53,35.58,4.66,23.26
+1,queue_avg,SCOOT,27.99,61.32,13.71,0.0
+2,queue_max,SCOOT,60.38,137.49,31.04,0.0
+3,delay_avg,SCOOT,17.09,31.9,6.65,0.0
+4,delay_max,SCOOT,42.41,72.02,10.67,0.0
+5,speed_avg,SCOOT,21.02,27.91,3.28,0.0
+6,queue_avg,8-phase MPC,18.91,78.31,13.9,-32.46
+7,queue_max,8-phase MPC,35.63,116.94,21.76,-40.99
+8,delay_avg,8-phase MPC,14.07,44.25,8.45,-17.64
+9,delay_max,8-phase MPC,47.86,83.95,16.66,12.86
+10,speed_avg,8-phase MPC,24.8,34.72,4.96,17.99
