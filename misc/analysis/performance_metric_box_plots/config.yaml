@@ -16,6 +16,7 @@ target:
   seed:
     fix_flg: true
     fix_value: 1
+  delay_type: 1 # 1 or 2
 
 figure:
   title:
@@ -43,7 +44,7 @@ mpc:
   num_max_changes: 1
   remained_steps: 2
   utilize_steps: 2
-  branch_gap: -1
+  branch_gap: 0
   objective_function:
     type: waiting_vehicles
     waiting_vehicles:

@@ -66,12 +66,12 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 time_series_df = pd.read_csv(f)
             for performance_metric in config_yaml['target']['performance_metrics']:
-                if performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                     average_value = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    average_value = time_series_df[f"{performance_metric}_{config_yaml['target']['delay_type']}"].dropna().mean()
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")  
-                
-
                 
                 performance_metric_map[performance_metric] = average_value
             
@@ -102,8 +102,10 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                 time_series_df = pd.read_csv(f)
             for performance_metric in config_yaml['target']['performance_metrics']:
-                if performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                     average_value = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    average_value = time_series_df[f"{performance_metric}_{config_yaml['target']['delay_type']}"].dropna().mean()
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 
@@ -120,46 +122,6 @@ performance_metric_df = pd.DataFrame(
 # make save_dir
 save_dir_path = data_dir_path / 'analysis' / 'performance_box_plot' / config_yaml['target']['layout']
 save_dir_path.mkdir(parents=True, exist_ok=True)
-
-# save statistical data
-performance_metric_stat_map_list = []
-for method in ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']:
-    tmp_performance_metric_df = performance_metric_df[performance_metric_df['method'] == method]
-    if tmp_performance_metric_df.empty:
-        continue
-    for performance_metric in config_yaml['target']['performance_metrics']:
-        performance_metric_stat_map_list.append({
-            'id': len(performance_metric_stat_map_list) + 1,
-            'performance_metric': performance_metric,
-            'method': method,
-            'mean': tmp_performance_metric_df[performance_metric].mean(),
-            'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric == 'speed' else tmp_performance_metric_df[performance_metric].max(),
-            'std': tmp_performance_metric_df[performance_metric].std(),
-        })
-performance_metric_stat_df = pd.DataFrame(
-    performance_metric_stat_map_list, 
-    columns=['id', 'performance_metric', 'method', 'mean', 'worst', 'std']
-)
-
-improve_rate_list = [0] * len(performance_metric_stat_df)
-scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == 'SCOOT'].copy()
-for _, scoot_stat_row in scoot_stat_df.iterrows():
-    performance_metric = scoot_stat_row['performance_metric']
-    reference_value = scoot_stat_row['mean']
-    for method in ['4-phase MPC', '8-phase MPC', '17-phase MPC']:
-        target_stat_row = performance_metric_stat_df[
-            (performance_metric_stat_df['method'] == method) &
-            (performance_metric_stat_df['performance_metric'] == performance_metric)
-        ]
-        if target_stat_row.empty:
-            continue
-        target_id = target_stat_row['id'].values[0]
-        target_value = target_stat_row['mean'].values[0]
-        improve_rate_list[target_id - 1] = (target_value - reference_value) / reference_value * 100
-performance_metric_stat_df['improve_rate'] = improve_rate_list
-        
-performance_metric_stat_df[['mean', 'worst', 'std', 'improve_rate']] = performance_metric_stat_df[['mean', 'worst', 'std', 'improve_rate']].round(2)
-performance_metric_stat_df.to_csv(save_dir_path / 'performance_metric_stat.csv', index=False, encoding='utf-8')
 
 # make information used for making plots
 order_list = []
