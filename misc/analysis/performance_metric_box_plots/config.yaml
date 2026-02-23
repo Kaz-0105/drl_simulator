@@ -39,11 +39,11 @@ simulator:
 
 mpc: 
   horizon: 5
-  min_successive_steps: 5
+  min_successive_steps: 4
   num_max_changes: 1
   remained_steps: 2
   utilize_steps: 2
-  branch_gap: 1
+  branch_gap: 0
   objective_function:
     type: waiting_vehicles
     waiting_vehicles:
@@ -53,7 +53,7 @@ mpc:
       queue_measurement:
         type: ema
         ema:
-          alpha: 0.7
+          alpha: 0.3
       range_type: separate
     signal_change:
       type: global
