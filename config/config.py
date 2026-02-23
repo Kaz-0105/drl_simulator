@@ -301,8 +301,8 @@ class Config(Common):
             if self.mpc_info['utilize_steps'] < self.mpc_info['remained_steps']:
                 raise ValueError("MPC utilize_steps must be greater than or equal to remained_steps.")
             
-            if self.mpc_info['branch_gap'] < 0:
-                raise ValueError("MPC branch_gap must be greater than or equal to 0.")
+            # if self.mpc_info['branch_gap'] < 0:
+            #     raise ValueError("MPC branch_gap must be greater than or equal to 0.")
 
             if self.mpc_info['phases']['3-road'] != 4:
                 raise NotImplementedError(f"Not supported number of phases for 3-road intersection: {self.mpc_info['mpc']['phases']['3-road']}")
