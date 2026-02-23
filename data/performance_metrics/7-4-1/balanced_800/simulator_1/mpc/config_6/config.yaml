@@ -1,4 +1,4 @@
-branch_gap: 5
+branch_gap: 1
 horizon: 5
 min_successive_steps: 4
 num_max_changes: 1
@@ -8,7 +8,7 @@ objective_function:
     weight: 10
   type: waiting_vehicles
   waiting_vehicles:
-    definition: 2
+    definition: 4
     leader_detection:
       type: multiple
     queue_measurement:
@@ -17,6 +17,6 @@ objective_function:
       type: ema
     range_type: separate
 phases:
-  4-road: 8
+  4-road: 4
 remained_steps: 2
 utilize_steps: 2

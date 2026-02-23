@@ -38,5 +38,5 @@ ticks:
     size: 4
     pad: 10
 lines:
-  width: 2
+  width: 4
   markersize: 6

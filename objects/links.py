@@ -97,10 +97,11 @@ class Links(Container):
             road = self.network.roads[tag_row['road_id']]
             link = self[tag_row['link_id']]
             
-            # set type to link
+            # set type and road for link
             link.set('type', tag_row['type'])
             link.set('road', road)
 
+            # set link to road
             road.links.add(link)
             if tag_row['type'] == 'main':
                 road.set('main_link', link)
@@ -110,6 +111,10 @@ class Links(Container):
                 road.set('left_link', link)
             else:
                 raise NotImplementedError(f"Not supported link type: {tag_row['type']}")
+
+            # set input_volume to road if link has input_volume
+            if link.has('input_volume'):
+                road.set('input_volume', link.get('input_volume'))
 
         for link in self.getAll():
             if link.get('type') != 'connector':

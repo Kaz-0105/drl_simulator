@@ -1,4 +1,4 @@
-figure:
+target:
   layout: '7-4-1'
   control_method:
     mpc:
@@ -7,11 +7,11 @@ figure:
       17-phase: false
     scoot: true
   performance_metrics: [
-    'average_queue',
-    'max_queue',
-    'average_delay',
-    'max_delay',
-    'speed',
+    'queue_avg',
+    'queue_max',
+    'delay_avg',
+    'delay_max',
+    'speed_avg',
   ]
   seed:
     fix_flg: true

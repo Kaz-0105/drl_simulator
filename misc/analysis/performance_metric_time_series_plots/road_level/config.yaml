@@ -1,0 +1,83 @@
+target:
+  layout: 7-4-1
+  inflow: unbalanced
+  intersection_id: 1
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  performance_metrics: [
+      queue_main,
+      queue_right,
+    ]
+  seed:
+    fix_flg: true
+    fix_value: 1
+
+figure:
+  title:
+    mpc:
+      4-phase: Temporal Variation of Road-Wise Queue Lengths under 4-Phase MPC
+      8-phase: Temporal Variation of Road-Wise Queue Lengths under 8-Phase MPC
+      17-phase: Temporal Variation of Road-Wise Queue Lengths under 17-Phase MPC
+    scoot: Temporal Variation of Road-Wise Queue Lengths under SCOOT 
+  x_axis:
+    label: Time [s]
+  y_axis:
+    label: Queue Length [m]
+  legend:
+    1: North
+    2: East
+    3: South
+    4: West
+  line_style:
+    1: solid
+    2: solid
+    3: dashed
+    4: dashed
+  palette: Set1 # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: 3
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+      weight: 10
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 4                
+  spacing_threshold: 20
+
+
+
+
+
+

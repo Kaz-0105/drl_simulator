@@ -1,4 +1,4 @@
-figure:
+target:
   layout: 7-4-1
   control_method:
     mpc:
@@ -7,13 +7,18 @@ figure:
       17-phase: false
     scoot: true
   performance_metrics: [
-    average_queue,
-    max_queue,
-    average_delay,
-    max_delay,
-    speed,
-    phases,
+    queue_avg,
+    queue_max,
+    delay_avg,
+    delay_max,
+    speed_avg,
+    phase,
   ]
+  seed:
+    fix_flg: true
+    fix_value: 1
+
+figure:
   title:
     balanced_500: 'Balanced: 500 veh/h'
     balanced_600: 'Balanced: 600 veh/h'
@@ -34,16 +39,14 @@ figure:
     ]
   y_axis:
     label:
-      average_queue: Average Queue Length [m]
-      max_queue: Maximum Queue Length [m]
-      average_delay: Average Delay Time [s]
-      max_delay: Maximum Delay Tiem [s]
-      speed: Average Vehicle Speed [km/h]
-      phases: Number of Phase Changes 
-  seed:
-    fix_flg: true
-    fix_value: 1
+      queue_avg: Average Queue Length [m]
+      queue_max: Maximum Queue Length [m]
+      delay_avg: Average Delay Time [s]
+      delay_max: Maximum Delay Tiem [s]
+      speed_avg: Average Vehicle Speed [km/h]
+      phase: Number of Phase Changes 
   palette: viridis # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+
 
 simulator:
   num_red_steps: 1            
@@ -56,7 +59,7 @@ mpc:
   num_max_changes: 1
   remained_steps: 2
   utilize_steps: 2
-  branch_gap: 1
+  branch_gap: 3
   objective_function:
     type: waiting_vehicles
     waiting_vehicles:

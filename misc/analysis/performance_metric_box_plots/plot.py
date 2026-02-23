@@ -12,7 +12,7 @@ from libs.figure_config import initFigureConfig
 
 
 # load config.yaml
-with open(root_dir_path / 'misc' / 'analysis' / 'performance_box_plot.py' / 'config.yaml', 'r', encoding='utf-8') as f:
+with open(root_dir_path / 'misc' / 'analysis' / 'performance_metric_box_plots' / 'config.yaml', 'r', encoding='utf-8') as f:
     config_yaml = yaml.safe_load(f)
 
 # set figure configuration
@@ -23,13 +23,13 @@ performance_metric_map_list = []
 intersection_dir_path_map = {}
 data_dir_path = root_dir_path / 'data'
 performance_metrics_dir_path = data_dir_path / 'performance_metrics'
-layout_dir_path = performance_metrics_dir_path / config_yaml['figure']['layout']
+layout_dir_path = performance_metrics_dir_path / config_yaml['target']['layout']
 for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
     with open(simulator_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
         simulator_config = yaml.safe_load(f)
     
     # if seed is fixed in the plot config, check it
-    if config_yaml['figure']['seed']['fix_flg'] and simulator_config['seed'] != config_yaml['figure']['seed']['fix_value']:
+    if config_yaml['target']['seed']['fix_flg'] and simulator_config['seed'] != config_yaml['target']['seed']['fix_value']:
         continue
     del simulator_config['seed'] 
 
@@ -50,7 +50,7 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
         num_phases = method_config['phases']['4-road'] # TODO: currently only support 4-road intersection
         if num_phases not in [4, 8, 17]:
             raise ValueError(f"Not supported num_phases: {num_phases}")
-        if not config_yaml['figure']['control_method']['mpc'][f"{num_phases}-phase"]:
+        if not config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
             continue 
         del method_config['phases']
 
@@ -63,18 +63,15 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                 'id': len(performance_metric_map_list) + 1,
                 'method': f"{num_phases}-phase MPC",
             }
-            for performance_metric in config_yaml['figure']['performance_metrics']:
-                with open(intersection_dir_path / f"{performance_metric}.csv", 'r', encoding='utf-8'):
-                    time_series_df = pd.read_csv(intersection_dir_path / f"{performance_metric}.csv")
-                    
-                    if performance_metric in ['average_queue', 'max_queue']:
-                        average_value = time_series_df['queue_length'].mean()
-                    elif performance_metric in ['average_delay', 'max_delay']:
-                        average_value = time_series_df['delay'].mean()
-                    elif performance_metric in ['speed']:
-                        average_value = time_series_df['value'].mean()
-                    else:
-                        raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(f)
+            for performance_metric in config_yaml['target']['performance_metrics']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                    average_value = time_series_df[performance_metric].dropna().mean()
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")  
+                
+
                 
                 performance_metric_map[performance_metric] = average_value
             
@@ -82,7 +79,7 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             intersection_dir_path_map[performance_metric_map['id']] = intersection_dir_path
 
     # regarding scoot
-    if not config_yaml['figure']['control_method']['scoot']:
+    if not config_yaml['target']['control_method']['scoot']:
         continue
 
     scoot_dir_path = simulator_dir_path / 'scoot'
@@ -102,18 +99,13 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                 'id': len(performance_metric_map_list) + 1,
                 'method': 'SCOOT',
             }
-            for performance_metric in config_yaml['figure']['performance_metrics']:
-                with open(intersection_dir_path / f"{performance_metric}.csv", 'r', encoding='utf-8'):
-                    time_series_df = pd.read_csv(intersection_dir_path / f"{performance_metric}.csv")
-                    
-                    if performance_metric in ['average_queue', 'max_queue']:
-                        average_value = time_series_df['queue_length'].mean()
-                    elif performance_metric in ['average_delay', 'max_delay']:
-                        average_value = time_series_df['delay'].mean()
-                    elif performance_metric in ['speed']:
-                        average_value = time_series_df['value'].mean()
-                    else:
-                        raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(f)
+            for performance_metric in config_yaml['target']['performance_metrics']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                    average_value = time_series_df[performance_metric].dropna().mean()
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 
                 performance_metric_map[performance_metric] = average_value
             
@@ -122,11 +114,11 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             
 performance_metric_df = pd.DataFrame(
     performance_metric_map_list, 
-    columns=['id', 'method'] + config_yaml['figure']['performance_metrics']
+    columns=['id', 'method'] + config_yaml['target']['performance_metrics']
 )
 
 # make save_dir
-save_dir_path = data_dir_path / 'analysis' / 'performance_box_plot' / config_yaml['figure']['layout']
+save_dir_path = data_dir_path / 'analysis' / 'performance_box_plot' / config_yaml['target']['layout']
 save_dir_path.mkdir(parents=True, exist_ok=True)
 
 # save statistical data
@@ -135,7 +127,7 @@ for method in ['SCOOT', '4-phase MPC', '8-phase MPC', '17-phase MPC']:
     tmp_performance_metric_df = performance_metric_df[performance_metric_df['method'] == method]
     if tmp_performance_metric_df.empty:
         continue
-    for performance_metric in config_yaml['figure']['performance_metrics']:
+    for performance_metric in config_yaml['target']['performance_metrics']:
         performance_metric_stat_map_list.append({
             'id': len(performance_metric_stat_map_list) + 1,
             'performance_metric': performance_metric,
@@ -171,22 +163,14 @@ performance_metric_stat_df.to_csv(save_dir_path / 'performance_metric_stat.csv',
 
 # make information used for making plots
 order_list = []
-if config_yaml['figure']['control_method']['scoot']:
+if config_yaml['target']['control_method']['scoot']:
     order_list.append('SCOOT')
 for num_phases in [4, 8, 17]:
-    if config_yaml['figure']['control_method']['mpc'][f"{num_phases}-phase"]:
+    if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
         order_list.append(f"{num_phases}-phase MPC")
 
-yaxis_label_map = {
-    'average_queue': 'Average Queue Length',
-    'max_queue': 'Maximum Queue Length',
-    'average_delay': 'Average Delay Time',
-    'max_delay': 'Maximum Delay Time',
-    'speed': 'Average Speed',
-}
-
 # plot figure
-for performance_metric in config_yaml['figure']['performance_metrics']:
+for performance_metric in config_yaml['target']['performance_metrics']:
     fig, ax = plt.subplots()
 
     sns.boxplot(
@@ -223,15 +207,9 @@ for performance_metric in config_yaml['figure']['performance_metrics']:
         size=8,
     )
 
-    ax.set_title(f"{yaxis_label_map[performance_metric]} Comparison Across All Traffic Scenarios")
+    ax.set_title(config_yaml['figure']['title'][performance_metric])
     ax.set_xlabel('')
-    if performance_metric in ['average_queue', 'max_queue']:
-        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [m]", fontsize=32)
-    elif performance_metric in ['average_delay', 'max_delay']:
-        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [s]", fontsize=32)
-    elif performance_metric in ['speed']:
-        ax.set_ylabel(f"{yaxis_label_map[performance_metric]} [km/h]", fontsize=32)
-
+    ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric])
     ax.set_ylim(bottom=0)
 
     fig.tight_layout()

@@ -1,4 +1,4 @@
-figure:
+target:
   layout: '7-4-1'
   control_method:
     mpc:
@@ -7,15 +7,30 @@ figure:
       17-phase: false
     scoot: true
   performance_metrics: [
-    'average_queue',
-    'max_queue',
-    'average_delay',
-    'max_delay',
-    'speed',
+    'queue_avg',
+    'queue_max',
+    'delay_avg',
+    'delay_max',
+    'speed_avg',
   ]
   seed:
     fix_flg: true
     fix_value: 1
+
+figure:
+  title:
+    queue_avg: 'Average Queue Length Comparison Across All Traffic Scenarios'
+    queue_max: 'Maximum Queue Length Comparison Across All Traffic Scenarios'
+    delay_avg: 'Average Delay Comparison Across All Traffic Scenarios'
+    delay_max: 'Maximum Delay Comparison Across All Traffic Scenarios'
+    speed_avg: 'Average Speed Comparison Across All Traffic Scenarios'
+  y_axis:
+    label: 
+      queue_avg: 'Average Queue Length [m]'
+      queue_max: 'Maximum Queue Length [m]'
+      delay_avg: 'Average Delay [s]'
+      delay_max: 'Maximum Delay [s]'
+      speed_avg: 'Average Speed [km/h]'
 
 simulator:
   num_red_steps: 1            
@@ -36,7 +51,7 @@ mpc:
       leader_detection:
         type: multiple
       queue_measurement:
-        type: ema
+        type: vissim
         ema:
           alpha: 0.3
       range_type: separate

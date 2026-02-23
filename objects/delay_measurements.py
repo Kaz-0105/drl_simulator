@@ -2,6 +2,7 @@ from libs.container import Container
 from libs.object import Object
 from objects.links import Links
 import pandas as pd
+import numpy as np
 
 class DelayMeasurements(Container):
     def __init__(self, upper_object):
@@ -155,13 +156,24 @@ class DelayMeasurement(Object):
         self.record_list = []
         self.record_df = None
         self.type_link_map = {}
+        self.time_step = self.network.simulation.get('time_step')
         return
 
     def update(self, value): 
         self.record_list.append({
             'time': int(self.network.get('current_time')),
-            'value': value if value is not None else self.current_delay,
+            'value': value if value is not None else np.nan,
         })
+
+        if value is None:
+            return
+
+        for record in reversed(self.record_list[:-1]):
+            if not np.isnan(record['value']):
+                break
+
+            record['value'] = max(value - self.record_list[-1]['time'] + record['time'], 0)
+            
         return
 
     def syncDataFrame(self):
@@ -172,8 +184,10 @@ class DelayMeasurement(Object):
     def current_delay(self):
         if len(self.record_list) == 0:
             return 0.0
-        else:
-            return self.record_list[-1]['value']
+        
+        for record in reversed(self.record_list):
+            if record['value'] is not None:
+                return record['value']
 
     @property
     def start_link(self):

@@ -172,7 +172,7 @@ class Simulation(Common):
                 scoot_controllers.updateParameters()
                 self._runSingleStep()
             
-            self.network.update()
+            self.network.update(last_flg=True)
 
         # save performance metrics
         self.network.save()

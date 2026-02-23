@@ -1,6 +1,6 @@
 branch_gap: 1
 horizon: 5
-min_successive_steps: 4
+min_successive_steps: 5
 num_max_changes: 1
 objective_function:
   signal_change:
@@ -17,6 +17,6 @@ objective_function:
       type: ema
     range_type: separate
 phases:
-  4-road: 17
+  4-road: 8
 remained_steps: 2
 utilize_steps: 2
