@@ -1,9 +1,9 @@
 simulator:
   control_method : mpc              # mpc, drl, scoot
-  layout_name : 7-4-1               # layout folder name
-  inflow_name : balanced_500          # inflow file name
+  layout_name : 1-4-1               # layout folder name
+  inflow_name : balanced_800          # inflow file name
   num_simulations: 1                # number of simulations to run
-  simulation_time: 500               # simulation time for each simulation (seconds)
+  simulation_time: 600               # simulation time for each simulation (seconds)
   seed:
     is_random: false                # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
     value: 1                        # if is_random is false, this value is used (you should select from 1 to 100.)
