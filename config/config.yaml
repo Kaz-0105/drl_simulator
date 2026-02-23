@@ -74,14 +74,14 @@ mpc:
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
   num_max_changes: 1           # maximum number of phase changes within a single optimization 
-  branch_gap: -5                # to avoid errors between vissim and mpc regarding the branching point
+  branch_gap: -3                # to avoid errors between vissim and mpc regarding the branching point
   bc_buffer: 
     flg: false                  # flg of saving data for behavioral cloning
     size: 1000                  # size of dataset for each buffer file
     network_id: 1               # network architecture id for behavioral cloning
   phases:
     3-road: 4                     # only 4
-    4-road: 8                     # 4, 8, or 17
+    4-road: 4                     # 4, 8, or 17
     5-road: 10                    # only 10
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
@@ -96,7 +96,7 @@ mpc:
         type: multiple                 # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
-      weight: 10                 # weights for the term of signal change penalty
+      weight: 15                  # weights for the term of signal change penalty
 
 scoot:
   initial_parameters:          
