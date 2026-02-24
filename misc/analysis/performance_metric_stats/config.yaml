@@ -16,6 +16,10 @@ target:
   seed:
     fix_flg: true
     fix_value: 1
+  signal_change_weight: 
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
   delay_type: 1 # 1 or 2
 
 simulator:
@@ -43,7 +47,6 @@ mpc:
       range_type: separate
     signal_change:
       type: global
-      weight: 10
 
 scoot:
   initial_parameters:          
@@ -53,5 +56,5 @@ scoot:
     cycle: 1                 
     split: 1                 
   max_cycle: 60                
-  min_split: 5                
+  min_split: 4                
   spacing_threshold: 20

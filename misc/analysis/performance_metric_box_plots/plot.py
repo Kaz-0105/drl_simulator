@@ -54,6 +54,8 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             continue 
         del method_config['phases']
 
+        config_yaml['mpc']['objective_function']['signal_change']['weight'] = config_yaml['target']['signal_change_weight'][f"{num_phases}-phase"]
+
         if method_config != config_yaml['mpc']:
             continue
         

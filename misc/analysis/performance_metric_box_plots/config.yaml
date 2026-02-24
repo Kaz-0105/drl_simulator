@@ -17,6 +17,10 @@ target:
     fix_flg: true
     fix_value: 1
   delay_type: 1 # 1 or 2
+  signal_change_weight: 
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
 
 figure:
   title:
@@ -58,7 +62,6 @@ mpc:
       range_type: separate
     signal_change:
       type: global
-      weight: 10
 
 scoot:
   initial_parameters:          
