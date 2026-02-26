@@ -317,19 +317,26 @@ class Network(Common):
             record_df.loc[valid_mask, 'avg_1'] = weighted_sum[valid_mask] / total_weight[valid_mask]
 
             # calculate average delay (definition: using input volumes as weights, and NaN is ignored in calculation)
-            weighted_sum = pd.Series(0.0, index=record_df.index)
-            total_weight = pd.Series(0.0, index=record_df.index)
-            valid_mask = pd.Series(True, index=record_df.index)
+            calc_flg = True
             for road_id, road in intersection.input_roads.items():
-                input_volume = road.get('input_volume')
+                if not road.has('input_volume'):
+                    calc_flg = False
+                    break
+            
+            if calc_flg:
+                weighted_sum = pd.Series(0.0, index=record_df.index)
+                total_weight = pd.Series(0.0, index=record_df.index)
+                valid_mask = pd.Series(True, index=record_df.index)
+                for road_id, road in intersection.input_roads.items():
+                    input_volume = road.get('input_volume')
 
-                mask = record_df[f"road_{road_id}_avg_2"].notna()   
-                weighted_sum.loc[mask] += record_df.loc[mask, f"road_{road_id}_avg_2"] * input_volume
-                total_weight.loc[mask] += input_volume 
-                valid_mask &= mask
+                    mask = record_df[f"road_{road_id}_avg_2"].notna()   
+                    weighted_sum.loc[mask] += record_df.loc[mask, f"road_{road_id}_avg_2"] * input_volume
+                    total_weight.loc[mask] += input_volume 
+                    valid_mask &= mask
 
-            record_df['avg_2'] = np.nan
-            record_df.loc[valid_mask, 'avg_2'] = weighted_sum[valid_mask] / total_weight[valid_mask]
+                record_df['avg_2'] = np.nan
+                record_df.loc[valid_mask, 'avg_2'] = weighted_sum[valid_mask] / total_weight[valid_mask]
 
             # calculate max delay
             max_delay = pd.Series(0.0, index=record_df.index)
@@ -343,7 +350,10 @@ class Network(Common):
             record_df.loc[valid_mask, 'max'] = max_delay[valid_mask]
 
             # push to delay_records_map
-            final_df = record_df[['time', 'avg_1', 'avg_2', 'max']].copy()
+            if calc_flg:
+                final_df = record_df[['time', 'avg_1', 'avg_2', 'max']].copy()
+            else:
+                final_df = record_df[['time', 'avg_1', 'max']].copy()
             self.delay_records_map['intersections'][intersection.get('id')] = final_df
 
         return
@@ -457,7 +467,8 @@ class Network(Common):
                     data_map['time'] = tmp_record_df['time'].values
                 
                 data_map['delay_avg_1'] = tmp_record_df['avg_1'].values
-                data_map['delay_avg_2'] = tmp_record_df['avg_2'].values
+                if 'avg_2' in tmp_record_df.columns:
+                    data_map['delay_avg_2'] = tmp_record_df['avg_2'].values
                 data_map['delay_max'] = tmp_record_df['max'].values
             
             if self.save_flg_map['speed']:

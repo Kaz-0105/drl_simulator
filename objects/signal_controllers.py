@@ -344,14 +344,16 @@ class SignalGroup(Object):
         return
 
     def setNextPhases(self, sig_color_list):
-        # make a copy
-        sig_color_list = copy.deepcopy(sig_color_list)
-
         # get previous signal color
         if self.future_signal_colors:
             previous_signal_color = self.future_signal_colors[-1]
         elif len(self.record_list) > 0:
-            previous_signal_color = self.record_list[-1]['value']
+            if self.record_list[-1]['value'] == 'R':
+                previous_signal_color = self.RED
+            elif self.record_list[-1]['value'] == 'G':
+                previous_signal_color = self.GREEN
+            else:
+                raise NotImplementedError(f"Not supported signal color string: {self.record_list[-1]['value']}")
         else:
             previous_signal_color = None
 
