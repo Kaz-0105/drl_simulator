@@ -1,5 +1,5 @@
 simulator:
-  control_method : scoot            # mpc, drl, scoot
+  control_method : mpc            # mpc, drl, scoot
   layout_name : 9-4-1-c-uni               # layout folder name
   inflow_name : balanced_700          # inflow file name
   num_simulations: 1                # number of simulations to run
@@ -74,7 +74,7 @@ mpc:
   remained_steps: 2            # number of remained steps when the optimization starts (<= utilized_steps)
   min_successive_steps: 4      # minimum steps for consecutive phases
   num_max_changes: 1           # maximum number of phase changes within a single optimization 
-  branch_gap: 0                # to avoid errors between vissim and mpc regarding the branching point
+  branch_gap: -3                # to avoid errors between vissim and mpc regarding the branching point
   bc_buffer: 
     flg: false                  # flg of saving data for behavioral cloning
     size: 1000                  # size of dataset for each buffer file
