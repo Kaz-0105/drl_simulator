@@ -1,16 +1,16 @@
 id,performance_metric,method,mean,worst,std,improve_rate,num_best
-1,queue_avg,8-phase MPC,15.02,37.75,8.68,-43.01,41
-2,queue_max,8-phase MPC,29.82,78.45,15.93,-48.3,38
-3,delay_avg,8-phase MPC,10.97,24.36,5.5,-21.42,36
-4,delay_max,8-phase MPC,40.6,73.63,13.0,-1.25,20
-5,speed_avg,8-phase MPC,26.6,35.58,4.52,23.59,41
-6,queue_avg,4-phase MPC,18.86,46.31,10.33,-28.41,1
-7,queue_max,4-phase MPC,38.59,104.03,21.95,-33.1,4
-8,delay_avg,4-phase MPC,13.27,25.26,5.56,-4.92,1
-9,delay_max,4-phase MPC,47.26,76.55,14.35,14.94,4
-10,speed_avg,4-phase MPC,24.05,34.09,4.12,11.72,1
-11,queue_avg,SCOOT,26.35,55.34,12.37,0.0,0
-12,queue_max,SCOOT,57.68,136.21,29.63,0.0,0
-13,delay_avg,SCOOT,13.96,28.11,4.97,0.0,5
-14,delay_max,SCOOT,41.12,66.44,9.72,0.0,18
-15,speed_avg,SCOOT,21.52,29.05,3.3,0.0,0
+1,queue_avg,8-phase MPC,15.02,37.75,8.68,-51.78,41
+2,queue_max,8-phase MPC,29.82,78.45,15.93,-56.21,38
+3,delay_avg,8-phase MPC,10.97,24.36,5.5,-29.34,38
+4,delay_max,8-phase MPC,40.6,73.63,13.0,-6.65,24
+5,speed_avg,8-phase MPC,26.6,35.58,4.52,30.6,41
+6,queue_avg,4-phase MPC,18.86,46.31,10.33,-39.43,1
+7,queue_max,4-phase MPC,38.59,104.03,21.95,-43.33,4
+8,delay_avg,4-phase MPC,13.27,25.26,5.56,-14.5,2
+9,delay_max,4-phase MPC,47.26,76.55,14.35,8.65,7
+10,speed_avg,4-phase MPC,24.05,34.09,4.12,18.05,1
+11,queue_avg,SCOOT,31.14,61.32,15.13,0.0,0
+12,queue_max,SCOOT,68.1,137.49,33.38,0.0,0
+13,delay_avg,SCOOT,15.52,26.69,5.5,0.0,2
+14,delay_max,SCOOT,43.5,60.76,9.57,0.0,11
+15,speed_avg,SCOOT,20.37,27.91,3.57,0.0,0
