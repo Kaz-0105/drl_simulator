@@ -122,7 +122,7 @@ performance_metric_df = pd.DataFrame(
 )
 
 # make save_dir
-save_dir_path = data_dir_path / 'analysis' / 'performance_box_plot' / config_yaml['target']['layout']
+save_dir_path = data_dir_path / 'analysis' / 'performance_metric_box_plots' / config_yaml['target']['layout']
 save_dir_path.mkdir(parents=True, exist_ok=True)
 
 # make information used for making plots
