@@ -87,13 +87,14 @@ sns.kdeplot(
     hue='inflow',
     cumulative=True,
     common_norm=False,
+    palette=config_yaml['figure']['palette']
 )
 
-ax.set_title('CDF of Calculation Time by Inflow Patterns')
-ax.set_xlabel('Calculation Time [s]')
+ax.set_title(config_yaml['figure']['title']['inflow'])
+ax.set_xlabel(config_yaml['figure']['x_axis']['label'])
 ax.set_xlim(0, max_time)
-ax.set_ylabel('Cumulative Density')
-sns.move_legend(ax, loc='lower right', title='Inflow [veh/h]')
+ax.set_ylabel(config_yaml['figure']['y_axis']['label'])
+sns.move_legend(ax, loc='lower right', title=config_yaml['figure']['legend']['title']['inflow'], ncol=len(config_yaml['target']['inflows'])/2)
 fig.tight_layout()
 fig.savefig(save_dir_path / 'calc_time_cdf_plot_inflow.png')
 plt.close('all')
@@ -107,13 +108,14 @@ sns.kdeplot(
     hue='num_phases',
     cumulative=True,
     common_norm=False,
+    palette=config_yaml['figure']['palette']
 )
 
-ax.set_title('CDF of Calculation Time by Number of Phases')
-ax.set_xlabel('Calculation Time [s]')
+ax.set_title(config_yaml['figure']['title']['num_phases'])
+ax.set_xlabel(config_yaml['figure']['x_axis']['label'])
 ax.set_xlim(0, max_time)
-ax.set_ylabel('Cumulative Density')
-sns.move_legend(ax, loc='lower right', title='Number of Phases')
+ax.set_ylabel(config_yaml['figure']['y_axis']['label'])
+sns.move_legend(ax, loc='lower right', title=config_yaml['figure']['legend']['title']['num_phases'])
 fig.tight_layout()
 fig.savefig(save_dir_path / 'calc_time_cdf_plot_num_phases.png')
 plt.close('all')

@@ -71,5 +71,5 @@ scoot:
     cycle: 1                 
     split: 1                 
   max_cycle: 60                
-  min_split: 5                
+  min_split: 4                
   spacing_threshold: 20        

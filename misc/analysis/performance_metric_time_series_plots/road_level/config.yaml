@@ -8,10 +8,6 @@ target:
       8-phase: true
       17-phase: false
     scoot: true
-  performance_metrics: [
-    queue_main,
-    queue_right,
-  ]
   seed:
     fix_flg: true
     fix_value: 1
