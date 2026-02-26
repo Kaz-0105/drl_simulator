@@ -1,5 +1,5 @@
 target:
-  layout: '7-4-1'
+  layout: 9-4-1-c-uni
   control_method:
     mpc:
       4-phase: true
@@ -39,7 +39,7 @@ figure:
 
 simulator:
   num_red_steps: 1            
-  simulation_time: 500
+  simulation_time: 1000
   time_step: 2
 
 mpc: 
