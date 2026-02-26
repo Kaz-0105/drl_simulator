@@ -8,9 +8,10 @@ target:
       8-phase: true
       17-phase: false
     scoot: true
-  seed:
-    fix_flg: true
-    fix_value: 1
+  signal_change_weight:
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
 
 figure:
   title:
@@ -34,10 +35,12 @@ figure:
     3: dashed
     4: dashed
   palette: Set1 # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+
 simulator:
   num_red_steps: 1            
   simulation_time: 500
   time_step: 2
+  seed: 1
 
 mpc: 
   horizon: 5
@@ -59,7 +62,6 @@ mpc:
       range_type: separate
     signal_change:
       type: global
-      weight: 10
 
 scoot:
   initial_parameters:          

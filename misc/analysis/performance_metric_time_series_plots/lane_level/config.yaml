@@ -1,4 +1,84 @@
 target:
   layout: 7-4-1
-  intersection: 1
-  
+  inflow: unbalanced
+  intersection_id: 1
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  signal_change_weight:
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
+
+figure:
+  title:
+    mpc:
+      4-phase: Temporal Variation of Lane-Wise Queue Lengths under 4-Phase MPC
+      8-phase: Temporal Variation of Lane-Wise Queue Lengths under 8-Phase MPC
+      17-phase: Temporal Variation of Lane-Wise Queue Lengths under 17-Phase MPC
+    scoot: Temporal Variation of Lane-Wise Queue Lengths under SCOOT 
+  x_axis:
+    label: Time [s]
+  y_axis:
+    label: Queue Length [m]
+  legend:
+    road_1_main: North - Main Lane
+    road_1_right: North - Right-Turn Lane
+    road_2_main: East - Main Lane
+    road_2_right: East - Right-Turn Lane
+    road_3_main: South - Main Lane
+    road_3_right: South - Right-Turn Lane
+    road_4_main: West - Main Lane
+    road_4_right: West - Right-Turn Lane
+  line_style:
+    road_1_main: solid
+    road_1_right: dashed
+    road_2_main: solid
+    road_2_right: dashed
+    road_3_main: solid
+    road_3_right: dashed
+    road_4_main: solid
+    road_4_right: dashed
+  palette: Set1 # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+  seed: 1
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: -3
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 5                
+  spacing_threshold: 20
+

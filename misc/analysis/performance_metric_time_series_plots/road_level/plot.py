@@ -31,11 +31,6 @@ inflow_dir_path = layout_dir_path / config_yaml['target']['inflow']
 for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
     with open(simulator_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
         simulator_config = yaml.safe_load(f)
-    
-    # if seed is fixed in the plot config, check it
-    if config_yaml['target']['seed']['fix_flg'] and simulator_config['seed'] != config_yaml['target']['seed']['fix_value']:
-        continue
-    del simulator_config['seed'] 
 
     # check simulator config matches the plot config
     if simulator_config != config_yaml['simulator']:
@@ -60,6 +55,8 @@ for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
         if not config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
             continue 
         del method_config['phases']
+
+        config_yaml['mpc']['objective_function']['signal_change']['weight'] = config_yaml['target']['signal_change_weight'][f"{num_phases}-phase"]
 
         if method_config != config_yaml['mpc']:
             continue
@@ -133,7 +130,7 @@ for simulator_dir_path in inflow_dir_path.rglob('simulator_*'):
             tmp_time_series_df['queue_max'] = tmp_time_series_df[exist_queue_columns].max(axis=1)
             
             # push to time_series_df
-            target_time_series_df = tmp_time_series_df[['time', 'road', 'queue_max'] + exist_queue_columns]
+            target_time_series_df = tmp_time_series_df[['time', 'road', 'queue_max']]
             if time_series_df is None:
                 time_series_df = target_time_series_df.copy()
             else:
@@ -166,7 +163,7 @@ for method, tmp_time_series_df in time_series_df_map.items():
         style='line_style',
         dashes={
             'solid': (None, None),
-            'dashed': (2, 2),
+            'dashed': (2, 1),
         },
         palette=config_yaml['figure']['palette'],
     )
