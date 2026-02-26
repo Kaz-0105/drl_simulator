@@ -3,18 +3,16 @@ from pathlib import Path
 root_dir_path = (Path(__file__).parent / '..' / '..' / '..' / '..').resolve()
 sys.path.append(str(root_dir_path))
 
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import yaml
 import re
-import copy
 
-from libs.figure_config import initFigureConfig
+from libs.figure_config import init_figure_config
 
 # reflect figure configuration
-initFigureConfig()
+init_figure_config()
 
 # get config_yaml
 config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_time_series_plots' / 'road_level' / 'config.yaml'

@@ -7,10 +7,10 @@ import pandas as pd
 import yaml
 import re
 
-from libs.figure_config import initFigureConfig
+from libs.figure_config import init_figure_config
 
 # reflect figure configuration
-initFigureConfig()
+init_figure_config()
 
 # get config_yaml
 config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_stats' / 'config.yaml'

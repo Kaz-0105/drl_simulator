@@ -8,7 +8,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from libs.figure_config import initFigureConfig
+from libs.figure_config import init_figure_config
 
 
 # load config.yaml
@@ -16,7 +16,7 @@ with open(root_dir_path / 'misc' / 'analysis' / 'performance_metric_box_plots' /
     config_yaml = yaml.safe_load(f)
 
 # set figure configuration
-initFigureConfig()
+init_figure_config()
 
 # initialize performance_df and intersection_dir_path_map
 performance_metric_map_list = []

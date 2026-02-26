@@ -9,14 +9,14 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import re
 
-from libs.figure_config import initFigureConfig
+from libs.figure_config import init_figure_config
 
 # load config.yaml
 with open(root_dir_path / 'misc' / 'analysis' / 'calc_time_cdf_plots' / 'config.yaml', 'r', encoding='utf-8') as f:
     config_yaml = yaml.safe_load(f)
 
 # set figure configuration
-initFigureConfig()
+init_figure_config()
 
 data_dir = root_dir_path / 'data'
 performance_metrics_dir = data_dir / 'performance_metrics'
