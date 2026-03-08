@@ -1,5 +1,5 @@
 target:
-  layout: 9-4-1-c-uni
+  layout: 9-4-1-c-sh
   inflow: balanced_700
   control_method:
     mpc:
@@ -14,6 +14,35 @@ target:
   performance_metrics:
     x: delay_avg_1
     y: speed_avg
+  moving_average_window: 3
+  down_sampling_rate: 5
+  remove_time: 200
+
+figure:
+  title: 
+    label: Performance Trajectory Comparison in Multiple-Intersection Scenario
+  axis:
+    label: 
+      queue_avg: Average Queue Length [m]
+      queue_max: Maximum Queue Length [m]
+      delay_avg_1: Average Delay Time [s]
+      delay_max: Maximum Delay Time [s]
+      speed_avg: Average Speed [km/h]
+  palette: 
+    4-phase MPC: '#1f77b4'
+    8-phase MPC: '#ff7f0e'
+    17-phase MPC: '#2ca02c'
+    SCOOT: '#d62728'
+  alpha: 0.7
+  marker:
+    size: 
+      normal: 8
+      start: 12
+      end: 12
+    shape: 
+      normal: 'o'
+      start: 'o'
+      end: 'X'
 
 simulator:
   num_red_steps: 1            
@@ -51,5 +80,6 @@ scoot:
     split: 1                 
   max_cycle: 60                
   min_split: 4                
-  spacing_threshold: 20        
+  spacing_threshold: 20   
+
   
