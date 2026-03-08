@@ -12,17 +12,21 @@ target:
     8-phase: 10
     17-phase: 10
   performance_metric: queue_avg
-  moving_average_window: 3
+  moving_average_window: 1
 
 figure:
   title:
     label:
       queue_avg: Temporal Variation of Average Queue Lengths under Different Control Methods
+      delay_avg_1: Temporal Variation of Average Delay Times under Different Control Methods
+      speed_avg: Temporal Variation of Average Vehicle Speeds under Different Control Methods
   x_axis:
     label: Time [s]
   y_axis:
     label: 
       queue_avg: Average Queue Length [m]
+      delay_avg_1: Average Delay Time [s]
+      speed_avg: Average Vehicle Speed [m/s]
   palette: 
     4-phase MPC: '#1f77b4'
     8-phase MPC: '#ff7f0e'
