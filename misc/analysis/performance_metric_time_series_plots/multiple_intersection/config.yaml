@@ -1,0 +1,68 @@
+target:
+  layout: 9-4-1-c-sh
+  inflow: balanced_600
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  signal_change_weight:
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
+  performance_metric: queue_avg
+  moving_average_window: 3
+
+figure:
+  title:
+    label:
+      queue_avg: Temporal Variation of Average Queue Lengths under Different Control Methods
+  x_axis:
+    label: Time [s]
+  y_axis:
+    label: 
+      queue_avg: Average Queue Length [m]
+  palette: 
+    4-phase MPC: '#1f77b4'
+    8-phase MPC: '#ff7f0e'
+    17-phase MPC: '#2ca02c'
+    SCOOT: '#d62728'
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 1000
+  time_step: 2
+  seed: 1
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: -3
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 4                
+  spacing_threshold: 20

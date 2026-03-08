@@ -81,10 +81,12 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
             else:
                 time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
         
-        time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean().reset_index()
-        time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :].reset_index(drop=True)
+
+        time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean()
+        time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :]
         time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window'], min_periods=1).mean()
-        time_series_df = time_series_df.dropna(subset=list(config_yaml['target']['performance_metrics'].values())).reset_index(drop=True)
+        time_series_df = time_series_df.dropna(subset=list(config_yaml['target']['performance_metrics'].values()))
+        time_series_df = time_series_df.reset_index()
         tmp_time_series_df_map[num_phases] = time_series_df
     
     if len(tmp_time_series_df_map) > 0: 
@@ -123,10 +125,11 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
                 else:
                     time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True) 
 
-            time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean().reset_index()
-            time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :].reset_index(drop=True)
+            time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean()
+            time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :]
             time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window'], min_periods=1).mean()
-            time_series_df = time_series_df.dropna(subset=list(config_yaml['target']['performance_metrics'].values())).reset_index(drop=True)
+            time_series_df = time_series_df.dropna(subset=list(config_yaml['target']['performance_metrics'].values()))
+            time_series_df = time_series_df.reset_index()
             time_series_df_map['scoot'] = time_series_df
 
 
