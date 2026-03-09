@@ -11,15 +11,15 @@ target:
     4-phase: 12
     8-phase: 10
     17-phase: 10
-  performance_metric: delay_avg_1
-  moving_average_window: 1
+  performance_metric: speed_avg
+  moving_average_window: 3
 
 figure:
   title:
     label:
-      queue_avg: Temporal Variation of Average Queue Lengths in Multiple Intersections
-      delay_avg_1: Temporal Variation of Average Delay Times in Multiple Intersections
-      speed_avg: Temporal Variation of Average Vehicle Speeds in Multiple Intersections
+      queue_avg: Time Series of Queue Lengths in Multiple-Intersection Scenario
+      delay_avg_1: Time Series of Delay Times in Multiple-Intersection Scenario
+      speed_avg: Time Series of Vehicle Speeds in Multiple-Intersection Scenario
   x_axis:
     label: Time [s]
   y_axis:
