@@ -1,6 +1,6 @@
 target:
   layout: 9-4-1-c-uni
-  inflow: main-minor
+  inflow: balanced_700
   control_method:
     mpc:
       4-phase: true
@@ -11,7 +11,7 @@ target:
     4-phase: 12
     8-phase: 10
     17-phase: 10
-  performance_metric: speed_avg
+  performance_metric: queue_avg
   moving_average_window: 3
 
 figure:
