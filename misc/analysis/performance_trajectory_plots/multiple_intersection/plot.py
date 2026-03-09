@@ -74,14 +74,16 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
             
             tmp_time_series_df = tmp_time_series_df[['time'] + list(config_yaml['target']['performance_metrics'].values())].copy()
             tmp_time_series_df['intersection'] = int(re.match(r"intersection_(\d+)", intersection_dir_path.name).group(1))
-            tmp_time_series_df = tmp_time_series_df.dropna(subset=config_yaml['target']['performance_metrics'].values()).reset_index(drop=True)
             tmp_time_series_df = tmp_time_series_df[tmp_time_series_df['time'] >= config_yaml['target']['remove_time']].reset_index(drop=True)
+            
             if time_series_df is None:
                 time_series_df = tmp_time_series_df.copy()    
             else:
                 time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
         
-
+        invalid_ids = time_series_df[list(config_yaml['target']['performance_metrics'].values())].isna().any(axis=1)
+        invalid_times = time_series_df.loc[invalid_ids, 'time'].unique()
+        time_series_df = time_series_df[~time_series_df['time'].isin(invalid_times)].reset_index(drop=True)
         time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean()
         time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :]
         time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
@@ -117,7 +119,6 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
                 
                 tmp_time_series_df = tmp_time_series_df[['time'] + list(config_yaml['target']['performance_metrics'].values())].copy()
                 tmp_time_series_df['intersection'] = int(re.match(r"intersection_(\d+)", intersection_dir_path.name).group(1))
-                tmp_time_series_df = tmp_time_series_df.dropna(subset=config_yaml['target']['performance_metrics'].values()).reset_index(drop=True)
                 tmp_time_series_df = tmp_time_series_df[tmp_time_series_df['time'] >= config_yaml['target']['remove_time']].reset_index(drop=True)
 
                 if time_series_df is None:
@@ -125,6 +126,9 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
                 else:
                     time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True) 
 
+            invalid_ids = time_series_df[list(config_yaml['target']['performance_metrics'].values())].isna().any(axis=1)
+            invalid_times = time_series_df.loc[invalid_ids, 'time'].unique()
+            time_series_df = time_series_df[~time_series_df['time'].isin(invalid_times)].reset_index(drop=True)
             time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean()
             time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :]
             time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
