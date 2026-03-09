@@ -84,7 +84,7 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
 
         time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean()
         time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :]
-        time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window'], min_periods=1).mean()
+        time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna(subset=list(config_yaml['target']['performance_metrics'].values()))
         time_series_df = time_series_df.reset_index()
         tmp_time_series_df_map[num_phases] = time_series_df
@@ -127,7 +127,7 @@ for simulator_dir_path in inflow_dir_path.glob('simulator_*'):
 
             time_series_df = time_series_df.groupby('time')[list(config_yaml['target']['performance_metrics'].values())].mean()
             time_series_df = time_series_df.iloc[::config_yaml['target']['down_sampling_rate'], :]
-            time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window'], min_periods=1).mean()
+            time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
             time_series_df = time_series_df.dropna(subset=list(config_yaml['target']['performance_metrics'].values()))
             time_series_df = time_series_df.reset_index()
             time_series_df_map['scoot'] = time_series_df

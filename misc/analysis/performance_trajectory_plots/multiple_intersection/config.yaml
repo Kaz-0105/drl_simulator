@@ -1,6 +1,6 @@
 target:
-  layout: 9-4-1-c-sh
-  inflow: balanced_700
+  layout: 9-4-1-c-uni
+  inflow: main-minor
   control_method:
     mpc:
       4-phase: true

@@ -94,7 +94,7 @@ if mpc_dir_path.exists() and any(flg for flg in config_yaml['target']['control_m
                 time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
         
         time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
-        time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window'], min_periods=1).mean()
+        time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna()
         time_series_df = time_series_df.reset_index()
         time_series_df_map['mpc'][num_phases] = time_series_df
@@ -133,7 +133,7 @@ if scoot_dir_path.exists() and config_yaml['target']['control_method']['scoot']:
                 time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
         
         time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
-        time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window'], min_periods=1).mean()
+        time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna()
         time_series_df = time_series_df.reset_index()
         time_series_df_map['scoot'] = time_series_df
