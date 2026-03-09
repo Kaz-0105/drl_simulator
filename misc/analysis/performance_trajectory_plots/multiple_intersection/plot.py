@@ -145,14 +145,17 @@ save_dir_path.mkdir(parents=True, exist_ok=True)
 fig, ax = plt.subplots()
 
 time_series_df = None
+max_time = None
 if 'mpc' in time_series_df_map:
     for num_phases, tmp_time_series_df in time_series_df_map['mpc'].items():
         tmp_time_series_df['method'] = f"{num_phases}-phase MPC"
         
         if time_series_df is None:
             time_series_df = tmp_time_series_df.copy()
+            max_time = tmp_time_series_df['time'].max()
         else:
             time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
+            max_time = min(max_time, tmp_time_series_df['time'].max())
 
 if 'scoot' in time_series_df_map:
     tmp_time_series_df = time_series_df_map['scoot']
@@ -160,8 +163,12 @@ if 'scoot' in time_series_df_map:
 
     if time_series_df is None:
         time_series_df = tmp_time_series_df.copy()
+        max_time = tmp_time_series_df['time'].max()
     else:
         time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
+        max_time = min(max_time, tmp_time_series_df['time'].max())
+
+time_series_df = time_series_df[time_series_df['time'] <= max_time].reset_index(drop=True)
 
 sns.lineplot(
     ax=ax,

@@ -85,7 +85,6 @@ if mpc_dir_path.exists() and any(flg for flg in config_yaml['target']['control_m
                 tmp_time_series_df = pd.read_csv(f)
             
             tmp_time_series_df = tmp_time_series_df[['time', config_yaml['target']['performance_metric']]].copy()
-            tmp_time_series_df = tmp_time_series_df.dropna().reset_index(drop=True)
             tmp_time_series_df['intersection'] = int(re.match(r"intersection_(\d+)", intersection_dir_path.name).group(1))
             
             if time_series_df is None:
@@ -93,6 +92,9 @@ if mpc_dir_path.exists() and any(flg for flg in config_yaml['target']['control_m
             else:
                 time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
         
+        invalid_ids = time_series_df[config_yaml['target']['performance_metric']].isna()
+        invalid_times = time_series_df.loc[invalid_ids, 'time'].unique()
+        time_series_df = time_series_df[~time_series_df['time'].isin(invalid_times)].reset_index(drop=True)
         time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
         time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna()
@@ -124,7 +126,6 @@ if scoot_dir_path.exists() and config_yaml['target']['control_method']['scoot']:
                 tmp_time_series_df = pd.read_csv(f)
             
             tmp_time_series_df = tmp_time_series_df[['time', config_yaml['target']['performance_metric']]].copy()
-            tmp_time_series_df = tmp_time_series_df.dropna().reset_index(drop=True)
             tmp_time_series_df['intersection'] = int(re.match(r"intersection_(\d+)", intersection_dir_path.name).group(1))
             
             if time_series_df is None:
@@ -132,6 +133,9 @@ if scoot_dir_path.exists() and config_yaml['target']['control_method']['scoot']:
             else:
                 time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
         
+        invalid_ids = time_series_df[config_yaml['target']['performance_metric']].isna()
+        invalid_times = time_series_df.loc[invalid_ids, 'time'].unique()
+        time_series_df = time_series_df[~time_series_df['time'].isin(invalid_times)].reset_index(drop=True)
         time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
         time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna()
@@ -144,20 +148,27 @@ save_dir_path.mkdir(parents=True, exist_ok=True)
 
 # plot time series
 time_series_df = None
+max_time = None
 if 'mpc' in time_series_df_map:
     for num_phases, tmp_time_series_df in time_series_df_map['mpc'].items():
         tmp_time_series_df['method'] = f"{num_phases}-phase MPC"
         if time_series_df is None:
             time_series_df = tmp_time_series_df.copy()
+            max_time = tmp_time_series_df['time'].max()
         else:
             time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
+            max_time = min(max_time, tmp_time_series_df['time'].max())
 if 'scoot' in time_series_df_map:
     tmp_time_series_df = time_series_df_map['scoot']
     tmp_time_series_df['method'] = 'SCOOT'
     if time_series_df is None:
         time_series_df = tmp_time_series_df.copy()
+        max_time = tmp_time_series_df['time'].max()
     else:
         time_series_df = pd.concat([time_series_df, tmp_time_series_df], ignore_index=True)
+        max_time = min(max_time, tmp_time_series_df['time'].max())
+
+time_series_df = time_series_df[time_series_df['time'] <= max_time].reset_index(drop=True)
 
 fig, ax = plt.subplots()
 

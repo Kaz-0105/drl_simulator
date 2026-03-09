@@ -11,7 +11,7 @@ target:
     4-phase: 12
     8-phase: 10
     17-phase: 10
-  performance_metric: queue_avg
+  performance_metric: delay_avg_1
   moving_average_window: 3
 
 figure:
