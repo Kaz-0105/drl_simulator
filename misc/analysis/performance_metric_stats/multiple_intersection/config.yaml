@@ -1,0 +1,62 @@
+target:
+  layout: [
+    9-4-1-c-sh,
+    9-4-1-c-uni,
+  ]
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+    scoot: true
+  performance_metrics: [
+    queue_avg,
+    queue_max,
+    delay_avg_1,
+    delay_max,
+    speed_avg,
+  ]
+  seed:
+    fix_flg: true
+    fix_value: 1
+  signal_change_weight: 
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: -3
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 4                
+  spacing_threshold: 20

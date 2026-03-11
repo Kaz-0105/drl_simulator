@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-root_dir_path = (Path(__file__).parent / '..' / '..' / '..').resolve()
+root_dir_path = (Path(__file__).parent / '..' / '..' / '..' / '..').resolve()
 sys.path.append(str(root_dir_path))
 
 import pandas as pd
@@ -13,7 +13,7 @@ from libs.figure_config import init_figure_config
 init_figure_config()
 
 # get config_yaml
-config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_stats' / 'config.yaml'
+config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_stats' / 'single_intersection' / 'config.yaml'
 with open(config_file_path, 'r', encoding='utf-8') as f:
     config_yaml = yaml.safe_load(f)
 
@@ -126,7 +126,7 @@ performance_metric_df = pd.DataFrame(
 )
 
 # make save_dir
-save_dir_path = data_dir_path / 'analysis' / 'performance_metric_stats' / config_yaml['target']['layout']
+save_dir_path = data_dir_path / 'analysis' / 'performance_metric_stats' / 'single_intersection' / config_yaml['target']['layout']
 save_dir_path.mkdir(parents=True, exist_ok=True)
 
 # make performance_metric_stat_df
