@@ -1,7 +1,7 @@
 simulator:
   control_method : mpc              # mpc, drl, scoot
-  layout_name : 9-4-1-c-uni         # layout folder name
-  inflow_name : main-minor          # inflow file name
+  layout_name : 9-4-1-c-sh         # layout folder name
+  inflow_name : unbalanced_2          # inflow file name
   num_simulations: 1                # number of simulations to run
   simulation_time: 1000             # simulation time for each simulation (seconds)
   seed:

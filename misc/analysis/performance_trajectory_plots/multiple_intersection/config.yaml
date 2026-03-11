@@ -1,6 +1,6 @@
 target:
   layout: 9-4-1-c-sh
-  inflow: main-minor
+  inflow: balanced_700
   control_method:
     mpc:
       4-phase: true
@@ -20,7 +20,7 @@ target:
 
 figure:
   title: 
-    label: Performance Trajectory Comparison in Multiple-Intersection Scenario
+    label: Delay Time and Speed Trajectory Comparison in Balanced Inflow Type II
   axis:
     label: 
       queue_avg: Average Queue Length [m]

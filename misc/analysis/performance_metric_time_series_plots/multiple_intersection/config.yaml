@@ -1,6 +1,6 @@
 target:
-  layout: 9-4-1-c-uni
-  inflow: balanced_700
+  layout: 9-4-1-c-sh
+  inflow: main-minor
   control_method:
     mpc:
       4-phase: true
@@ -11,13 +11,13 @@ target:
     4-phase: 12
     8-phase: 10
     17-phase: 10
-  performance_metric: delay_avg_1
+  performance_metric: queue_avg
   moving_average_window: 3
 
 figure:
   title:
     label:
-      queue_avg: Time Series of Queue Lengths in Multiple-Intersection Scenario
+      queue_avg: Time Series of Queue Lengths in Unbalanced Type Scenario
       delay_avg_1: Time Series of Delay Times in Multiple-Intersection Scenario
       speed_avg: Time Series of Vehicle Speeds in Multiple-Intersection Scenario
   x_axis:

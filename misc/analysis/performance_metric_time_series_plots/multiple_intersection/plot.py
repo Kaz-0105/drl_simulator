@@ -183,7 +183,9 @@ sns.lineplot(
 
 ax.set_title(config_yaml['figure']['title']['label'][config_yaml['target']['performance_metric']])
 ax.set_xlabel(config_yaml['figure']['x_axis']['label'])
+ax.set_xlim(left=0, right=max_time)
 ax.set_ylabel(config_yaml['figure']['y_axis']['label'][config_yaml['target']['performance_metric']]) 
+ax.set_ylim(bottom=0)
 ax.legend(title='')
 
 fig.tight_layout()
