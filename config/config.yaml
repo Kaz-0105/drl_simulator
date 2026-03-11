@@ -1,6 +1,6 @@
 simulator:
-  control_method : mpc              # mpc, drl, scoot
-  layout_name : 9-4-1-c-sh         # layout folder name
+  control_method : scoot              # mpc, drl, scoot
+  layout_name : 9-4-1-c-uni         # layout folder name
   inflow_name : unbalanced_2          # inflow file name
   num_simulations: 1                # number of simulations to run
   simulation_time: 1000             # simulation time for each simulation (seconds)
@@ -81,7 +81,7 @@ mpc:
     network_id: 1               # network architecture id for behavioral cloning
   phases:
     3-road: 4                     # only 4
-    4-road: 4                     # 4, 8, or 17
+    4-road: 8                     # 4, 8, or 17
     5-road: 10                    # only 10
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
@@ -96,7 +96,7 @@ mpc:
         type: multiple                 # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
-      weight: 12                  # weights for the term of signal change penalty
+      weight: 10                  # weights for the term of signal change penalty
 
 scoot:
   initial_parameters:          

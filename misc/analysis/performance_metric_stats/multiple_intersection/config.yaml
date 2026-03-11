@@ -1,8 +1,8 @@
 target:
-  layout: [
-    9-4-1-c-sh,
-    9-4-1-c-uni,
-  ]
+  layout: {
+    9-4-1-c-sh: Straight High,
+    9-4-1-c-uni: Uniform,
+  }
   control_method:
     mpc:
       4-phase: true
@@ -26,7 +26,7 @@ target:
 
 simulator:
   num_red_steps: 1            
-  simulation_time: 500
+  simulation_time: 1000
   time_step: 2
 
 mpc: 
