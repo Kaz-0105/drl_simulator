@@ -1,5 +1,5 @@
 simulator:
-  control_method : scoot              # mpc, drl, scoot
+  control_method : mpc              # mpc, drl, scoot
   layout_name : 9-4-1-c-uni         # layout folder name
   inflow_name : unbalanced_2          # inflow file name
   num_simulations: 1                # number of simulations to run

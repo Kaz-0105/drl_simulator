@@ -1,6 +1,6 @@
 target:
-  layout: 9-4-1-c-sh
-  inflow: balanced_700
+  layout: 9-4-1-c-uni
+  inflow: unbalanced_2
   control_method:
     mpc:
       4-phase: true
@@ -20,7 +20,7 @@ target:
 
 figure:
   title: 
-    label: Delay Time and Speed Trajectory Comparison in Balanced Inflow Type II
+    label: Delay Time and Speed Trajectory Comparison in Unbalanced Inflow Type II
   axis:
     label: 
       queue_avg: Average Queue Length [m]

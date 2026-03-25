@@ -95,7 +95,10 @@ if mpc_dir_path.exists() and any(flg for flg in config_yaml['target']['control_m
         invalid_ids = time_series_df[config_yaml['target']['performance_metric']].isna()
         invalid_times = time_series_df.loc[invalid_ids, 'time'].unique()
         time_series_df = time_series_df[~time_series_df['time'].isin(invalid_times)].reset_index(drop=True)
-        time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
+        if config_yaml['target']['performance_metric'] in ['queue_avg', 'delay_avg_1', 'speed_avg']:
+            time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
+        elif config_yaml['target']['performance_metric'] in ['queue_max', 'delay_max']:
+            time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].max() 
         time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna()
         time_series_df = time_series_df.reset_index()
@@ -136,7 +139,10 @@ if scoot_dir_path.exists() and config_yaml['target']['control_method']['scoot']:
         invalid_ids = time_series_df[config_yaml['target']['performance_metric']].isna()
         invalid_times = time_series_df.loc[invalid_ids, 'time'].unique()
         time_series_df = time_series_df[~time_series_df['time'].isin(invalid_times)].reset_index(drop=True)
-        time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
+        if config_yaml['target']['performance_metric'] in ['queue_avg', 'delay_avg_1', 'speed_avg']:
+            time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].mean()
+        elif config_yaml['target']['performance_metric'] in ['queue_max', 'delay_max']:
+            time_series_df = time_series_df.groupby('time')[config_yaml['target']['performance_metric']].max()
         time_series_df = time_series_df.rolling(window=config_yaml['target']['moving_average_window']).mean()
         time_series_df = time_series_df.dropna()
         time_series_df = time_series_df.reset_index()
