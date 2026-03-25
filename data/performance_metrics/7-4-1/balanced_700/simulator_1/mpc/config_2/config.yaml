@@ -1,11 +1,11 @@
-branch_gap: 3
+branch_gap: -3
 horizon: 5
 min_successive_steps: 4
 num_max_changes: 1
 objective_function:
   signal_change:
     type: global
-    weight: 10
+    weight: 12
   type: waiting_vehicles
   waiting_vehicles:
     definition: 4

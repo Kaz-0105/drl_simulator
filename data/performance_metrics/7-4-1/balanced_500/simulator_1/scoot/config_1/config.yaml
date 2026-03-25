@@ -9,5 +9,5 @@ initial_parameters:
   - 10
   - 10
 max_cycle: 60
-min_split: 4
+min_split: 5
 spacing_threshold: 20

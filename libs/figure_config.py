@@ -2,7 +2,7 @@ import matplotlib as mpl
 from pathlib import Path
 import yaml
 
-def initFigureConfig():
+def init_figure_config():
     root_dir_path = (Path(__file__).parent / '..').resolve()
     config_path = root_dir_path / 'config' / 'figure_config.yaml'
     with open(config_path, 'r', encoding='utf-8') as f:

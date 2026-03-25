@@ -1,0 +1,72 @@
+target:
+  layout: 7-4-1
+  control_method:
+    mpc:
+      4-phase: true
+      8-phase: true
+      17-phase: false
+  inflows:
+    balanced_500: 500
+    balanced_600: 600
+    balanced_700: 700
+    balanced_800: 800
+  seed:
+    fix_flg: true
+    fix_value: 1
+  delay_type: 1
+  signal_change_weight: 
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
+
+figure:
+  title: 
+    inflow: Cumulative Distribution Function of Calculation Time by Inflow Patterns
+    num_phases: Cumulative Distribution Function of Calculation Time by Number of Phases
+  x_axis: 
+    label: Calculation Time [s]
+  y_axis:
+    label: Cumulative Distribution Function
+  legend:
+    title: 
+      inflow: Inflow [veh/h]
+      num_phases: Number of Phases
+  palette: Set1 # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
+
+
+simulator:
+  num_red_steps: 1            
+  simulation_time: 500
+  time_step: 2
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: -3
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+
+scoot:
+  initial_parameters:          
+    cycle: 40                 
+    split: [10, 10, 10, 10]    
+  change_steps:
+    cycle: 1                 
+    split: 1                 
+  max_cycle: 60                
+  min_split: 4                
+  spacing_threshold: 20  

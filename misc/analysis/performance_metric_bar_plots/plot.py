@@ -9,10 +9,10 @@ import pandas as pd
 import yaml
 import re
 
-from libs.figure_config import initFigureConfig
+from libs.figure_config import init_figure_config
 
 # reflect figure configuration
-initFigureConfig()
+init_figure_config()
 
 # get config_yaml
 config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_bar_plots' / 'config.yaml'
@@ -62,6 +62,8 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             continue 
         del method_config['phases']
 
+        config_yaml['mpc']['objective_function']['signal_change']['weight'] = config_yaml['target']['signal_change_weight'][f"{num_phases}-phase"]
+
         if method_config != config_yaml['mpc']:
             continue
         
@@ -81,8 +83,10 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                     time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
                     time_series_df.loc[0, 'phase_change'] = False
                     performance_value = time_series_df['phase_change'].sum()
-                elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                     performance_value = time_series_df[performance_metric].dropna().mean()       
+                elif performance_metric == 'delay_avg':
+                    performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 
@@ -120,8 +124,10 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                     time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
                     time_series_df.loc[0, 'phase_change'] = False
                     performance_value = time_series_df['phase_change'].sum()
-                elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'speed_avg']:
+                elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                     performance_value = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                 

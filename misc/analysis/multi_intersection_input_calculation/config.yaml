@@ -1,0 +1,14 @@
+system: 
+  row: 3
+  column: 3
+
+input:
+  north: 900
+  south: 900
+  east: 500
+  west: 500
+
+route_selection:
+  left: 1
+  straight: 1
+  right: 1

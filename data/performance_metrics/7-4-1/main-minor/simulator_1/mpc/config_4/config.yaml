@@ -5,7 +5,7 @@ num_max_changes: 1
 objective_function:
   signal_change:
     type: global
-    weight: 10
+    weight: 12
   type: waiting_vehicles
   waiting_vehicles:
     definition: 4
@@ -17,6 +17,6 @@ objective_function:
       type: ema
     range_type: separate
 phases:
-  4-road: 8
+  4-road: 4
 remained_steps: 2
 utilize_steps: 2
