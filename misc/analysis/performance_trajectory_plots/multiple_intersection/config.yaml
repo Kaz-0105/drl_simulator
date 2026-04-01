@@ -1,6 +1,6 @@
 target:
   layout: 9-4-1-c-uni
-  inflow: unbalanced_2
+  inflow: unbalanced_3
   control_method:
     mpc:
       4-phase: true

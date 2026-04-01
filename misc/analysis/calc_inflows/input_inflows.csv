@@ -1,0 +1,13 @@
+id,direction,road_id,inflow
+1,north,1,900
+2,north,2,900
+3,north,3,900
+4,east,1,500
+5,east,2,500
+6,east,3,500
+7,south,1,500
+8,south,2,500
+9,south,3,500
+10,west,1,500
+11,west,2,500
+12,west,3,500
