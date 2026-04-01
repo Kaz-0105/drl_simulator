@@ -216,7 +216,9 @@ for method_name in time_series_df['method'].unique():
 
 ax.set_title(config_yaml['figure']['title']['label'])
 ax.set_xlabel(config_yaml['figure']['axis']['label'][config_yaml['target']['performance_metrics']['x']])
+ax.set_xlim(left=config_yaml['figure']['axis']['xlim']['left'], right=config_yaml['figure']['axis']['xlim']['right'])
 ax.set_ylabel(config_yaml['figure']['axis']['label'][config_yaml['target']['performance_metrics']['y']])
+ax.set_ylim(bottom=config_yaml['figure']['axis']['ylim']['bottom'], top=config_yaml['figure']['axis']['ylim']['top'])
 ax.legend(title='')
 fig.tight_layout()
 
