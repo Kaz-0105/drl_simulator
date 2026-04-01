@@ -1,8 +1,12 @@
 target:
-  layout: {
-    9-4-1-c-sh: Straight High,
-    9-4-1-c-uni: Uniform,
-  }
+  layout:
+    9-4-1-c-sh: Straight High
+    9-4-1-c-uni: Uniform
+  removed_inflow_types: [
+    unbalanced_2,
+    unbalanced_3,
+    unbalanced_4,
+  ]
   control_method:
     mpc:
       4-phase: true

@@ -42,6 +42,9 @@ for layout, route_selection in config_yaml['target']['layout'].items():
             continue
         
         inflow = simulator_dir_path.parent.name
+        if inflow in config_yaml['target']['removed_inflow_types']:
+            continue
+        
         simulator_dir_path_map[(inflow, route_selection)] = simulator_dir_path
 
 # initialize performance_metric_map_list
