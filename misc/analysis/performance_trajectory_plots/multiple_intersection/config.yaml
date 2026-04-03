@@ -1,5 +1,5 @@
 target:
-  layout: 9-4-1-c-sh
+  layout: 9-4-1-c-uni
   inflow: balanced_700
   control_method:
     mpc:
@@ -29,11 +29,11 @@ figure:
       delay_max: Maximum Delay Time [s]
       speed_avg: Average Speed [km/h]
     xlim: 
-      left: 11.5
-      right: 50
+      left: 8
+      right: 45
     ylim:
-      bottom: 7.5
-      top: 22.5
+      bottom: 8
+      top: 25
   legend:
     positions:
       method: [0.72, 0.98]
@@ -47,7 +47,7 @@ figure:
   marker:
     size: 
       normal: 8
-      start: 20
+      start: 16
       end: 20
     shape: 
       normal: 'o'
