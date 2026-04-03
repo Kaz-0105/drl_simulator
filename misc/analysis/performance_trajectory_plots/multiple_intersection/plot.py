@@ -4,6 +4,7 @@ root_dir_path = (Path(__file__).parent / '..' / '..' / '..' / '..').resolve()
 sys.path.append(str(root_dir_path))
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import seaborn as sns
 import pandas as pd
 import yaml
@@ -219,7 +220,34 @@ ax.set_xlabel(config_yaml['figure']['axis']['label'][config_yaml['target']['perf
 ax.set_xlim(left=config_yaml['figure']['axis']['xlim']['left'], right=config_yaml['figure']['axis']['xlim']['right'])
 ax.set_ylabel(config_yaml['figure']['axis']['label'][config_yaml['target']['performance_metrics']['y']])
 ax.set_ylim(bottom=config_yaml['figure']['axis']['ylim']['bottom'], top=config_yaml['figure']['axis']['ylim']['top'])
-ax.legend(title='')
+
+# 凡例用のカスタム要素を作成
+handles, labels = ax.get_legend_handles_labels()
+method_legend = ax.legend(
+    handles=handles, 
+    labels=labels, 
+    title='',
+    loc='upper left',
+    bbox_to_anchor=tuple(config_yaml['figure']['legend']['positions']['method']),
+)
+
+ax.add_artist(method_legend)
+
+point_elements = [
+    Line2D([0], [0], marker=config_yaml['figure']['marker']['shape']['start'], color='w', 
+           markerfacecolor='gray', markersize=config_yaml['figure']['marker']['size']['start'], 
+           markeredgecolor='black', label='Start Point'),
+    Line2D([0], [0], marker=config_yaml['figure']['marker']['shape']['end'], color='w', 
+           markerfacecolor='gray', markersize=config_yaml['figure']['marker']['size']['end'], 
+           markeredgecolor='black', label='End Point')
+]
+point_legend = ax.legend(
+    handles=point_elements, 
+    title='', 
+    loc='upper left',
+    bbox_to_anchor=tuple(config_yaml['figure']['legend']['positions']['point']),
+)
+
 fig.tight_layout()
 
 fig.savefig(save_dir_path / 'performance_trajectory.png', format='png')
