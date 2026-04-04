@@ -24,17 +24,17 @@ class Intersection:
         return
 
     @property
-    def total_inflow(self):
-        total_inflow = 0
+    def inflow(self):
+        inflow = 0
         for input_road in self.input_road_map.values():
             if input_road.inflow is not None:
-                total_inflow += input_road.inflow
-        return total_inflow
+                inflow += input_road.inflow
+        return inflow
 
     @property
-    def total_exact_inflow(self):
-        total_exact_inflow = 0
+    def exact_inflow(self):
+        exact_inflow = 0
         for input_road in self.input_road_map.values():
             if input_road.inflow is not None:
-                total_exact_inflow += input_road.exact_inflow
-        return total_exact_inflow
+                exact_inflow += input_road.exact_inflow
+        return exact_inflow

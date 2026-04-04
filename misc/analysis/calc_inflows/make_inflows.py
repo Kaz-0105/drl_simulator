@@ -114,19 +114,30 @@ for road in road_map.values():
     road.exact_inflow = inflows_vec[road.id - 1, 0]
     road.inflow = float(road.exact_inflow.evalf())
 
-# 結果を出力
+
+# print max-inflow intersection
+max_intersection = None
+max_inflow = -1
 for intersection in intersection_map.values():
-    # get mixed fraction
-    integer_part = int(intersection.total_exact_inflow // 1)
-    fractional_part = intersection.total_exact_inflow - integer_part
-    total_exact_inflow_info = {
-        'integer': integer_part,
-        'fractional': fractional_part,
-    }
-    print(f"=================================================")
-    print(f"intersection {intersection.id}")
-    print(f"(row_id, col_id) : ({intersection.row_id}, {intersection.col_id})")
-    print(f"total inflow : {total_exact_inflow_info['integer']} + {total_exact_inflow_info['fractional']}")
+    if intersection.inflow > max_inflow:
+        max_intersection = intersection
+        max_inflow = intersection.inflow
+
+print('=================================================')
+print('max-inflow intersection')
+print(f"id : {max_intersection.id}")
+print(f"(row_id, col_id) : ({max_intersection.row_id}, {max_intersection.col_id})")
+print(f"exact inflow : {int(max_intersection.exact_inflow // 1)} + {max_intersection.exact_inflow - int(max_intersection.exact_inflow // 1)}")
+print(f"inflow : {max_intersection.inflow}")
+
+# print average-inflow intersection
+sum_exact_inflow = sum(intersection.exact_inflow for intersection in intersection_map.values())
+average_exact_inflow = sum_exact_inflow / len(intersection_map)
+
+print('=================================================')
+print('average intersection')
+print(f"exact inflow : {int(average_exact_inflow // 1)} + {average_exact_inflow - int(average_exact_inflow // 1)}")
+print(f"inflow : {float(average_exact_inflow.evalf())}")
 
 
 
