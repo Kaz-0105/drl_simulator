@@ -262,15 +262,15 @@ class Road(Object):
     @property
     def num_vehicles(self):
         return self.vehicles_df.shape[0]
-
+    
     @property
-    def direction_signal_value_map(self):
-        direction_signal_value_map = {}
+    def direction_signal_color_map(self):
+        direction_signal_color_map = {}
         for direction_id, signal_group_id in self.direction_signal_group_map.items():
             signal_group = self.signal_groups[signal_group_id]
-            direction_signal_value_map[direction_id] = signal_group.get('current_value')
+            direction_signal_color_map[direction_id] = signal_group.get('current_signal_color')
         
-        return direction_signal_value_map
+        return direction_signal_color_map
     
     @property
     def vehicle_routing_decision(self):

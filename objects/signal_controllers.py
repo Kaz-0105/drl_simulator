@@ -181,7 +181,10 @@ class SignalController(Object):
 
     @property
     def current_phase_id(self):
-        return self.record_list[-1]['value']
+        if len(self.record_list) > 0:
+            return self.record_list[-1]['value']
+        else:
+            return 0
 
     @property
     def signal_change_flg(self):
@@ -405,13 +408,16 @@ class SignalGroup(Object):
     
     @property
     def current_signal_color(self):
-        current_signal_color_str = self.record_list[-1]['value']
-        if current_signal_color_str == 'R':
-            return self.RED
-        elif current_signal_color_str == 'G':
-            return self.GREEN
+        if len(self.record_list) > 0:
+            current_signal_color_str = self.record_list[-1]['value']
+            if current_signal_color_str == 'R':
+                return self.RED
+            elif current_signal_color_str == 'G':
+                return self.GREEN
+            else:
+                raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
         else:
-            raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
+            return self.RED
 
     @property
     def direction_id(self):

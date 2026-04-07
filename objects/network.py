@@ -57,6 +57,11 @@ class Network(Common):
 
         save_dir_path_map = self.config.get('save_dir_path_map')
         self.save_dir_path = save_dir_path_map['metrics']
+
+        if self.control_method == 'drl':
+            drl_info = self.config.get('drl_info')
+            self.drl_method = drl_info['method']
+
         return
     
     def _initVissimObjects(self):

@@ -8,32 +8,24 @@ import math
 
 class ReplayBuffer (Common):
     def __init__(self, master_agent):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理の実行オブジェクトを取得
+        # set config, executor, shared_resources and master_agent
         self.config = master_agent.config
         self.executor = master_agent.executor
         self.shared_resources = master_agent.shared_resources
-
-        # 上位の紐づくオブジェクトを取得
         self.master_agent = master_agent
 
-        # ネットワークと紐づける
+        # connect to model
         self.model = master_agent.model
         self.model.set('replay_buffer', self)
 
-        # バッファのサイズとバッチサイズを取得
-        self._getBufferInfo()
-
-        # バッファのパスを取得
-        self.path_map = self.master_agent.get('replay_buffer_path_map')
-
-        # change_flgを初期化
-        self.change_flg = False
+        # set properties
+        self._initProps()
         return
     
-    def _getBufferInfo(self):
+    def _initProps(self):
+        # set apex information
         apex_info = self.config.get('apex_info')
         self.num_new_data = apex_info['buffer']['num_new_data']
         self.max_size = apex_info['buffer']['size']
@@ -51,45 +43,51 @@ class ReplayBuffer (Common):
 
         simulator_info = self.config.get('simulator_info')
         self.num_simulations = simulator_info['num_simulations']
+
+        # set buffer paths
+        buffer_dir_path = self.master_agent.get('save_dir_path_map')['buffer']
+        self.tree_file_path = buffer_dir_path / 'tree.pkl'
+        self.data_file_path_map = {idx + 1: buffer_dir_path / f"data_{idx + 1}.pkl" for idx in range(math.ceil(self.max_size / 1000))}
+
+        self.change_flg = False
         return
-
+    
     def load(self):
-        # 最初のエピソードかどうかで分岐
-        if self.simulation_count == 1:
-            # データのコンテナを初期化
-            self.sum_tree = SumTree(self)
-
-            # カウンタを初期化
-            self.new_data_count = 0
-
-            # バッファが保存されていない場合はロードは必要ない
-            if not self.path_map['tree'].exists():
-                return
-            
-            # 学習を行わない場合はロードしない
-            if not self.learning_flg:
-                return
-            
-            with self.path_map['tree'].open('rb') as f:
-                loaded_data = pickle.load(f)
-                self.sum_tree.set('tree', loaded_data['tree'])
-                self.sum_tree.set('next_data_idx', loaded_data['next_data_idx'])
-                self.sum_tree.set('current_size', loaded_data['current_size'])
-                self.new_data_count = loaded_data['new_data_count']
-
-            data = []
-            for data_path in tqdm(self.path_map['data']):
-                with data_path.open('rb') as f:
-                    loaded_data = pickle.load(f)
-                    data.extend(loaded_data['data'])
-            self.sum_tree.set('data', data)
-
-        else:
-            # shared_resourcesオブジェクトからデータを取得
+        if self.simulation_count > 1:
             self.sum_tree = self.shared_resources.get('sum_tree')
             self.new_data_count = self.shared_resources.get('new_data_count')
+            self._resetPriority()
+            return
+        
+        self.sum_tree = SumTree(self)
+        self.new_data_count = 0
 
-        # 優先度のリセットを行う（フラグが立っている場合）
+        if not self.tree_file_path.exists():
+            return
+        
+        if not self.learning_flg:
+            return
+        
+        with open(self.tree_file_path, 'r', encoding='utf-8') as f:
+            loaded_data = pickle.load(f)
+
+        self.sum_tree.set('tree', loaded_data['tree'])
+        self.sum_tree.set('next_data_idx', loaded_data['next_data_idx'])
+        self.sum_tree.set('current_size', loaded_data['current_size'])
+        self.new_data_count = loaded_data['new_data_count']
+
+        data = []
+        for idx in tqdm(range(len(self.data_file_path_map))):
+            data_file_path = self.data_file_path_map[idx + 1]
+            if not data_file_path.exists():
+                raise FileNotFoundError(f"Data file not found: {data_file_path}")
+            
+            with open(data_file_path, 'r', encoding='utf-8') as f:
+                loaded_data = pickle.load(f)
+            
+            data.extend(loaded_data['data'])
+        self.sum_tree.set('data', data)
+
         self._resetPriority()
 
         return
@@ -104,6 +102,10 @@ class ReplayBuffer (Common):
         elif self.priority_reset_type == 'interval' and (self.episode % self.priority_reset_interval == 0):
             self.sum_tree.resetPriority()
 
+        return
+    
+    def resetNewDataCount(self):
+        self.new_data_count %= self.num_new_data
         return
 
     def push(self, learning_data):
@@ -142,7 +144,6 @@ class ReplayBuffer (Common):
         return
 
     def save(self):
-        # 学習を行わない場合は保存しない
         if not self.learning_flg:
             return
         
@@ -176,9 +177,11 @@ class ReplayBuffer (Common):
         self.shared_resources.set('new_data_count', self.new_data_count)      
         return 
     
-    def _showInfo(self):
-        print(f"ReplayBuffer: New data count[{self.new_data_count}/{self.num_new_data}]")
-        print(f"ReplayBuffer: Data size[{self.current_size}/{self.max_size}]")
+    def showInfo(self):
+        print('==============================================')
+        print(f"status: buffer update")
+        print(f"number of new data: {self.new_data_count}/{self.num_new_data}")
+        print(f"current buffer size: {self.current_size}/{self.max_size}")
         return
 
     @property
@@ -186,16 +189,12 @@ class ReplayBuffer (Common):
         return self.sum_tree.get('current_size')
     
     @property
-    def should_learn_flg(self):
+    def enough_new_data_flg(self):
         if not self.change_flg:
             return False
-        
-        self._showInfo()
 
         if self.new_data_count < self.num_new_data:
             return False
-        
-        self.new_data_count %= self.num_new_data
 
         if self.current_size < self.batch_size * self.num_batches:
             return False

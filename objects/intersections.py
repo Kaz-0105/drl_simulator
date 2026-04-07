@@ -42,6 +42,7 @@ class Intersection(Object):
 
         self.input_roads = Roads(self, {'type': 'input'})
         self.output_roads = Roads(self, {'type': 'output'})
+
         return
 
     @property

@@ -17,13 +17,12 @@ from pathlib import Path
 
 class Vissim(Common):
     def __init__(self, root_dir_path):
-        # 継承
         super().__init__()
 
         # set root_dir_path
         self.root_dir_path = root_dir_path
 
-        # 設定オブジェクトと非同期オブジェクトを設定    
+        # initialize config, executor, and shared_resources
         self.config = Config(self)
         self.executor = Executor(self)
         self.shared_resources = SharedResources(self)

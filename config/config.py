@@ -190,7 +190,7 @@ class Config(Common):
             if not config_file_path.exists():
                 continue
 
-            with config_file_path.open('rb') as f:  
+            with open(config_file_path, 'r', encoding='utf-8') as f:
                 config_yaml = yaml.safe_load(f)
             
             if config_yaml == simulator_info:
@@ -221,7 +221,7 @@ class Config(Common):
                 num_roads_set.add(intersection_row['num_roads'])
             
             for intersection_type in copy.deepcopy(mpc_info['phases']).keys():
-                num_roads = int(re.match(rf"(\d+)-road", intersection_type)[1])
+                num_roads = int(re.match(r"(\d+)-road", intersection_type)[1])
                 if num_roads not in num_roads_set:
                     del mpc_info['phases'][intersection_type]
 
@@ -230,8 +230,8 @@ class Config(Common):
                 config_file_path = tmp_dir_path / 'config.yaml'
                 if not config_file_path.exists():
                     continue
-
-                with config_file_path.open('rb') as f:  
+                
+                with open(config_file_path, 'r', encoding='utf-8') as f:
                     config_yaml = yaml.safe_load(f)
                 
                 if config_yaml == mpc_info:
@@ -263,7 +263,7 @@ class Config(Common):
                 if not config_file_path.exists():
                     continue
 
-                with config_file_path.open('rb') as f:  
+                with open(config_file_path, 'r', encoding='utf-8') as f:
                     config_yaml = yaml.safe_load(f)
                 
                 if config_yaml == scoot_info:
@@ -283,6 +283,37 @@ class Config(Common):
                         break
                     config_idx += 1
 
+            self.save_dir_path_map['metrics'] = save_dir_path
+
+        elif self.simulator_info['control_method'] == 'drl':
+            drl_info = copy.deepcopy(self.drl_info)
+
+            save_dir_path = None
+            for tmp_dir_path in control_method_dir_path.glob('config_*'):
+                config_file_path = tmp_dir_path / 'config.yaml'
+                if not config_file_path.exists():
+                    continue
+
+                with open(config_file_path, 'r', encoding='utf-8') as f:
+                    config_yaml = yaml.safe_load(f)
+
+                if config_yaml == drl_info:
+                    save_dir_path = tmp_dir_path
+                    break
+
+            if save_dir_path is None:
+                config_idx = 1
+                while True:
+                    tmp_dir_path = control_method_dir_path / f"config_{config_idx}"
+                    if not tmp_dir_path.exists():
+                        save_dir_path = tmp_dir_path
+                        save_dir_path.mkdir(parents=True, exist_ok=False)
+
+                        with open(save_dir_path / 'config.yaml', 'w') as f:
+                            yaml.dump(drl_info, f)
+                        break
+                    config_idx += 1
+            
             self.save_dir_path_map['metrics'] = save_dir_path
 
         else:

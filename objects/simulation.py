@@ -4,6 +4,9 @@ import random
 import torch
 
 class Simulation(Common):
+    RED = 1
+    GREEN = 3
+    
     def __init__(self, vissim):
         # 継承
         super().__init__()
@@ -208,7 +211,7 @@ class Simulation(Common):
         # 信号機の操作権限を取得
         for signal_controller in self.network.signal_controllers.getAll():
             for signal_group in signal_controller.signal_groups.getAll():
-                signal_group.com.SetAttValue('SigState', 1)
+                signal_group.com.SetAttValue('SigState', self.RED)
 
     @property
     def network(self):
