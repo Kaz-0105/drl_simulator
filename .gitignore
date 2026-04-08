@@ -7,3 +7,4 @@ venv/
 buffers/
 backup/
 *.zip
+data/drl

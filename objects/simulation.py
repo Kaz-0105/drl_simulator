@@ -79,12 +79,10 @@ class Simulation(Common):
         self._getSignalControlAuth()
 
         if self.control_method == 'drl':
-            # 必要なオブジェクトを取得
             local_agents = self.network.local_agents
             master_agents = self.network.master_agents
 
-            # 最初のネットワーク更新と状態の取得
-            self.network.update()
+            self.network.update(type='initial')
             local_agents.getState()
             
             while self.current_time < self.end_time:
@@ -109,7 +107,7 @@ class Simulation(Common):
                     break
             
             # 最後のネットワーク更新
-            self.network.update(last_flg=True)
+            self.network.update(type='final')
 
             # トータルの報酬を更新し，データを保存
             master_agents.updateSessionData()
@@ -141,7 +139,7 @@ class Simulation(Common):
                 bc_buffers.writeToFile()
             
             # 最後のネットワーク更新
-            self.network.update(last_flg=True)
+            self.network.update(type='final')
         
         elif self.control_method == 'bc':
             # 行動クローンを行う
@@ -150,7 +148,7 @@ class Simulation(Common):
 
             while self.current_time < self.end_time:
                 # 最初のネットワークの更新
-                self.network.update()
+                self.network.update(type='initial')
 
                 # 状態・報酬・行動を計算
                 bc_agent.updateState()
@@ -161,7 +159,7 @@ class Simulation(Common):
                 self._runSingleStep()
             
             # 最後のネットワーク更新
-            self.network.update(last_flg=True)
+            self.network.update(type='final')
 
             # トータルの報酬を表示し、モデルを保存
             bc_agent.showTotalReward()
@@ -175,7 +173,7 @@ class Simulation(Common):
                 scoot_controllers.updateParameters()
                 self._runSingleStep()
             
-            self.network.update(last_flg=True)
+            self.network.update(type='final')
 
         # save performance metrics
         self.network.save()

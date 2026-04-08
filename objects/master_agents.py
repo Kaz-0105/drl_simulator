@@ -1,6 +1,6 @@
 from libs.container import Container
 from libs.object import Object
-from objects.replay_buffer import ReplayBuffer
+from objects.buffer import ReplayBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
 from neural_networks.q_net_1 import QNet1
@@ -98,9 +98,9 @@ class MasterAgent(Object):
 
         # モデルを初期化
         self._initModel()
-        self.replay_buffer = ReplayBuffer(self)
+        self.buffer = ReplayBuffer(self)
         
-        # model, session, replay_bufferのデータをロード
+        # model, session, bufferのデータをロード
         self._load()
 
         # epsilonの初期化
@@ -211,7 +211,7 @@ class MasterAgent(Object):
         self.save_dir_path_map = {}
 
         # get drl_dir_path
-        root_dir_path = self.network.get('save_dir_path')
+        root_dir_path = self.network.get('root_dir_path')
         drl_dir_path = root_dir_path / 'data' / 'drl'
         drl_dir_path.mkdir(parents=True, exist_ok=True)
         
@@ -315,7 +315,7 @@ class MasterAgent(Object):
                 self.target_model.load_state_dict(self.model.state_dict())
         
         # bufferをロード
-        self.replay_buffer.load()
+        self.buffer.load()
         return
     
     def _makeEpsilon(self):
@@ -334,7 +334,7 @@ class MasterAgent(Object):
         return
     
     def saveLearningData(self):
-        self.replay_buffer.resetNewDataCount()
+        self.buffer.resetNewDataCount()
         change_flg = False
         for local_agent in self.local_agents.getAll():
             learning_data = local_agent.get('learning_data')
@@ -342,24 +342,24 @@ class MasterAgent(Object):
             if not learning_data:
                 continue
 
-            self.replay_buffer.push(learning_data)
+            self.buffer.push(learning_data)
             learning_data.clear()
 
             change_flg = True
 
-        self.replay_buffer.set('change_flg', change_flg)
+        self.buffer.set('change_flg', change_flg)
         if change_flg:
-            self.replay_buffer.showInfo()
+            self.buffer.showInfo()
         return
     
     def train(self):
         if not self.learning_flg:
             return
         
-        if not self.replay_buffer.get('enough_new_data_flg'):
+        if not self.buffer.get('enough_new_data_flg'):
             return
 
-        batch_data = self.replay_buffer.sample()
+        batch_data = self.buffer.sample()
         for epoch in range(self.num_epochs):
             losses = []
             for data, data_indices in batch_data:
@@ -424,7 +424,7 @@ class MasterAgent(Object):
                 # 優先度を計算しバッファーを更新
                 if epoch == self.num_epochs - 1:
                     priorities = torch.abs(q_values - td_targets).detach().cpu().numpy()
-                    self.replay_buffer.update(data_indices, priorities)
+                    self.buffer.update(data_indices, priorities)
 
                 # 更新カウントを増やす（更新のインターバルを超えたらターゲットモデルを更新，10回ごとに更新回数を表示）
                 self.update_count += 1
@@ -447,7 +447,7 @@ class MasterAgent(Object):
         print(f"Average Loss: {mean_loss:.3f}, Min Loss: {min_loss:.3f}, Max Loss: {max_loss:.3f}, Std Loss: {std_loss:.3f}")
 
         if epoch == 0:
-            self.replay_buffer.set('initial_priority', max_loss)
+            self.buffer.set('initial_priority', max_loss)
             
 
         # 10回ごとに更新情報を表示（それ以外はスキップ）
@@ -462,7 +462,6 @@ class MasterAgent(Object):
             
     def save(self):
         if not self.learning_flg:
-            print(f"Master Agent {self.id}: This simulation is for evaluation only.")
             return
         
         if self.finish_flg or self.simulation_count % self.save_interval == 0:
@@ -479,28 +478,18 @@ class MasterAgent(Object):
             # save model and optimizer
             torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')
             torch.save(self.target_model.state_dict(), self.save_dir_path_map['model'] / 'target_q_net.pth')
+            torch.save(self.optimizer.state_dict(), self.save_dir_path_map['optimizer'] / 'optimizer.pth')  
         
-        # bufferを保存
-        self.replay_buffer.save()
-        
-        # shared_resourcesオブジェクトに保存
+            # save replay buffer
+            self.buffer.save()
+
+        # set properties to shared resources
         self.shared_resources.set('model', self.model)
         self.shared_resources.set('target_model', self.target_model)
-        self.shared_resources.set('session_data', {
-            'update_count': self.update_count,
-            'total_reward_record': self.total_reward_record,
-            'update_interval_record': self.update_interval_record,
-            'num_new_data_record': self.num_new_data_record,
-            'batch_record': self.batch_record,
-            'num_epochs_record': self.num_epochs_record,
-            'learning_rate_record': self.learning_rate_record,
-            'weight_decay_record': self.weight_decay_record,
-            'epsilon_record': self.epsilon_record,
-            'simulation_time_record': self.simulation_time_record,
-            'random_phase_probs_record': self.random_phase_probs_record,
-        })
-
-        print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")    
+        self.shared_resources.set('update_count', self.update_count)
+        self.shared_resources.set('session_df', self.session_df)
+        self.shared_resources.set('random_phase_probs_df', self.random_phase_probs_df)  
+        self.shared_resources.set('buffer', self.buffer)
         return
 
     def updateSessionData(self):
@@ -514,9 +503,9 @@ class MasterAgent(Object):
             'episode': self.episode,
             'total_reward': self.avg_total_reward,
             'update_interval': self.update_interval,
-            'num_new_data': self.replay_buffer.get('num_new_data'),
-            'num_batches': self.replay_buffer.get('num_batches'),
-            'batch_size': self.replay_buffer.get('batch_size'),
+            'num_new_data': self.buffer.get('num_new_data'),
+            'num_batches': self.buffer.get('num_batches'),
+            'batch_size': self.buffer.get('batch_size'),
             'num_epochs': self.num_epochs,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,

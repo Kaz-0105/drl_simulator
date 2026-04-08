@@ -123,13 +123,13 @@ class Network(Common):
         
         return
     
-    def update(self, last_flg=False):
+    def update(self, type='normal'):
         self.roads.update()
         self.queue_counters.update()
         self.delay_measurements.update()
         self.data_collection_measurements.update()
-        if last_flg:
-            self.signal_controllers.lastUpdate()
+        if type != 'normal':
+            self.signal_controllers.updateRecord(type=type)
         self.executor.wait()
         return
 
@@ -428,7 +428,7 @@ class Network(Common):
             if self.control_method == 'mpc':
                 self.calc_time_records_map[intersection.get('id')] = intersection.mpc_controller.get('record_df')
             elif self.control_method == 'drl':
-                self.calc_time_records_map[intersection.get('id')] = intersection.local_agent.get('record_df')
+                self.calc_time_records_map[intersection.get('id')] = intersection.local_agent.get('calc_time_record_df')
             else:
                 raise NotImplementedError(f"Not supported control method: {self.control_method}")
         

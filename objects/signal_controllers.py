@@ -33,10 +33,11 @@ class SignalControllers(Container):
         self.executor.wait()
         return
 
-    def lastUpdate(self):
+    def updateRecord(self, type):
         for signal_controller in self.getAll():
-            self.executor.submit(signal_controller.lastUpdate)
+            self.executor.submit(signal_controller.updateRecord, type)
         return
+    
 class SignalController(Object):
     def __init__(self, com, signal_controllers):
         super().__init__()
@@ -164,11 +165,19 @@ class SignalController(Object):
         self.future_phase_ids.popleft()
         return
 
-    def lastUpdate(self):
-        self.record_list.append({
-            'time': int(self.network.get('current_time')),
-            'value': int(self.next_phase_id) if self.next_phase_id is not None else self.record_list[-1]['value'],
-        })
+    def updateRecord(self, type):
+        if type == 'final':
+            self.record_list.append({
+                'time': int(self.network.get('current_time')),
+                'value': int(self.next_phase_id) if self.next_phase_id is not None else self.record_list[-1]['value'],
+            })
+        elif type == 'initial':
+            self.record_list.append({
+                'time': int(self.network.get('current_time')),
+                'value': 0,
+            })
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
 
     def syncDataFrame(self):

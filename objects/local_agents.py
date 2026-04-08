@@ -6,8 +6,8 @@ from neural_networks.q_net_1 import QNet1
 import torch
 import random
 from collections import deque
-import pandas as pd
 import numpy as np
+import pandas as pd
 import time
 
 class LocalAgents(Container):
@@ -59,6 +59,12 @@ class LocalAgents(Container):
         self.executor.wait()
         return
     
+    def syncDataFrame(self):
+        for agent in self.getAll():
+            self.executor.submit(agent.syncDataFrame)
+        self.executor.wait()
+        return
+    
     @property
     def done_flg(self):
         for agent in self.getAll():
@@ -98,13 +104,10 @@ class LocalAgent(Object):
 
         self._initProps()
 
-        # road_lanes_mapを作成
+        # set road_lanes_map
         self._makeRoadLanesMap()
 
-        # フェーズ情報を取得
-        self._makePhases()
-
-        # DNN初期化
+        # initialize model
         self._makeModel()
         self._syncModel()
         return
@@ -134,19 +137,25 @@ class LocalAgent(Object):
         self.epsilon = self.master_agent.get('epsilon')
         self.random_action_type = apex_info['random_action_type']
 
+        # set phases
+        self.phases = self.signal_controller.get('phases', type='copy')
+
+        for phase_id in list(self.phases.keys()):
+            phase_prob = self.random_phase_prob_map[phase_id]
+            if phase_prob == 0:
+                del self.phases[phase_id]
+        
+        # initialize other properties
         self.state_record = deque(maxlen=self.td_steps + 1)
         self.action_record = deque(maxlen=self.td_steps)
         self.reward_record = deque(maxlen=self.td_steps)
-        self.calc_time_record = []
+        self.calc_time_record_list = []
         self.current_state, self.current_action, self.current_reward = None, None, None
         self.done_flg = False
         self.total_reward = 0
         self.learning_data = []
-
         return
     
-    # キー：道路ID，値：lanesオブジェクトの辞書を作成するメソッド
-    # lanesオブジェクトに格納されるlaneオブジェクトは右分岐車線から順番にラベル付けされる
     def _makeRoadLanesMap(self):
         self.road_lanes_map = {}
         for road_order_id in range(1, self.num_roads + 1):
@@ -183,17 +192,6 @@ class LocalAgent(Object):
             self.road_lanes_map[road_order_id] = lanes
 
         return
-    
-    def _makePhases(self):
-        # フェーズ情報を取得
-        self.phases = self.signal_controller.get('phases', type='copy')
-
-        for phase_id in list(self.phases.keys()):
-            phase_prob = self.random_phase_prob_map[phase_id]
-            if phase_prob == 0:
-                del self.phases[phase_id]
-
-        return 
     
     # DNNを初期化するメソッド
     def _makeModel(self):
@@ -407,7 +405,7 @@ class LocalAgent(Object):
             
             end_time = time.time()
             calc_time = end_time - start_time
-            self.calc_time_record.append({'time': self.current_time, 'calc_time': calc_time})
+            self.calc_time_record_list.append({'time': self.current_time, 'calc_time': calc_time})
 
         # 記録
         self.current_action = action
@@ -666,6 +664,11 @@ class LocalAgent(Object):
             if val == 1: 
                 return idx + 1
         raise ValueError('Current phase state is invalid.')
+    
+    def syncDataFrame(self):
+        self.calc_time_record_df = pd.DataFrame(self.calc_time_record_list)
+        return
+
     
     @property
     def infer_flg(self):

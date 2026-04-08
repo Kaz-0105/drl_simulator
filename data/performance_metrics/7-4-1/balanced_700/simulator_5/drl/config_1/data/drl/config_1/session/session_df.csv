@@ -1,3 +1,0 @@
-episode,total_reward,update_interval,num_new_data,num_batches,batch_size,num_epochs,learning_rate,weight_decay,epsilon,simulation_time
-1,1.2939133695436216,2000,25,1,128,1,0.0001,1e-05,0.3,21.0
-2,1.3218518176501368,2000,25,1,128,1,0.0001,1e-05,0.3,21.0
