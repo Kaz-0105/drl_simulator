@@ -182,12 +182,11 @@ class DelayMeasurement(Object):
 
     @property
     def current_delay(self):
-        if len(self.record_list) == 0:
-            return 0.0
-        
         for record in reversed(self.record_list):
-            if record['value'] is not None:
+            if not np.isnan(record['value']):
                 return record['value']
+        
+        return 0.0
 
     @property
     def start_link(self):

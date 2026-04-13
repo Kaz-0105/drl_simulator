@@ -2,10 +2,10 @@ simulator:
   control_method : drl              # mpc, drl, scoot
   layout_name : 7-4-1               # layout folder name
   inflow_name : balanced_700        # inflow file name
-  num_simulations: 1                # number of simulations to run
-  simulation_time: 20             # simulation time for each simulation (seconds)
+  num_simulations: 500              # number of simulations to run
+  simulation_time: 500              # simulation time for each simulation (seconds)
   seed:
-    is_random: false                # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
+    is_random: true                 # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
     value: 1                        # if is_random is false, this value is used (you should select from 1 to 100.)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -19,54 +19,78 @@ simulator:
     flg: true                       # if true, you can change config during simulation usually used in drl experiments
 
 drl:
-  method: apex                 # DRLの手法の指定
-  learning_flg: true           # 学習を行うかどうか
-  duration_steps: 5            # 1回の予測で決める時間ステップ幅
-  network_id: 1                # ニューラルネットワークのID
-  state_id: 2                  # 状態のテンプレートID
-  data_augmentation_flg: true  # データ拡張を行うかどうか
-  num_vehicles: 20             # 自動車台数
-  reward_id: 2                 # 報酬
-  done_reward: -50             # エピソード終了時のペナルティ
-  bc_flg: false                # 行動クローン初期化
-  save_interval: 5             # データを保存する間隔
-  stop:
-    flg: true                  # k回目のシミュレーションで強制終了するかどうか
-    type: episode              # 'episode': エピソード数で指定, 'interval': 間隔で指定
-    episode: 400               # 強制終了するエピソード数
-    interval: 100              # 強制終了する間隔
-
-apex:
-  td_steps: 1                  # TD法の参照するステップ数
-  update_interval: 2000        # ターゲットネットワークの同期間隔
-  buffer:
-    num_new_data: 25           # データが何個たまったら学習を行うか
-    size: 200000               # リプレイバッファのサイズ
+  learning:
+    flg: true
+    learning_rate: 1e-4        # learning rate for drl
+    threshold: 25     # the number of new data for each learning update
     batch:
-      number: 1                # バッチ数
-      size: 128                # バッチサイズ
-    initial_priority: 500      # 初期優先度
-    priority_reset: 
-      flg: true                # 優先度のリセットを行うかどうか
-      type: interval           # 'episode': エピソード数で指定, 'interval': 間隔で指定
-      episode: 10              # 優先度をリセットするエピソード
-      interval: 10             # 優先度をリセットする間隔
-  num_epochs: 1                # 更新のエポック数
-  gamma: 0.95                  # 割引率
-  learning_rate: 1e-4          # 学習率
-  weight_decay: 1e-5           # 学習時のL2正則化の重み減衰
-  random_action_type: 1        # 1: 完全ランダム, 2: 自動車台数に基づいたランダム
-  epsilon:                     
-    schedule_flg: true         # ε-greedy法のスケジューリング
-    value: 0                   # εの値（schedule_flgがfalseのとき）
-
-bc:
-  learning_flg: false          # 学習を行うかどうか
-  network_id: 1                # 行動クローンを行うネットワーク構造のID
-  learning_rate: 1e-5          # 学習率
-  weight_decay: 1e-4           # 学習時のL2正則化の重み減衰
-  batch_size: 128              # バッチサイズ
-  num_epochs: 12               # エポック数  
+      number: 10                   # batch number for learning
+      size: 128                  # batch size for learning
+    epoch: 1                      # epoch for learning
+    weight_decay: 1e-5             # weight decay for learning
+    stop:
+      type: episode     # episode or interval
+      num_episodes: 400
+    save:
+      interval: 10
+  framework: 
+    type: apex
+    apex:
+      td_steps: 1
+      target_network:
+        update_interval: 2000
+      buffer:
+        size: 200000
+        file_capacity: 1000
+        priority:
+          initial_value: 500
+          reset:
+            flg: true
+            interval: 10
+      epsilon:
+        type: linear # linear or fix
+        linear:
+          min: 0.0
+          max: 1.0
+        fix:
+          value: 0.0
+  duration_steps: 5
+  state:
+    vehicle:
+      number : 20
+      position: true
+      speed: true
+      route: true
+    lane:
+      length: true
+      type: true
+      num_vehicles: true
+    road:
+      queue: true
+      delay: true
+    phase:
+  action:
+    random_type: 2 # 1: completely random, 2: random based on the number of vehicles
+  reward: 
+    id: 2
+    done_penalty: -50
+    gamma: 0.95
+  architecture:
+    type: proto # proto only
+    proto:
+      num_hidden_layers: 1
+      compression:
+        type: linear # linear or geometric
+        rate: 0.5
+    common:
+      initialization:
+        type: null # null or bc
+      activation_function:
+        type: leaky_relu # relu or leaky_relu
+        leaky_relu:
+          alpha: 0.01
+  data_augmentation:
+    flg: true
   
 mpc:
   horizon: 5                  # predictive horizon

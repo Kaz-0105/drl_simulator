@@ -4,7 +4,7 @@ venv/
 *.avi
 **/__pycache__/
 **/network.results/
-buffers/
-backup/
+/buffers/
+/backup/
 *.zip
 data/drl

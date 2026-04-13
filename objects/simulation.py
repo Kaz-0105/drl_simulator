@@ -8,7 +8,6 @@ class Simulation(Common):
     GREEN = 3
     
     def __init__(self, vissim):
-        # 継承
         super().__init__()
 
         # set config and vissim object

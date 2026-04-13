@@ -1,7 +1,6 @@
 from libs.container import Container
 from libs.object import Object
 from objects.roads import Roads
-import pandas as pd
 
 class Intersections(Container):
     def __init__(self, upper_object):
@@ -21,13 +20,15 @@ class Intersections(Container):
         return
 
     def _initElements(self):
-        intersections_df = self.config.get('intersections')
+        intersections_df = self.config.get('intersections_df')
         for _, intersection_row in intersections_df.iterrows():
             self.add(Intersection(intersection_row, self))
         return
+    
 class Intersection(Object):
     def __init__(self, intersection_row, intersections):
         super().__init__()
+        
         self.config = intersections.config
         self.executor = intersections.executor
         self.intersections = intersections
@@ -40,8 +41,8 @@ class Intersection(Object):
         self.id = int(intersection_row['id'])
         self.num_roads = int(intersection_row['num_roads'])
 
-        self.input_roads = Roads(self, {'type': 'input'})
-        self.output_roads = Roads(self, {'type': 'output'})
+        self.input_roads = Roads(self, type='input')
+        self.output_roads = Roads(self, type='output')
 
         return
 

@@ -11,7 +11,7 @@ import pandas as pd
 
 
 class Roads(Container): 
-    def __init__(self, upper_object, options = None):
+    def __init__(self, upper_object, type=None):
         super().__init__()
 
         self.config = upper_object.config
@@ -23,7 +23,7 @@ class Roads(Container):
 
         elif upper_object.__class__.__name__ == 'Intersection':
             self.intersection = upper_object
-            self.type = options['type']
+            self.type = type
             self._initElements()
         
         else:
@@ -33,42 +33,48 @@ class Roads(Container):
     
     def _initElements(self):
         if self.has('network'):
-            roads = self.config.get('roads')
-            for _, road_row in roads.iterrows():
+            roads_df = self.config.get('roads_df')
+            for _, road_row in roads_df.iterrows():
                 self.add(Road(road_row, self))
 
         elif self.has('intersection'):
-            tags = self.config.get('intersection_road_tags')
-            target_tags = tags[(tags['intersection_id'] == self.intersection.get('id')) & (tags['type'] == self.type)]
+            # get intersection_road_tags_df
+            tags_df = self.config.get('intersection_road_tags_df')
+            target_tags_df = tags_df[
+                (tags_df['intersection_id'] == self.intersection.get('id')) & 
+                (tags_df['type'] == self.type)
+            ]
 
-            network = self.intersection.network
-            roads = network.roads
-
-            for _, tag in target_tags.iterrows():
-                road = roads[tag['road_id']]
-                self.add(road, tag['order_id'])
+            # connect intersection and roads
+            roads = self.intersection.network.roads
+            for _, tag_row in target_tags_df.iterrows():
+                road = roads[tag_row['road_id']]
+                self.add(road, tag_row['order_id'])
 
                 if self.type == 'input':
                     road.set('output_intersection', self.intersection)
                 elif self.type == 'output':
                     road.set('input_intersection', self.intersection)
-                
+                else:
+                    raise NotImplementedError(f"Not supported road type: {self.type}")
+
+            # validation of the number of roads
             if self.count() != self.intersection.get('num_roads'):
                 raise Exception(f"Intersection {self.intersection.get('id')} has {self.intersection.get('num_roads')} roads, but roads object has {self.count()} {self.type} roads.")
             
-            # 流出道路の場合はここで終わり
+            # when type is output, return here
             if self.type == 'output':
                 return
             
-            # turn_ratioについての設定
-            tags = self.config.get('intersection_turn_ratio_tags')
-            target_tags = tags[tags['intersection_id'] == self.intersection.get('id')]
-            turn_ratio_templates = self.config.get('num_roads_turn_ratio_map')[self.count()]
+            # set turn_ratios for each road
+            tags_df = self.config.get('intersection_turn_ratio_tags_df')
+            target_tags_df = tags_df[tags_df['intersection_id'] == self.intersection.get('id')]
+            turn_ratio_df = self.config.get('turn_ratio_df_map')[self.count()]
     
-            for _, tag in target_tags.iterrows():
-                road_order_id = tag['road_order_id']
-                turn_ratio_template_id = tag['turn_ratio_template_id']
-                turn_ratio_record = turn_ratio_templates[turn_ratio_templates['id'] == turn_ratio_template_id]
+            for _, tag_row in target_tags_df.iterrows():
+                road_order_id = tag_row['road_order_id']
+                turn_ratio_template_id = tag_row['turn_ratio_template_id']
+                turn_ratio_record = turn_ratio_df[turn_ratio_df['id'] == turn_ratio_template_id]
                 turn_ratios = {}
                 for order_id in range(1, self.count()):
                     turn_ratios[order_id] = turn_ratio_record[f"ratio{order_id}"].to_numpy()[0]
@@ -102,6 +108,14 @@ class Road(Object):
         self.network = roads.network
 
         self._initProps(road_row)
+
+        # initialize links, queue_counters, delay_measurements, signal_groups, data_collection_points, and vehicle_routing_decision objects
+        self.links = Links(self)
+        self.queue_counters = QueueCounters(self)
+        self.delay_measurements = DelayMeasurements(self)
+        self.signal_groups = SignalGroups(self)
+        self.data_collection_points = DataCollectionPoints(self)
+        self.vehicle_routing_decision = None
         return
 
     def _initProps(self, road_row):
@@ -109,82 +123,18 @@ class Road(Object):
         self.id = int(road_row['id'])
         self.max_speed = int(road_row['max_speed'])
         self.type = road_row['type']
-
-        # initialize links
-        self.links = Links(self)
-
-        # initialize queue_counters, delay_measurements, signal_groups
-        self.queue_counters = QueueCounters(self)
-        self.delay_measurements = DelayMeasurements(self)
-        self.signal_groups = SignalGroups(self)
-
-        # initialize direction_signal_group_map
-        self.direction_signal_group_map = {}
-
-        # initialize data_collection_points
-        self.data_collection_points = DataCollectionPoints(self)
+    
+        # initialize route_signal_group_map
+        self.route_signal_group_map = {}
 
         # initialize records
         self.speed_record_list = []
         self.speed_record_df = None
         self.num_vehs_record_list = []
         self.num_vehs_record_df = None
-        return
 
-    def initEffectiveStorageLengths(self):
-        # skip if the road is not input road
-        if not self.has('output_intersection'):
-            return
-        
-        self.effective_storage_lengths = {'left': 0.0, 'straight': 0.0, 'right': 0.0}
-
-        # 左折・直進・右折の割合を取得
-        turn_ratios = {1: 0.0, 2: 0.0, 3: 0.0}
-        for vehicle_route in self.vehicle_routing_decision.vehicle_routes.getAll():
-            direction_id = vehicle_route.get('direction_id')
-            turn_ratios[int(direction_id)] += vehicle_route.get('turn_ratio')
-
-        # 道路タイプで分岐
-        if self.type == 1:
-            # 車線数：分岐前1車線，分岐後2車線
-            # 進路：左車線は左折と直進，右車線は右折
-            
-            #　左車線について
-            before_branch_length = self.right_connector.get('from_pos')
-            after_branch_length = self.main_link.get('length') - before_branch_length
-            self.effective_storage_lengths['left'] += (turn_ratios[1] / (turn_ratios[1] + turn_ratios[2] + turn_ratios[3])) * before_branch_length + (turn_ratios[1] / (turn_ratios[1] + turn_ratios[2])) * after_branch_length
-            self.effective_storage_lengths['straight'] += (turn_ratios[2] / (turn_ratios[1] + turn_ratios[2] + turn_ratios[3])) * before_branch_length + (turn_ratios[2] / (turn_ratios[1] + turn_ratios[2])) * after_branch_length
-            self.effective_storage_lengths['right'] += (turn_ratios[3] / (turn_ratios[1] + turn_ratios[2] + turn_ratios[3])) * before_branch_length
-
-            # 右車線について
-            branch_length = 0.0
-            branch_length += self.right_link.get('length')
-            branch_length += self.right_connector.get('length') 
-            branch_length -= self.right_connector.get('to_pos')
-            self.effective_storage_lengths['right'] += branch_length
-
-        elif self.type == 2:
-            # 車線数：分岐前2車線，分岐後3車線
-            # 進路：左車線は左折と直進，真ん中の車線は直進，右車線は右折
-
-            # 左車線について
-            main_link_length = self.main_link.get('length')
-            self.effective_storage_lengths['left'] += (turn_ratios[1] / (turn_ratios[1] + (turn_ratios[2] / 2))) *  main_link_length
-            self.effective_storage_lengths['straight'] += ((turn_ratios[2] / 2) / (turn_ratios[1] + (turn_ratios[2] / 2))) *  main_link_length
-
-            # 真ん中の車線について
-            before_branch_length = self.right_connector.get('from_pos')
-            after_branch_length = self.main_link.get('length') - before_branch_length
-            self.effective_storage_lengths['straight'] += ((turn_ratios[2] / 2) / (turn_ratios[3] + (turn_ratios[2] / 2))) * before_branch_length + after_branch_length
-            self.effective_storage_lengths['right'] += (turn_ratios[3] / (turn_ratios[3] + (turn_ratios[2] / 2))) * before_branch_length
-
-            # 右車線について
-            branch_length = 0.0
-            branch_length += self.right_link.get('length')
-            branch_length += self.right_connector.get('length') 
-            branch_length -= self.right_connector.get('to_pos')
-            self.effective_storage_lengths['right'] += branch_length
-
+        if self.network.get('control_method') == 'scoot':
+            self.effective_storage_length_map = None
         return
 
     def update(self):
@@ -264,17 +214,13 @@ class Road(Object):
         return self.vehicles_df.shape[0]
     
     @property
-    def direction_signal_color_map(self):
-        direction_signal_color_map = {}
-        for direction_id, signal_group_id in self.direction_signal_group_map.items():
+    def route_signal_color_map(self):
+        route_signal_color_map = {}
+        for route_id, signal_group_id in self.route_signal_group_map.items():
             signal_group = self.signal_groups[signal_group_id]
-            direction_signal_color_map[direction_id] = signal_group.get('current_signal_color')
+            route_signal_color_map[route_id] = signal_group.get('current_signal_color')
         
-        return direction_signal_color_map
-    
-    @property
-    def vehicle_routing_decision(self):
-        return self.main_link.vehicle_routing_decision
+        return route_signal_color_map
 
 
     

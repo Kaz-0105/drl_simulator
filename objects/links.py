@@ -62,8 +62,8 @@ class Links(Container):
     def _initInputs(self):
         # get inflows_df
         inflow_name = self.network.simulation.get('inflow_name')
-        link_input_tags_map = self.config.get('link_input_tags_map')
-        inflows_df = link_input_tags_map[inflow_name]
+        link_input_tags_df_map = self.config.get('link_input_tags_df_map')
+        inflows_df = link_input_tags_df_map[inflow_name]
 
         # set input_volume to each link object
         for _, inflow_row in inflows_df.iterrows():
@@ -93,7 +93,8 @@ class Links(Container):
         return
         
     def _makeRoadConnections(self):
-        for _, tag_row in self.config.get('road_link_tags').iterrows():
+        tags_df = self.config.get('road_link_tags_df')
+        for _, tag_row in tags_df.iterrows():
             road = self.network.roads[tag_row['road_id']]
             link = self[tag_row['link_id']]
             

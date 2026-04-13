@@ -41,6 +41,14 @@ class Network(Common):
         
         self._setParametersToVissim()
         return
+    
+    @property
+    def current_time(self):
+        return self.simulation.get('current_time')
+    
+    @property
+    def simulation_count(self):
+        return self.vissim.get('simulation_count')
 
     def _initProps(self):
         self.root_dir_path = self.vissim.get('root_dir_path')
@@ -60,7 +68,7 @@ class Network(Common):
 
         if self.control_method == 'drl':
             drl_info = self.config.get('drl_info')
-            self.drl_method = drl_info['method']
+            self.drl_framework = drl_info['framework']['type']
 
         return
     
@@ -82,8 +90,12 @@ class Network(Common):
         if self.control_method == 'drl':
             # set master_agents and local_agents objects
             device = self.simulation.get('device')
-            self.master_agents = MasterAgents(self, device)
-            self.local_agents = LocalAgents(self, device)
+
+            if self.drl_framework == 'apex':
+                self.master_agents = MasterAgents(self, device)
+                self.local_agents = LocalAgents(self, device)
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
             
         elif self.control_method == 'mpc':
             # set mpc_controllers object
@@ -563,9 +575,7 @@ class Network(Common):
                 )
         return
     
-    @property
-    def current_time(self):
-        return self.simulation.get('current_time')
+    
 
 
 

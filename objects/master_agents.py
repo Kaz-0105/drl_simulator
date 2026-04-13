@@ -1,14 +1,13 @@
 from libs.container import Container
 from libs.object import Object
-from objects.buffer import ReplayBuffer
+from objects.buffers.apex_buffer import ApexBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
-from neural_networks.q_net_1 import QNet1
+from objects.neural_networks.apex.proto_q_net import ProtoQNet
 
 import torch
 import torch.optim as optim
 import torch.nn as nn
-import pickle
 import numpy as np
 import pandas as pd
 import yaml
@@ -93,68 +92,65 @@ class MasterAgent(Object):
         
         # set symmetry_phase_map, random_phase_prob_map, save_dir_path_map
         self._makeSymmetryPhaseMap()
-        self._makeRandomPhaseProbs()
         self._makeSaveDirPathMap()
 
-        # モデルを初期化
-        self._initModel()
-        self.buffer = ReplayBuffer(self)
+        # initialize drl objects
+        self._initDrlObjects()
         
         # model, session, bufferのデータをロード
         self._load()
-
-        # epsilonの初期化
-        self._makeEpsilon()
         
         # LocalAgentオブジェクトを初期化
         self.local_agents = LocalAgents(self)
-
-        # 最適化手法と評価関数を定義
-        self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-
         return
     
+    @property
+    def num_learning_data(self):
+        num_learning_data = 0
+        for local_agent in self.local_agents.getAll():
+            num_learning_data += local_agent.get('num_learning_data')
+        return num_learning_data
+    
+    @property
+    def learning_data_list(self):
+        learning_data_list = []
+        for local_agent in self.local_agents.getAll():
+            learning_data_list.extend(local_agent.get('learning_data_list'))
+        return learning_data_list
+    
     def _initProps(self, num_roads, num_lanes_tuple):
+        # set id and num_roads
         self.id = self.master_agents.count() + 1
         self.num_roads = num_roads
 
+        # set phases_df and num_phases
+        phases_df_map = self.config.get('phases_df_map')
+        self.phases_df = phases_df_map[self.num_roads]  
+        self.num_phases = self.phases_df.shape[0]
+
+        # set random_phase_prob_map
+        self.random_phase_prob_map = {}
+        for _, row in self.phases_df.iterrows():
+            self.random_phase_prob_map[int(row['id'])] = float(row['random_prob'])
+        total_prob = sum(self.random_phase_prob_map.values())
+        for phase_id in self.random_phase_prob_map:
+            self.random_phase_prob_map[phase_id] /= total_prob
+
+        # set num_lanes_map
         self.num_lanes_map = {}
         for road_id in range(1, self.num_roads + 1):
             self.num_lanes_map[road_id] = num_lanes_tuple[road_id - 1]
 
+        # set num_simulations
         simulator_info = self.config.get('simulator_info')
         self.num_simulations = simulator_info['num_simulations']
 
+        # set drl information
         drl_info = self.config.get('drl_info')
-        self.duration_steps = drl_info['duration_steps']
-        self.network_id = drl_info['network_id']
-        self.reward_id = drl_info['reward_id']
-        self.done_reward = drl_info['done_reward']
-        self.data_augmentation_flg = drl_info['data_augmentation_flg']
-        self.num_vehicles = drl_info['num_vehicles']
-        self.bc_flg = drl_info['bc_flg']
-        self.learning_flg = drl_info['learning_flg']
-        self.state_id = drl_info['state_id']
-        self.save_interval = drl_info['save_interval']
-        self.stop_flg = drl_info['stop']['flg']
-        self.stop_type = drl_info['stop']['type']
-
-        if self.stop_type == 'episode':
-            self.stop_episode = drl_info['stop']['episode']
-        elif self.stop_type == 'interval':
-            self.stop_interval = drl_info['stop']['interval']
-        else:
-            raise ValueError(f"Invalid stop type: {self.stop_type}")
-        
-        apex_info = self.config.get('apex_info')
-        self.td_steps = apex_info['td_steps']
-        self.update_interval = apex_info['update_interval']
-        self.buffer_size = apex_info['buffer']['size']
-        self.weight_decay = apex_info['weight_decay']
-        self.gamma = apex_info['gamma']
-        self.learning_rate = apex_info['learning_rate']
-        self.num_epochs = apex_info['num_epochs']
+        self.learning_flg = drl_info['learning']['flg']
+        self.architecture = drl_info['architecture']['type']
+        self.learning_rate = float(drl_info['learning']['learning_rate'])
+        self.weight_decay = float(drl_info['learning']['weight_decay'])
 
         # set update_count, episode, and session_df
         self.update_count = 0
@@ -174,9 +170,9 @@ class MasterAgent(Object):
     # 対称性のあるフェーズの組み合わせをマッピングするメソッド
     def _makeSymmetryPhaseMap(self):
         self.symmetry_phase_map = {}
-        symmetry_phase_tags = self.config.get('symmetry_phase_tags')
+        symmetry_phases_df_map = self.config.get('symmetry_phases_df_map')
         if self.num_roads == 4:
-            tmp_tags = symmetry_phase_tags[self.num_roads]
+            tmp_tags = symmetry_phases_df_map[self.num_roads]
             for _, tmp_tag in tmp_tags.iterrows():
                 phase_id = tmp_tag['phase_id']
                 symmetry_phase_id = tmp_tag['symmetry_phase_id']
@@ -190,21 +186,6 @@ class MasterAgent(Object):
             # 後々定義
             raise ValueError(f"Symmetry phase map is not defined for {self.num_roads} roads.")
         
-        return
-
-    # ランダム行動時の行動の確率分布を作成するメソッド
-    def _makeRandomPhaseProbs(self):
-        num_roads_phases_map = self.config.get('num_roads_phases_map')
-        phases = num_roads_phases_map[self.num_roads]
-        self.random_phase_prob_map = {}
-    
-        for _, row in phases.iterrows():
-            self.random_phase_prob_map[int(row['id'])] = float(row['random_prob'])
-        
-        # 確率の合計が1になるように正規化
-        total_prob = sum(self.random_phase_prob_map.values())
-        for phase_id in self.random_phase_prob_map:
-            self.random_phase_prob_map[phase_id] /= total_prob
         return
         
     def _makeSaveDirPathMap(self):
@@ -225,7 +206,7 @@ class MasterAgent(Object):
             with open(config_file_path, 'r', encoding='utf-8') as f:
                 config_yaml = yaml.safe_load(f)
 
-            if config_yaml == {'drl': self.config.get('drl_info'), 'apex': self.config.get('apex_info')}:
+            if config_yaml == self.config.get('drl_info'):
                 found_flg = True
                 break
         
@@ -237,7 +218,7 @@ class MasterAgent(Object):
                     config_dir_path.mkdir(parents=True, exist_ok=False)
                     config_file_path = config_dir_path / 'config.yaml'
                     with config_file_path.open('w', encoding='utf-8') as f:
-                        yaml.dump({'drl': self.config.get('drl_info'), 'apex': self.config.get('apex_info')}, f)
+                        yaml.dump(self.config.get('drl_info'), f)
                     break
                 config_id += 1
         
@@ -253,17 +234,35 @@ class MasterAgent(Object):
 
         return
         
-    def _initModel(self):
-        # modelを初期化
-        if self.network_id == 1:
-            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
+    def _initDrlObjects(self):
+        # initialize model and target_model
+        if self.architecture == 'proto':
+            self.model = ProtoQNet(self)
+        else:
+            raise NotImplementedError(f"Not supported architecture: {self.architecture}")
         self.model.train()
         self.model.to(self.device)
 
-        if self.network_id == 1:
-            self.target_model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
+        if self.architecture == 'proto':
+            self.target_model = ProtoQNet(self)
+        else:
+            raise NotImplementedError(f"Not supported architecture: {self.architecture}")
+        
         self.target_model.eval()
         self.target_model.to(self.device)
+
+        # initialize buffer
+        self.buffer = ApexBuffer(self)
+
+        # initialize optimizer and criterion
+        self.criterion = nn.MSELoss()
+
+        self.optimizer = optim.Adam(
+            self.model.parameters(), 
+            lr=self.learning_rate, 
+            weight_decay=self.weight_decay
+        )
+        
         return
 
     def _load(self):
@@ -313,9 +312,6 @@ class MasterAgent(Object):
                 self.target_model.load_state_dict(torch.load(target_model_file_path))
             else:
                 self.target_model.load_state_dict(self.model.state_dict())
-        
-        # bufferをロード
-        self.buffer.load()
         return
     
     def _makeEpsilon(self):
@@ -334,22 +330,11 @@ class MasterAgent(Object):
         return
     
     def saveLearningData(self):
-        self.buffer.resetNewDataCount()
-        change_flg = False
-        for local_agent in self.local_agents.getAll():
-            learning_data = local_agent.get('learning_data')
-            
-            if not learning_data:
-                continue
-
-            self.buffer.push(learning_data)
-            learning_data.clear()
-
-            change_flg = True
-
-        self.buffer.set('change_flg', change_flg)
-        if change_flg:
-            self.buffer.showInfo()
+        if self.num_learning_data == 0:
+            self.buffer.set('change_flg', False)
+            return
+        
+        self.buffer.update()
         return
     
     def train(self):
@@ -434,6 +419,13 @@ class MasterAgent(Object):
 
             # 更新情報を表示
             self._showUpdateInfo(epoch, losses)
+        return
+    
+    def clearLearningData(self):
+        for local_agent in self.local_agents.getAll():
+            learning_data_list = local_agent.get('learning_data_list')
+            learning_data_list.clear()
+        
         return
     
     def _showUpdateInfo(self, epoch, losses):
