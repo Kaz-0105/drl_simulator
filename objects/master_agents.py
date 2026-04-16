@@ -48,36 +48,28 @@ class MasterAgents(Container):
             ))
         
         return
-
-    def updateBuffer(self):
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.updateBuffer)
-        
+    
+    def update(self, type):
+        for agent in self.getAll():
+            self.executor.submit(agent.update, type)
         self.executor.wait()
         return
     
     def train(self):
         for master_agent in self.getAll():
             self.executor.submit(master_agent.train)
-        
         self.executor.wait()
-        return
-    
-    def updateSessionData(self):
-        # トータルの報酬のレコードを更新
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.updateSessionData)
-        self.executor.wait()
-
-        # 結果を表示
-        for master_agent_id in self.getKeys(container_flg=True, sorted_flg=True):
-            master_agent = self[master_agent_id]
-            master_agent.showTotalReward()
         return
     
     def save(self):
         for master_agent in self.getAll():
             self.executor.submit(master_agent.save)
+        self.executor.wait()
+        return
+
+    def showInfo(self, type):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.showInfo, type)
         self.executor.wait()
         return
 
@@ -102,10 +94,10 @@ class MasterAgent(Object):
         # initialize drl objects
         self._initDrlObjects()
         
-        # model, session, bufferのデータをロード
+        # load model, session, and buffer
         self._load()
         
-        # LocalAgentオブジェクトを初期化
+        # set local_agents
         self.local_agents = LocalAgents(self)
         return
     
@@ -118,12 +110,27 @@ class MasterAgent(Object):
     
     @property
     def finish_flg(self):
-        if self.stop_type == 'interval':
-            return self.episode % self.stop_interval == 0
-        elif self.stop_type == 'episode':
-            return self.episode == self.stop_episode
+        if self.simulation_type == 'test':
+            return True
+        
+        elif self.simulation_type == 'train':
+            if self.stop_type == 'interval':
+                return self.episode % self.stop_interval == 0
+            elif self.stop_type == 'episode':
+                return self.episode == self.stop_episode
+            else:
+                raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
+        
         else:
-            raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
+            raise NotImplementedError(f"Not supported DRL type: {self.simulation_type}")
+        
+    @property
+    def avg_total_reward(self):
+        sum_total_reward = 0
+        for local_agent in self.local_agents.getAll():
+            total_reward = local_agent.get('total_reward')
+            sum_total_reward += total_reward
+        return sum_total_reward / self.local_agents.count()
     
     def _initProps(self, num_roads, num_lanes_tuple):
         # set id and num_roads
@@ -150,8 +157,8 @@ class MasterAgent(Object):
         
         # set drl information
         drl_info = self.config.get('drl_info')
-        self.type = drl_info['type']
-
+        self.simulation_type = drl_info['simulation_type']
+            
         self.num_batches = drl_info['training']['batch']['number']
         self.batch_size = drl_info['training']['batch']['size']
         self.num_epochs = drl_info['training']['epoch']
@@ -190,7 +197,6 @@ class MasterAgent(Object):
                 intersection.set('master_agent', self)
         return
     
-    # 対称性のあるフェーズの組み合わせをマッピングするメソッド
     def _makeSymmetryPhaseMap(self):
         self.symmetry_phase_map = {}
         symmetry_phases_df_map = self.config.get('symmetry_phases_df_map')
@@ -206,8 +212,7 @@ class MasterAgent(Object):
 
                 self.symmetry_phase_map[phase_id][symmetry_type] = symmetry_phase_id
         else:
-            # 後々定義
-            raise ValueError(f"Symmetry phase map is not defined for {self.num_roads} roads.")
+            raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
         
         return
         
@@ -382,12 +387,60 @@ class MasterAgent(Object):
                 print(f"{name}: {param.grad.norm().item():.3f}")
         return
     
-    def updateBuffer(self):
-        self.buffer.update(learning_data_list=self.learning_data_list)
+    def _updateSession(self):
+        if self.simulation_type == 'test':
+            return
+        
+        # update session_df
+        session_row = pd.DataFrame({
+            'episode': self.episode,
+            'total_reward': self.avg_total_reward,
+            'update_interval': self.update_interval,
+            'new_data_count': self.buffer.get('new_data_count'),
+            'num_batches': self.buffer.get('num_batches'),
+            'batch_size': self.buffer.get('batch_size'),
+            'num_epochs': self.num_epochs,
+            'learning_rate': self.learning_rate,
+            'weight_decay': self.weight_decay,
+            'simulation_time': self.simulation_time,
+        }, index=[0])
+        if self.session_df is None:
+            self.session_df = session_row.copy()
+        else:
+            self.session_df = pd.concat([self.session_df, session_row], ignore_index=True)
+
+        # update phase_probs_df
+        phase_probs_row = pd.DataFrame({f"phase_{phase_id}": prob for phase_id, prob in self.random_phase_prob_map.items()}, index=[0])
+        if self.phase_probs_df is None:
+            self.phase_probs_df = phase_probs_row.copy()
+        else:
+            self.phase_probs_df = pd.concat([self.phase_probs_df, phase_probs_row], ignore_index=True)
+
+        # update epsilons_df
+        epsilon_record_row = pd.DataFrame(
+            {f"intersection_{agent.intersection.get('id')}": agent.get('epsilon') for agent in self.local_agents.getAll()}, 
+            index=[0]
+        )
+        if self.epsilon_record_df is None:
+            self.epsilon_record_df = epsilon_record_row.copy()
+        else:
+            self.epsilon_record_df = pd.concat([self.epsilon_record_df, epsilon_record_row], ignore_index=True)
+        return
+    
+    def update(self, type):
+        if type == 'buffer':
+            self.buffer.update(learning_data_list=self.learning_data_list)
+
+        elif type == 'session':
+            self._updateSession()
+
+        else:
+            raise NotImplementedError(f"Not supported update type: {type}")
+        
         return
     
     def train(self):
-        if self.type == 'test':
+        if self.simulation_type == 'test':
             return
         if not self.buffer.get('change_flg'):
             return
@@ -430,14 +483,14 @@ class MasterAgent(Object):
                 self.optimizer.step()
                 loss_list.append(loss.item())
 
+                # synchronize target model if update interval is reached
+                self.update_count += 1
+                if self.update_count >= self.update_interval:
+                    self.target_model.load_state_dict(self.model.state_dict())
+                    self.update_count = 0
+                
                 if epoch == self.num_epochs:
                     shuffled_priority_list.extend(torch.abs(q_values - td_targets).squeeze().detach().cpu().numpy().tolist())
-
-            # synchronize target model if update interval is reached
-            self.update_count += 1
-            if self.update_count >= self.update_interval:
-                self.target_model.load_state_dict(self.model.state_dict())
-                self.update_count = 0
             
             # update avg_loss_list
             loss_list_map['avg'].append(np.mean(loss_list).item())
@@ -465,7 +518,7 @@ class MasterAgent(Object):
         return
             
     def save(self):
-        if self.type == 'test':
+        if self.simulation_type == 'test':
             return
         
         # save session_info, session_df, phase_probs_df, and epsilon_record_df
@@ -504,65 +557,16 @@ class MasterAgent(Object):
         self.shared_resources.set('epsilon_record_df', self.epsilon_record_df)
         self.shared_resources.set('buffer', self.buffer)
         return
-
-    def updateSessionData(self):
-        self._updateAverageTotalReward()
-
-        if self.type == 'test':
-            return
+    
+    def showInfo(self, type):
+        if type == 'result':
+            print('==============================================')
+            print('status: total rewards')
+            print(f"mastar agent id: {self.id}")
+            print(f"average total reward: {self.avg_total_reward:.1f}")
+        else:
+            raise NotImplementedError(f"Not supported info type: {type}")
         
-        # update session_df
-        session_row = pd.DataFrame({
-            'episode': self.episode,
-            'total_reward': self.avg_total_reward,
-            'update_interval': self.update_interval,
-            'new_data_count': self.buffer.get('new_data_count'),
-            'num_batches': self.buffer.get('num_batches'),
-            'batch_size': self.buffer.get('batch_size'),
-            'num_epochs': self.num_epochs,
-            'learning_rate': self.learning_rate,
-            'weight_decay': self.weight_decay,
-            'simulation_time': self.simulation_time,
-        }, index=[0])
-        if self.session_df is None:
-            self.session_df = session_row.copy()
-        else:
-            self.session_df = pd.concat([self.session_df, session_row], ignore_index=True)
-
-        # update phase_probs_df
-        phase_probs_row = pd.DataFrame({f"phase_{phase_id}": prob for phase_id, prob in self.random_phase_prob_map.items()}, index=[0])
-        if self.phase_probs_df is None:
-            self.phase_probs_df = phase_probs_row.copy()
-        else:
-            self.phase_probs_df = pd.concat([self.phase_probs_df, phase_probs_row], ignore_index=True)
-
-        # update epsilons_df
-        epsilon_record_row = pd.DataFrame(
-            {f"intersection_{agent.intersection.get('id')}": agent.get('epsilon') for agent in self.local_agents.getAll()}, 
-            index=[0]
-        )
-        if self.epsilon_record_df is None:
-            self.epsilon_record_df = epsilon_record_row.copy()
-        else:
-            self.epsilon_record_df = pd.concat([self.epsilon_record_df, epsilon_record_row], ignore_index=True)
-        return
-    
-    def _updateAverageTotalReward(self):
-        sum_total_reward = 0
-        for local_agent in self.local_agents.getAll():
-            total_reward = local_agent.get('total_reward')
-            sum_total_reward += total_reward
-        self.avg_total_reward = sum_total_reward / self.local_agents.count()
-        return
-    
-    def showInfo(self):
-        print('==============================================')
-        print('status: total rewards')
-        for local_agent_id in self.local_agents.getKeys(container_flg=True, sorted_flg=True):
-            local_agent = self.local_agents[local_agent_id]
-            print(f"local agent (id: {local_agent_id}): ")
-            print(f"Local Agent {local_agent_id}: Total Reward = {local_agent.get('total_reward'):.1f}")
-        print(f"Master Agent {self.id}: Average Total Reward = {self.avg_total_reward:.1f}")
         return
     
     def showTotalReward(self):

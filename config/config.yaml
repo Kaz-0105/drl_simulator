@@ -1,11 +1,9 @@
 simulator:
   control_method : drl              # mpc, drl, scoot
+  seed: 1                           # random seed for vissim
   layout_name : 7-4-1               # layout folder name
   inflow_name : balanced_700        # inflow file name
-  simulation_time: 50              # simulation time for each simulation (seconds)
-  seed:
-    is_random: true                 # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
-    value: 1                        # if is_random is false, this value is used (you should select from 1 to 100.)
+  simulation_time: 50               # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
   max_workers: 7                    # the number of parallel workers
@@ -15,8 +13,8 @@ simulator:
     flg: true                       # if true, you can change config during simulation usually used in drl experiments
 
 drl:
-  type: train # train or test
-  stop:
+  simulation_type: train # train or test
+  stop: 
     type: episode # episode or interval
     episode: 100
     interval: 100

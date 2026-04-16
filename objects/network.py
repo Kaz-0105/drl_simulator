@@ -30,16 +30,11 @@ class Network(Common):
         self.executor = vissim.executor
         self.shared_resources = vissim.shared_resources
         self.vissim = vissim
-        self.simulation = self.vissim.simulation
-        return
-    
-    def activate(self):
-        self.com = self.vissim.com.Net
 
-        self._initProps()
-        self._initVissimObjects()
-        
-        self._setParametersToVissim()
+        # connect to simulation
+        self.simulation = self.vissim.simulation
+        self.simulation.set('network', self)
+
         return
     
     @property
@@ -68,6 +63,7 @@ class Network(Common):
         if self.control_method == 'drl':
             drl_info = self.config.get('drl_info')
             self.drl_framework = drl_info['framework']['type']
+            self.drl_simulation_type = drl_info['simulation_type']
 
         return
     
@@ -132,6 +128,15 @@ class Network(Common):
         
         return
     
+    def activate(self):
+        self.com = self.vissim.com.Net
+
+        self._initProps()
+        self._initVissimObjects()
+        
+        self._setParametersToVissim()
+        return
+    
     def update(self, type='normal'):
         self.roads.update()
         self.queue_counters.update()
@@ -147,12 +152,21 @@ class Network(Common):
         if not any(flg for flg in self.save_flg_map.values()):
             return
         
+        if self.control_method == 'drl':
+            if self.drl_framework == 'apex':
+                self.master_agents.save()
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
+        
         # make time series data as dataframe
         self._makeQueueRecordsMap()
         self._makeDelayRecordsMap()
         self._makeSpeedRecordsMap()
         self._makeCalcTimeRecordsMap()
         self._makePhaseRecordsMap()
+
+        if self.control_method == 'drl' and self.drl_simulation_type == 'train':
+            return
 
         # save csv files
         self._saveCSV()

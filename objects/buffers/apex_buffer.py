@@ -77,7 +77,7 @@ class ApexBuffer (Common):
             'tree': buffer_dir_path / 'tree.h5',
             'data': {
                 data_id: buffer_dir_path / f"data_{data_id}.h5" 
-                for data_id in range(1, math.ceil(self.file_capacity / 1000) + 1)
+                for data_id in range(1, math.ceil(self.size / 1000) + 1)
             }
         }
 
@@ -114,6 +114,13 @@ class ApexBuffer (Common):
         elif self.priority_reset_type == 'interval' and (self.episode % self.priority_reset_interval == 0):
             self.sum_tree.resetPriority()
 
+        return
+    
+    def _showInfo(self):
+        print('==============================================')
+        print(f"status: buffer update")
+        print(f"number of new data: {self.new_data_count}/{self.threshold}")
+        print(f"buffer size: {self.current_size}/{self.size}")
         return
     
     def sample(self, number=None, use_collate=False):
@@ -178,14 +185,6 @@ class ApexBuffer (Common):
             self.new_data_count %= self.threshold
         else:
             raise NotImplementedError(f"Not supported property_name: {property_name}")
-        
-    
-    def _showInfo(self):
-        print('==============================================')
-        print(f"status: buffer update")
-        print(f"number of new data: {self.new_data_count}/{self.threshold}")
-        print(f"buffer size: {self.current_size}/{self.size}")
-        return
         
 class SumTree (Common):
     def __init__(self, buffer):

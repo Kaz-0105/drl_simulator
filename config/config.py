@@ -100,6 +100,10 @@ class Config(Common):
     def _initSaveDirPathMap(self):
         self.save_dir_path_map = {}
 
+        if self.simulator_info['control_method'] == 'drl' and self.drl_info['simulation_type'] == 'train':
+            self.save_dir_path_map['metrics'] = None
+            return
+
         common_save_dir_path = self.root_dir_path / 'data' / 'performance_metrics'
         common_save_dir_path /= self.layout_dir_path.name
         common_save_dir_path /= self.simulator_info['inflow_name']
@@ -107,7 +111,7 @@ class Config(Common):
 
         # if the setting of simulator_info is same as the existing one, use the existing save_dir_path
         simulator_info = copy.deepcopy(self.simulator_info)
-        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step', 'seed']}
+        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step']}
         
         simulation_dir_path = None
         for tmp_dir_path in common_save_dir_path.glob('simulator_*'):
