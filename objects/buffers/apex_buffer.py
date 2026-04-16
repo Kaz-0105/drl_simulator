@@ -76,7 +76,7 @@ class ApexBuffer (Common):
             'tree': buffer_dir_path / 'tree.h5',
             'data': {
                 data_id: buffer_dir_path / f"data_{data_id}.h5" 
-                for data_id in range(1, math.ceil(self.size / 1000) + 1)
+                for data_id in range(1, math.ceil(self.size / self.file_capacity) + 1)
             }
         }
 

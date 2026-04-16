@@ -206,7 +206,7 @@ class LocalAgent(Object):
     
     def _makeDataAugmentationType(self):
         if self.num_roads == 4:
-            if len(self.num_lanes_map.values()) == 1:
+            if len(set(self.num_lanes_map.values())) == 1:
                 self.data_augmentation_type = 1
             elif self.num_lanes_map[1] == self.num_lanes_map[3] and self.num_lanes_map[2] == self.num_lanes_map[4]:
                 self.data_augmentation_type = 2
@@ -617,7 +617,7 @@ class LocalAgent(Object):
          
         if self.num_roads == 4:
             if self.data_augmentation_type == 1:
-                symmetry_types = range(1, self.num_roads)
+                symmetry_types = list(range(1, self.num_roads))
             elif self.data_augmentation_type == 2:
                 symmetry_types = [2]
             else:
