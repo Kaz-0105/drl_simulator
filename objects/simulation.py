@@ -1,7 +1,6 @@
 from libs.common import Common
 
 import random
-import torch
 
 class Simulation(Common):
     RED = 1
@@ -14,32 +13,52 @@ class Simulation(Common):
         self.config = vissim.config
         self.vissim = vissim
 
-        # set com object
-        self.com = self.vissim.com.Simulation
-
         self._initProps()
-        self._setParametersToVissim()
         return
     
-    def _initProps(self):
-        # set current_time
-        self.current_time = self.com.AttValue('SimSec')
+    @property
+    def finish_flg(self):
+        if self.control_method == 'drl':
+            if self.current_time < self.end_time:
+                return False
+            
+            if self.network.get('drl_framework') == 'apex':
+                return self.network.master_agents.get('finish_flg')
+            
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.network.get('drl_framework')}")
 
-        # set other parameters
+        elif self.control_method in ['mpc', 'scoot']:
+            return self.current_time >= self.end_time
+
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
+    
+    def _initProps(self):
+        # set simulator information
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
         self.layout_name = simulator_info['layout_name']
         self.inflow_name = simulator_info['inflow_name']
 
-        if self.control_method in ['drl', 'bc']:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         self.end_time = simulator_info['simulation_time']
         self.time_step = simulator_info['time_step']
         
         self.debug_flg = simulator_info['debug']['flg']
-        
-        self.seed = simulator_info['seed']
+        return
+    
+    def _updateProps(self, simulation_id):
+        self.id = simulation_id
+
+        # set current_time
+        self.current_time = self.com.AttValue('SimSec')
+
+        # set seed
+        simulator_info = self.config.get('simulator_info')
+        if simulator_info['seed']['is_random']:
+            self.seed = random.randint(100 + 1, 10000)
+        else:
+            self.seed = simulator_info['seed']['value']
         return
         
     def _setParametersToVissim(self):
@@ -68,13 +87,21 @@ class Simulation(Common):
         evaluation_com.SetAttValue('DataCollToTime', self.end_time + 2)
         evaluation_com.SetAttValue('DataCollInterval', self.time_step)
         return
+    
+    def activate(self, simulation_id):
+        # set com object
+        self.com = self.vissim.com.Simulation
+
+        self._updateProps(simulation_id)
+        self._setParametersToVissim()
+        return
 
     def run(self):
-        # デバックフラグが立っているとき30秒進める
+        self._showInfo('start')
+        
         if self.debug_flg:
             self._runForDebug()
         
-        # 信号機の操作権限をこちら側に移す
         self._getSignalControlAuth()
 
         if self.control_method == 'drl':
@@ -82,30 +109,28 @@ class Simulation(Common):
             master_agents = self.network.master_agents
 
             self.network.update(type='initial')
-            local_agents.getState()
+            local_agents.update(type='initial_state')
             
             while self.current_time < self.end_time:
-                # 行動を取得
-                local_agents.getAction()
+                # get action
+                local_agents.update(type='action')
 
-                # Vissimを1ステップ進める
+                # run single step
                 self._runSingleStep()
 
-                # ネットワークの更新，状態・報酬の取得，学習データの作成
+                # update network and get state and reward
                 self.network.update()
-                local_agents.getState()
-                local_agents.getReward()
-                local_agents.makeLearningData()
+                local_agents.update(type='state')
 
-                # データを保存し学習
-                master_agents.saveLearningData()
+                # update buffer and train network
+                master_agents.updateBuffer()
                 master_agents.train()
 
-                # 終了フラグが立っていた場合終了
+                # if done flg is True, break loop
                 if local_agents.get('done_flg'):
                     break
             
-            # 最後のネットワーク更新
+            # final network update
             self.network.update(type='final')
 
             # トータルの報酬を更新し，データを保存
@@ -176,6 +201,26 @@ class Simulation(Common):
 
         # save performance metrics
         self.network.save()
+
+        self._showInfo('end')
+        return
+    
+    def _showInfo(self, type):
+        print('==============================================')
+
+        if type == 'start':
+            print('status: start simulation')
+            if self.control_method == 'drl':
+                print(f"simulation id: {self.id}")
+            print(f"control method: {self.control_method}")
+
+        elif type == 'end':
+            print('status: end simulation')
+            print(f"simulation id: {self.id}")
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
         return
 
     def _runSingleStep(self):

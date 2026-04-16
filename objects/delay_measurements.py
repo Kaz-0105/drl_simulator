@@ -150,6 +150,26 @@ class DelayMeasurement(Object):
         # initialize properties
         self._initProps()
         return
+    
+    @property
+    def current_delay(self):
+        for record in reversed(self.record_list):
+            if not np.isnan(record['value']):
+                return record['value']
+        
+        return 0.0
+
+    @property
+    def start_link(self):
+        return self.links[self.type_link_map['start']]
+    
+    @property
+    def end_link(self):
+        return self.links[self.type_link_map['end']]
+    
+    @property
+    def route_id(self):
+        return self.travel_time_measurement.get('route_id')
 
     def _initProps(self):
         self.id = self.com.AttValue('No')
@@ -179,25 +199,3 @@ class DelayMeasurement(Object):
     def syncDataFrame(self):
         self.record_df = pd.DataFrame(self.record_list)
         return
-
-    @property
-    def current_delay(self):
-        for record in reversed(self.record_list):
-            if not np.isnan(record['value']):
-                return record['value']
-        
-        return 0.0
-
-    @property
-    def start_link(self):
-        return self.links[self.type_link_map['start']]
-    
-    @property
-    def end_link(self):
-        return self.links[self.type_link_map['end']]
-    
-    @property
-    def direction_id(self):
-        return self.travel_time_measurement.get('direction_id')
-
-    

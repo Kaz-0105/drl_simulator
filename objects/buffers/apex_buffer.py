@@ -1,12 +1,14 @@
 from libs.common import Common
 from libs.torch_module import ExtendedDataset
 
-
 import h5py
 from tqdm import tqdm
 import numpy as np
 import random
 import math
+import torch
+from torch.utils.data.dataloader import default_collate
+import json
 
 class ApexBuffer (Common):
     def __init__(self, master_agent):
@@ -25,6 +27,33 @@ class ApexBuffer (Common):
         self.dataset = Dataset(self)
         return
     
+    @property
+    def enough_new_data_flg(self):
+        if not self.change_flg:
+            return False
+        if self.new_data_count < self.threshold:
+            return False
+        if self.current_size < self.batch_size * self.num_batches:
+            return False
+        
+        return True
+        
+    @property
+    def simulation_id(self):
+        return self.master_agent.network.simulation.get('id')
+    
+    @property
+    def finish_flg(self):
+        return self.master_agent.get('finish_flg')
+
+    @property
+    def episode(self):
+        return self.master_agent.get('episode')
+    
+    @property
+    def total_priority(self):
+        return self.sum_tree.get('total_priority')
+    
     def _initProps(self):
         # set size, file_size
         drl_info = self.config.get('drl_info')
@@ -34,33 +63,42 @@ class ApexBuffer (Common):
         if self.reset_flg:
             self.reset_interval = drl_info['framework']['apex']['buffer']['priority']['reset']['interval']
         
-        self.threshold = drl_info['learning']['threshold']
+        self.threshold = drl_info['training']['threshold']
+        self.batch_size = drl_info['training']['batch']['size']
+        self.num_batches = drl_info['training']['batch']['number']
 
         # set buffer_file_path_map
-        buffer_dir_path = self.master_agent.get('save_dir_path_map')['buffer']
+        save_dir_path_map = self.master_agent.get('save_dir_path_map')
+        buffer_dir_path = save_dir_path_map['buffer']
+        session_dir_path = save_dir_path_map['session']
+
         self.buffer_file_path_map = {
+            'session': session_dir_path / 'session.json',
             'tree': buffer_dir_path / 'tree.h5',
-            'meta': buffer_dir_path / 'meta.h5',
             'data': {
-                idx: buffer_dir_path / f"data_{idx}.h5" for idx in range(1, math.ceil(self.file_capacity / 1000) + 1)
+                data_id: buffer_dir_path / f"data_{data_id}.h5" 
+                for data_id in range(1, math.ceil(self.file_capacity / 1000) + 1)
             }
         }
 
         # set new_data_count and next_data_id
-        if self.simulation_count > 1:
+        if self.simulation_id > 1:
             saved_buffer = self.shared_resources.get('buffer')
             self.new_data_count = saved_buffer.get('new_data_count')
             self.next_data_id = saved_buffer.get('next_data_id')
+            self.current_size = saved_buffer.get('current_size')
 
-        elif self.buffer_file_path_map['meta'].exists():
-            meta_obj = h5py.File(self.buffer_file_path_map['meta'], 'r')
-            self.new_data_count = meta_obj.attrs['new_data_count']
-            self.next_data_id = meta_obj.attrs['next_data_id']
-            meta_obj.close()
+        elif self.buffer_file_path_map['session'].exists():
+            with open(self.buffer_file_path_map['session'], 'r', encoding='utf-8') as f:
+                session_json = json.load(f)
+            self.new_data_count = session_json['buffer']['new_data_count']
+            self.next_data_id = session_json['buffer']['next_data_id']
+            self.current_size = session_json['buffer']['current_size']
 
         else:
             self.new_data_count = 0
             self.next_data_id = 0   
+            self.current_size = 0
         
         # initialize change_flg
         self.change_flg = False
@@ -77,117 +115,77 @@ class ApexBuffer (Common):
             self.sum_tree.resetPriority()
 
         return
-
-    def push(self, learning_data):
-        for tmp_data in learning_data:
-            self.sum_tree.add(tmp_data)
-            self.new_data_count += 1
-
-        return
-            
-    def sample(self):
-        data, data_indices = self.sum_tree.sample(self.batch_size * self.num_batches)
-
-        batch_data = []
-        for idx in range(self.num_batches):
-            if (idx + 1) * self.batch_size > len(data):
-                tmp_data = data[idx * self.batch_size:]
-                tmp_data_indices = data_indices[idx * self.batch_size:]
-                batch_data.append((tmp_data, tmp_data_indices))
-                break
-            else:
-                tmp_data = data[idx * self.batch_size: (idx + 1) * self.batch_size]
-                tmp_data_indices = data_indices[idx * self.batch_size: (idx + 1) * self.batch_size]
-                batch_data.append((tmp_data, tmp_data_indices))
-            
-            valid_data = []
-            valid_indices = []
-            for idx in range(len(tmp_data)):
-                if tmp_data[idx] is not None:
-                    valid_data.append(tmp_data[idx])
-                    valid_indices.append(tmp_data_indices[idx])
-        
-        return batch_data
     
-    def update(self):
-        # reset new_data_count
-        self.new_data_count %= self.threshold
+    def sample(self, number=None, use_collate=False):
+        if number is None:
+            number = self.batch_size * self.num_batches
 
-        # get learning_data_list
-        learning_data_list = self.master_agent.get('learning_data_list')
+        data_id_list = self.sum_tree.sample(number)
+        learning_data_list = [self.dataset[data_id] for data_id in data_id_list]
+        self.dataset.close()
 
+        if not use_collate:
+            return data_id_list, learning_data_list
         
-
-
-        # clear learning_data_list
-        self.master_agent.clearLearningData()
-        if change_flg:
-            self.buffer.showInfo()
-        return
-
-    def update(self, indices, priorities):
-        self.sum_tree.update_priority(indices, priorities)
-        return
-
-    def save(self):
-        # update pickle files
-        if self.finish_flg or self.simulation_count % self.save_interval == 0:
-            with open(self.tree_file_path, 'wb') as f:
-                saved_data = {
-                    'tree': self.sum_tree.get('tree'),
-                    'next_data_idx': self.sum_tree.get('next_data_idx'),
-                    'current_size': self.sum_tree.get('current_size'),
-                    'new_data_count': self.new_data_count,
-                }
-                pickle.dump(saved_data, f)
-
-            data = self.sum_tree.get('data')
-            for data_id in tqdm(range(1, len(self.data_file_path_map) + 1)):
-                data_file_path = self.data_file_path_map[data_id]
-                with open(data_file_path, 'wb') as f:
-                    pickle.dump(data[1000 * (data_id - 1): 1000 * data_id], f)
-        return 
+        learning_data = default_collate(learning_data_list)
+        return data_id_list, learning_data
     
-    def showInfo(self):
+    def update(self, data_id_list=None, priority_list=None, learning_data_list=None):
+        # get update_type
+        if data_id_list is None and priority_list is None and learning_data_list is not None:
+            update_type = 'add'
+        elif data_id_list is not None and priority_list is not None and learning_data_list is None:
+            update_type = 'priority'
+        else:
+            raise NotImplementedError(f"Not supported arguments pattern.")
+
+        if update_type == 'add':
+            # if there is no new data, return
+            if len(learning_data_list) == 0:
+                return
+
+            # get data_id_list
+            data_id_list = list(range(self.next_data_id, self.next_data_id + len(learning_data_list)))
+            data_id_list = [data_id % self.size for data_id in data_id_list]
+
+            # update dataset and sum_tree
+            self.dataset.update(data_id_list, learning_data_list)
+            self.sum_tree.update(data_id_list)
+
+            # update next_data_id, new_data_count, current_size and change_flg
+            self.next_data_id = (self.next_data_id + len(learning_data_list)) % self.size
+            self.new_data_count += len(learning_data_list)
+            self.current_size = min(self.current_size + len(learning_data_list), self.size)
+            self.change_flg = True
+
+            # clear learning_data_list and hdf5_obj
+            self.master_agent.clearLearningData()
+            self.dataset.close()
+
+            # show buffer update info
+            self._showInfo()
+
+        elif update_type == 'priority':
+            self.sum_tree.update(data_id_list, priority_list)
+
+        else:
+            raise NotImplementedError(f"Not supported arguments pattern.")
+        
+        return
+    
+    def reset(self, property_name):
+        if property_name == 'new_data_count':
+            self.new_data_count %= self.threshold
+        else:
+            raise NotImplementedError(f"Not supported property_name: {property_name}")
+        
+    
+    def _showInfo(self):
         print('==============================================')
         print(f"status: buffer update")
         print(f"number of new data: {self.new_data_count}/{self.threshold}")
-        print(f"current buffer size: {self.current_size}/{self.max_size}")
+        print(f"buffer size: {self.current_size}/{self.size}")
         return
-
-    @property
-    def current_size(self):
-        return self.dataset.get('current_size')
-    
-    @property
-    def enough_new_data_flg(self):
-        if not self.change_flg:
-            return False
-
-        if self.new_data_count < self.num_new_data:
-            return False
-
-        if self.current_size < self.batch_size * self.num_batches:
-            return False
-        
-        return True
-        
-    @property
-    def simulation_count(self):
-        master_agent = self.master_agent
-        network = master_agent.network
-        vissim = network.vissim
-        return vissim.get('simulation_count')
-    
-    @property
-    def finish_flg(self):
-        return self.master_agent.get('finish_flg')
-
-    
-    @property
-    def episode(self):
-        return self.master_agent.get('episode')
-        
         
 class SumTree (Common):
     def __init__(self, buffer):
@@ -205,8 +203,12 @@ class SumTree (Common):
         return self.buffer.dataset
     
     @property
+    def simulation_id(self):
+        return self.buffer.get('simulation_id')
+    
+    @property
     def current_size(self):
-        return self.buffer.dataset.get('current_size')
+        return self.buffer.get('current_size')
     
     @property
     def next_data_id(self):
@@ -228,7 +230,7 @@ class SumTree (Common):
         self.num_leaves = 2**math.ceil(math.log2(self.size))
 
         # initialize tree_array and next_data_id (0 <= next_data_id < size)
-        if self.buffer.get('simulation_count') > 1:
+        if self.simulation_id > 1:
             saved_sum_tree = self.shared_resources.buffer.sum_tree
             self.tree_array = saved_sum_tree.get('tree_array')
 
@@ -248,7 +250,7 @@ class SumTree (Common):
 
         if parent_id != 0:
             self._propagate(
-                tree_idx=parent_id, 
+                tree_id=parent_id, 
                 change=change
             )
         return
@@ -267,77 +269,40 @@ class SumTree (Common):
         else:
             # otherwise, go to the right child node and adjust random_value by subtracting the left child node's value
             return self._retrieve(right_child_id, random_value - self.tree_array[left_child_id])
-    
-    def add(self, tmp_data, priority = None):
-        # if priority is not specified, use the initial priority
-        if priority is None:
-            priority = self.initial_priority
-
-        # get the tree index for the new data priority
-        target_tree_id = self.next_data_id + self.num_leaves - 1
-
-        # calculate the change
-        change = priority - self.tree_array[target_tree_id]
-
-        # update tree
-        self.tree_array[target_tree_id] = priority
-        self._propagate(target_tree_id, change)
-
-        # push data to dataset
-        self.dataset[self.next_data_id] = tmp_data
-
-        # update current size
-        if self.current_size < self.size:
-            self.current_size += 1
-
-        # update next data index
-        self.next_data_id = (self.next_data_id + 1) % self.size
-        return
-    
+        
     def sample(self, number):
-        # if the current size is smaller than the number of samples, return all data and corresponding indices
         if self.current_size < number:
-            data = self.dataset[:self.current_size]
-            data_indices = list(range(self.current_size))
-            return data, data_indices
-
-        # ランダムに0-total_priorityの範囲でサンプリング
-        sample_values = np.random.uniform(0, self.total_priority, number)
-
-        # 対応するデータのツリーのインデックスを取得
-        tree_indices = [self._retrieve(0, sample_value) for sample_value in sample_values]
-
-        # データのインデックスを取得
-        data_indices = []
-        for tree_idx in tree_indices:
-            data_idx = tree_idx - self.num_leaves + 1
-            if data_idx + 1 > self.current_size:
-                data_idx = random.randint(0, self.current_size - 1)
-            data_indices.append(data_idx)
-
-        # ツリーのインデックスからデータを取得
-        data = []
-        for data_idx in data_indices:
-            data.append(self.dataset[data_idx])
-
-
-        return data, data_indices
+            return list(range(self.current_size))
+        
+        sample_value_list = np.random.uniform(0, self.total_priority, number).tolist()
+        tree_id_list = [self._retrieve(0, sample_value) for sample_value in sample_value_list]
     
-    def update_priority(self, data_indices, new_priorities):
-        for data_idx, new_priority in zip(data_indices, list(new_priorities)):
-            # validation
-            if data_idx < 0 or data_idx >= self.current_size:
-                continue
-            
-            # ツリーのインデックスを計算
-            tree_idx = data_idx + self.num_leaves - 1
+        # get data_id_list
+        data_id_list = []
+        for tree_id in tree_id_list:
+            data_id = tree_id - self.num_leaves + 1
+            if data_id + 1 > self.current_size:
+                data_id = random.randint(0, self.current_size - 1)
+            data_id_list.append(data_id)
+    
+        return sorted(data_id_list)
+    
+    def update(self, data_id_list, priority_list=None):
+        if priority_list is None:
+            priority_list = [self.initial_priority] * len(data_id_list)
+        
+        for data_id, priority in zip(data_id_list, priority_list):
+            # get tree_id
+            tree_id = data_id + self.num_leaves - 1
 
-            # 差分を計算後に葉ノードの値を更新
-            change = new_priority.item() - self.tree_array[tree_idx].item()
-            self.tree_array[tree_idx] = new_priority.item()
+            # get change and update leaf node value
+            change = priority - self.tree_array[tree_id]
+            self.tree_array[tree_id] = priority
 
-            # 親ノードの値を順に更新
-            self._propagate(tree_idx, change)
+            # update parent node values
+            self._propagate(tree_id, change)
+
+        return
 
     def resetPriority(self):
         for data_idx in range(self.current_size):
@@ -359,6 +324,14 @@ class Dataset(ExtendedDataset):
         self._makeDataFiles()
         return
     
+    @property
+    def current_size(self):
+        return self.buffer.get('current_size')
+    
+    @property
+    def next_data_id(self):
+        return self.buffer.get('next_data_id')
+    
     def _initProps(self):
         self.size = self.buffer.get('size')
         self.file_capacity = self.buffer.get('file_capacity')
@@ -373,8 +346,7 @@ class Dataset(ExtendedDataset):
 
         self.num_features_map = self.config.get('num_features_map') 
 
-        self.hdf5_obj_map = {} 
-        self.current_size = 0  
+        self.hdf5_obj_map = {}  
         return
     
     def _makeDataFiles(self):
@@ -390,34 +362,66 @@ class Dataset(ExtendedDataset):
                 else:
                     capacity = self.size - self.file_capacity * (len(data_file_ids) - 1)
                 
-                data_obj.create_dataset(
-                    'phases',
-                    shape=(capacity, self.num_features_map['phase'][self.num_roads]),
-                    dtype=np.float32                    
-                )
-                roads_group = data_obj.create_group('roads')
-                for road_id in range(1, self.num_roads + 1):
-                    road_group = roads_group.create_group(f"road_{road_id}")
-                    road_group.create_dataset(
-                        'road',
-                        shape=(capacity, self.num_features_map['road']),
-                        dtype=np.float32
+                # state and next_state
+                for state_type in ['state', 'next_state']:
+                    state_group =data_obj.create_group(state_type)
+                    state_group.create_dataset(
+                        'phase',
+                        shape=(capacity, self.num_features_map['phase'][self.num_roads]),
+                        dtype=np.float32                    
                     )
+                    roads_group = state_group.create_group('roads')
+                    for road_id in range(1, self.num_roads + 1):
+                        road_group = roads_group.create_group(f"road_{road_id}")
+                        road_group.create_dataset(
+                            'road',
+                            shape=(capacity, self.num_features_map['road']),
+                            dtype=np.float32
+                        )
 
-                    lanes_group = road_group.create_group('lanes')
-                    for lane_id in range(1, self.num_lanes_map[road_id] + 1):
-                        lane_group = lanes_group.create_group(f"lane_{lane_id}")
-                        lane_group.create_dataset(
-                            'lane',
-                            shape=(capacity, self.num_features_map['lane']),
-                            dtype=np.float32
-                        )
-                        lane_group.create_dataset(
-                            'vehicles',
-                            shape=(capacity, self.num_vehicles, self.num_features_map['vehicle'][self.num_roads]),
-                            dtype=np.float32
-                        )
+                        lanes_group = road_group.create_group('lanes')
+                        for lane_id in range(1, self.num_lanes_map[road_id] + 1):
+                            lane_group = lanes_group.create_group(f"lane_{lane_id}")
+                            lane_group.create_dataset(
+                                'lane',
+                                shape=(capacity, self.num_features_map['lane']),
+                                dtype=np.float32
+                            )
+                            lane_group.create_dataset(
+                                'vehicles',
+                                shape=(capacity, self.num_vehicles, self.num_features_map['vehicle'][self.num_roads]),
+                                dtype=np.float32
+                            )
+
+                # action, reward and done_flg
+                data_obj.create_dataset(
+                    'action',
+                    shape=(capacity, 1),
+                    dtype=np.float32
+                )
+
+                data_obj.create_dataset(
+                    'cumulative_reward',
+                    shape=(capacity, 1),
+                    dtype=np.float32
+                )
+
+                data_obj.create_dataset(
+                    'done_flg',
+                    shape=(capacity, 1),
+                    dtype=np.float32
+                )
         return
+    
+    def _toNumpy(self, data_list):
+        if isinstance(data_list, dict):
+            return {key: self._toNumpy(value) for key, value in data_list.items()}
+        elif isinstance(data_list, list):
+            return [self._toNumpy(item) for item in data_list]
+        elif isinstance(data_list, torch.Tensor):
+            return data_list.cpu().numpy()
+        else:
+            return data_list
     
     def __getitem__(self, id):
         file_id = id // self.file_capacity + 1
@@ -429,21 +433,40 @@ class Dataset(ExtendedDataset):
         data_obj = self.hdf5_obj_map[file_id]
 
         return {
-            'phases': data_obj['phases'][tmp_id],
-            'roads': {
-                f"road_{road_id}": {
-                    'road': data_obj[f"roads/road_{road_id}/road"][tmp_id],
-                    'lanes': {
-                        f"lane_{lane_id}": {
-                            'lane': data_obj[f"roads/road_{road_id}/lanes/lane_{lane_id}/lane"][tmp_id],
-                            'vehicles': data_obj[f"roads/road_{road_id}/lanes/lane_{lane_id}/vehicles"][tmp_id]
-                        } for lane_id in range(1, self.num_lanes_map[road_id] + 1)
-                    }
-                } for road_id in range(1, self.num_roads + 1)
-            }
+            'state': {
+                'phase': data_obj['state/phase'][tmp_id],
+                'roads': {
+                    f"road_{road_id}": {
+                        'road': data_obj[f"state/roads/road_{road_id}/road"][tmp_id],
+                        'lanes': {
+                            f"lane_{lane_id}": {
+                                'lane': data_obj[f"state/roads/road_{road_id}/lanes/lane_{lane_id}/lane"][tmp_id],
+                                'vehicles': data_obj[f"state/roads/road_{road_id}/lanes/lane_{lane_id}/vehicles"][tmp_id]
+                            } for lane_id in range(1, self.num_lanes_map[road_id] + 1)
+                        }
+                    } for road_id in range(1, self.num_roads + 1)
+                }
+            },
+            'action': data_obj['action'][tmp_id],
+            'cumulative_reward': data_obj['cumulative_reward'][tmp_id],
+            'next_state': {
+                'phase': data_obj['next_state/phase'][tmp_id],
+                'roads': {
+                    f"road_{road_id}": {
+                        'road': data_obj[f"next_state/roads/road_{road_id}/road"][tmp_id],
+                        'lanes': {
+                            f"lane_{lane_id}": {
+                                'lane': data_obj[f"next_state/roads/road_{road_id}/lanes/lane_{lane_id}/lane"][tmp_id],
+                                'vehicles': data_obj[f"next_state/roads/road_{road_id}/lanes/lane_{lane_id}/vehicles"][tmp_id]
+                            } for lane_id in range(1, self.num_lanes_map[road_id] + 1)
+                        }
+                    } for road_id in range(1, self.num_roads + 1)
+                }
+            },
+            'done_flg': data_obj['done_flg'][tmp_id],   
         }
     
-    def __setitem__(self, id, data):
+    def __setitem__(self, id, learning_data):
         file_id = id // self.file_capacity + 1
         tmp_id = id % self.file_capacity
 
@@ -452,16 +475,30 @@ class Dataset(ExtendedDataset):
         
         data_obj = self.hdf5_obj_map[file_id]
 
-        data_obj['phases'][tmp_id] = data['phases']
-        for road_id in range(1, self.num_roads + 1):
-            data_obj[f"roads/road_{road_id}/road"][tmp_id] = data['roads'][f"road_{road_id}"]['road']
-            for lane_id in range(1, self.num_lanes_map[road_id] + 1):
-                data_obj[f"roads/road_{road_id}/lanes/lane_{lane_id}/lane"][tmp_id] = data['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane']
-                data_obj[f"roads/road_{road_id}/lanes/lane_{lane_id}/vehicles"][tmp_id] = data['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles']
+        # update state and next_state
+        for state_type in ['state', 'next_state']:
+            data_obj[f"{state_type}/phase"][tmp_id] = learning_data[state_type]['phase']
+            for road_id in range(1, self.num_roads + 1):
+                data_obj[f"{state_type}/roads/road_{road_id}/road"][tmp_id] = learning_data[state_type]['roads'][f"road_{road_id}"]['road']
+                for lane_id in range(1, self.num_lanes_map[road_id] + 1):
+                    data_obj[f"{state_type}/roads/road_{road_id}/lanes/lane_{lane_id}/lane"][tmp_id] = learning_data[state_type]['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane']
+                    data_obj[f"{state_type}/roads/road_{road_id}/lanes/lane_{lane_id}/vehicles"][tmp_id] = learning_data[state_type]['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles']
+        
+        # update action, reward and done_flg
+        data_obj['action'][tmp_id] = learning_data['action']
+        data_obj['cumulative_reward'][tmp_id] = learning_data['cumulative_reward']
+        data_obj['done_flg'][tmp_id] = learning_data['done_flg']
+
         return
     
     def __len__(self):
         return self.current_size
+    
+    def update(self, id_list, data_list):
+        data_list = self._toNumpy(data_list)
+        for id, data in zip(id_list, data_list):
+            self[id] = data
+        return
     
     def close(self):
         for hdf5_obj in self.hdf5_obj_map.values():

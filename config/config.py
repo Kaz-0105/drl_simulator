@@ -43,12 +43,6 @@ class Config(Common):
 
             self.save_info = config_yaml['save']
 
-        # set seed
-        if self.simulator_info['seed']['is_random']:
-            self.simulator_info['seed'] = random.randint(100 + 1, 10000)
-        else:
-            self.simulator_info['seed'] = self.simulator_info['seed']['value'] 
-
         # set layout dir path
         self.layout_dir_path = self.root_dir_path / 'layout' / self.simulator_info['layout_name']
 

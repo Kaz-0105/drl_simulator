@@ -8,7 +8,6 @@ import random
 from collections import deque
 import pandas as pd
 import time
-import copy
 
 class LocalAgents(Container):
     def __init__(self, upper_object, device=None):
@@ -31,16 +30,22 @@ class LocalAgents(Container):
 
         return
     
+    @property
+    def simulation_id(self):
+        if hasattr(self, 'network'):
+            return self.network.simulation.get('id')
+        elif hasattr(self, 'master_agent'):
+            return self.master_agent.get('simulation_id')
+        else:
+            raise NotImplementedError("Not supported case.")
+    
     def _initProps(self):
-        # set simulation_count
-        self.simulation_count = self.network.get('simulation_count')
-
         # set epsilons_df
         self.epsilons_df = self.config.get('epsilons_df').copy()
-        if (self.simulation_count - 1) % len(self.epsilons_df) != 0:
+        if (self.simulation_id - 1) % len(self.epsilons_df) != 0:
             self.epsilons_df = pd.concat([
-                self.epsilons_df.iloc[(self.simulation_count - 1) % len(self.epsilons_df):],
-                self.epsilons_df.iloc[:(self.simulation_count - 1) % len(self.epsilons_df)]
+                self.epsilons_df.iloc[(self.simulation_id - 1) % len(self.epsilons_df):],
+                self.epsilons_df.iloc[:(self.simulation_id - 1) % len(self.epsilons_df)]
              ], ignore_index=True)  
         
         return
@@ -55,27 +60,9 @@ class LocalAgents(Container):
             ))
         return
     
-    def getState(self):
+    def update(self, type):
         for agent in self.getAll():
-            self.executor.submit(agent.getState) 
-        self.executor.wait()
-        return
-
-    def getAction(self):
-        for agent in self.getAll():
-            self.executor.submit(agent.getAction)
-        self.executor.wait()
-        return
-    
-    def getReward(self):
-        for agent in self.getAll():
-            self.executor.submit(agent.getReward)
-        self.executor.wait()
-        return
-
-    def makeLearningData(self):
-        for agent in self.getAll():
-            self.executor.submit(agent.makeLearningData)
+            self.executor.submit(agent.update, type)
         self.executor.wait()
         return
     
@@ -138,7 +125,7 @@ class LocalAgent(Object):
     
     @property
     def current_state(self):
-        return self.state_record[-1] if len(self.state_record) > 0 else None
+        return self._toDevice(self.state_record[-1]) if len(self.state_record) > 0 else None
 
     @property
     def num_learning_data(self):
@@ -228,7 +215,6 @@ class LocalAgent(Object):
         else:
             raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
     
-    # DNNを初期化するメソッド
     def _makeModel(self):
         if self.architecture == 'proto':
             self.model = ProtoQNet(self)
@@ -318,7 +304,7 @@ class LocalAgent(Object):
                 self.vehicles_df_map[road_id, lane_order_id] = vehicles_df
         return
 
-    def getState(self):
+    def _getState(self):
         if not self.infer_flg:
             return
         
@@ -393,13 +379,11 @@ class LocalAgent(Object):
                     
                     state['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'] = torch.tensor(vehicle_features_list, dtype=torch.float32)
      
-        state = self._toDevice(state)
         state = self._unsqueeze(state)
         self.state_record.append(state)
         return
 
-    # 行動を取得するメソッド
-    def getAction(self):
+    def _getAction(self):
         if not self.infer_flg:
             return
         
@@ -434,7 +418,6 @@ class LocalAgent(Object):
             )[0]
         
         elif self.random_action_type == LocalAgent.NUM_VEHICLES_RANDOM:
-            # 各フェーズに何台の自動車が待っているかどうかを調べる
             signal_num_vehs_map = {route_id: 0 for route_id in range(1, self.num_roads * (self.num_roads - 1) + 1)}
             for road_order_id in range(1, self.num_roads + 1):
                 lanes = self.road_lanes_map[road_order_id]
@@ -454,7 +437,6 @@ class LocalAgent(Object):
                     tmp_num_vehs += signal_num_vehs_map[signal_id]
                 phase_num_vehs_map[phase_id] = tmp_num_vehs
 
-            # 全てのフェーズで0台の場合は完全ランダム
             if sum(phase_num_vehs_map.values()) == 0:
                 action = random.choices(
                     list(self.random_phase_prob_map.keys()),
@@ -472,10 +454,8 @@ class LocalAgent(Object):
         
         return action
 
-    
-    # 報酬を取得するメソッド
-    def getReward(self):
-        if not self.evaluate_flg:
+    def _getReward(self):
+        if not self.infer_flg:
             return
         
         if self.reward_id == 1:
@@ -601,7 +581,7 @@ class LocalAgent(Object):
         return
     
     # 学習データを作成するメソッド
-    def makeLearningData(self):
+    def _updateLearningDataList(self):
         if self.infer_flg == False:
             return
         
@@ -619,7 +599,7 @@ class LocalAgent(Object):
             'action': self.action_record[0],
             'cumulative_reward': cumulative_reward,
             'next_state': self.state_record[-1],
-            'done': int(self.done_flg),
+            'done_flg': int(self.done_flg),
         }
 
         # update learning_data_list
@@ -649,7 +629,7 @@ class LocalAgent(Object):
                     'action': learning_data['action'],
                     'cumulative_reward': learning_data['cumulative_reward'],
                     'next_state': self._rotateState(learning_data['next_state'], symmetry_type),
-                    'done': learning_data['done'],
+                    'done_flg': learning_data['done_flg'],
                 }
 
                 self.learning_data_list.append(rotated_learning_data)
@@ -683,7 +663,25 @@ class LocalAgent(Object):
         rotated_state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
 
         return rotated_state
-    
+
+    def update(self, type):
+        if not self.infer_flg:
+            return
+        
+        if type == 'initial_state':
+            self._getState()
+
+        elif type == 'action':
+            self._getAction()
+
+        elif type == 'state':
+            self._getState()
+            self._getReward()
+            self._updateLearningDataList()
+            
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+        
     def syncDataFrame(self):
         self.calc_time_record_df = pd.DataFrame(self.calc_time_record_list)
         return
@@ -713,10 +711,6 @@ class LocalAgent(Object):
     def infer_flg(self):
         future_phase_ids = self.signal_controller.get('future_phase_ids')
         return len(future_phase_ids) <= 1
-
-    @property
-    def evaluate_flg(self):
-        return self.infer_flg
 
     @property
     def current_time(self):

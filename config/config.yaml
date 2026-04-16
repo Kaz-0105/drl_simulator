@@ -2,8 +2,7 @@ simulator:
   control_method : drl              # mpc, drl, scoot
   layout_name : 7-4-1               # layout folder name
   inflow_name : balanced_700        # inflow file name
-  num_simulations: 500              # number of simulations to run
-  simulation_time: 500              # simulation time for each simulation (seconds)
+  simulation_time: 50              # simulation time for each simulation (seconds)
   seed:
     is_random: true                 # whether to decide seed randomly or not (if is_random is true, seed value is selected from over 100.)
     value: 1                        # if is_random is false, this value is used (you should select from 1 to 100.)
@@ -11,28 +10,25 @@ simulator:
   num_red_steps: 1                  # number of red steps between phases
   max_workers: 7                    # the number of parallel workers
   debug: 
-    flg: false                      # flg for debugging
-  backup:
-    flg: true                   
-    interval: 100                  
+    flg: false                      # flg for debugging                
   config_change:
     flg: true                       # if true, you can change config during simulation usually used in drl experiments
 
 drl:
-  learning:
-    flg: true
+  type: train # train or test
+  stop:
+    type: episode # episode or interval
+    episode: 100
+    interval: 100
+  training:
     learning_rate: 1e-4        # learning rate for drl
     threshold: 25     # the number of new data for each learning update
     batch:
-      number: 10                   # batch number for learning
-      size: 128                  # batch size for learning
+      number: 1                   # batch number for learning
+      size: 32                  # batch size for learning
     epoch: 1                      # epoch for learning
     weight_decay: 1e-5             # weight decay for learning
-    stop:
-      type: episode     # episode or interval
-      num_episodes: 400
-    save:
-      interval: 10
+    norm_clip: 10.0               # max norm for gradient clipping
   framework: 
     type: apex
     apex:

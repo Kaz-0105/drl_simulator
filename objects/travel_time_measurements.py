@@ -111,6 +111,7 @@ class TravelTimeMeasurement(Object):
         # 紐づくlinkオブジェクトを格納するためのコンテナを初期化
         self.links = Links(self)
         self.type_link_map = {}
+        return
     
     @property
     def start_link(self):
@@ -121,5 +122,5 @@ class TravelTimeMeasurement(Object):
         return self.links[self.type_link_map['end']]
 
     @property
-    def direction_id(self):
-        return self.vehicle_route.get('direction_id')
+    def route_id(self):
+        return self.vehicle_route.get('route_id')

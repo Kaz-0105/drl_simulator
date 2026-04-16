@@ -10,9 +10,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import pandas as pd
 import time
-from datetime import datetime
-import shutil
-from pathlib import Path
+import torch
 
 
 class Vissim(Common):
@@ -30,9 +28,16 @@ class Vissim(Common):
         # init properties
         self._initProps()
 
+        # init simulation and network
+        self.simulation = Simulation(self)
+        self.network = Network(self)
+
         # set config change handler
         if self.config_change_flg:
             self.config_change_handler = ConfigChangeHandler(self)
+        
+        # set device
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         return
 
@@ -48,8 +53,11 @@ class Vissim(Common):
         # set change_handle_flg
         self.config_change_flg = simulator_info['config_change']['flg']
 
+        # set control method
+        self.control_method = simulator_info['control_method']
+
         # set simulation count
-        self.simulation_count = 1
+        self.simulation_id = 1
         return
 
     def _activate(self):
@@ -69,9 +77,9 @@ class Vissim(Common):
         # quick mode
         self.com.Graphics.SetAttValue('QuickMode', True)
 
-        # set simulation and network objects
-        self.simulation = Simulation(self)
-        self.network = Network(self)
+        # activate simulation and network
+        self.simulation.activate(self.simulation_id)
+        self.network.activate()
         return
 
     def _deactivate(self):
@@ -79,86 +87,20 @@ class Vissim(Common):
         if self.config_change_flg:
             self.config_change_handler.stop()
         return
-
-    def _backup(self):
-        # バックアップする必要がないときはスキップ
-        if not self.backup_flg:
-            return
-        
-        src_dirs = [Path('buffers'), Path('models'), Path('results')]
-        backup_root = Path('backup')
-
-        for src_dir in src_dirs:
-            # バックアップ先ディレクトリに日時付きのフォルダを作る
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_dir = backup_root / f"{src_dir.name}_{timestamp}"
-            backup_dir.mkdir(parents=True, exist_ok=False)
-
-            # ファイルをコピー
-            for item in src_dir.iterdir():
-                dest = backup_dir / item.name
-                if item.is_file():
-                    shutil.copy2(item, dest)
-                elif item.is_dir():
-                    shutil.copytree(item, dest)
-
-            # 5個以上のバックアップがある場合は古いものを削除
-            backup_dirs = sorted(backup_root.glob(f"{src_dir.name}_*"), key=lambda x: x.name)
-            if len(backup_dirs) > 5:
-                for old_backup in backup_dirs[:-5]:
-                    shutil.rmtree(old_backup)
-
-            print(f"Backup of {src_dir} completed to {backup_dir}")
-        return
     
     def run(self):
-        # シミュレーションを実行
         while True:
-            print(f'Simulation {self.simulation_count}: Activated')
-
             self._activate()
             self.simulation.run()
             self._deactivate()
-            self._backup()
 
-            print(f'Simulation {self.simulation_count}: Deactivated')
-
-            if self.finish_flg:
-                print('Finish flag detected. Stopping simulations.')
+            if self.simulation.get('finish_flg'):
                 break
 
-            self.simulation_count += 1
+            self.simulation_id += 1
         
         self.executor.shutdown()
         return
-
-    @property
-    def backup_flg(self):
-        simulator_info = self.config.get('simulator_info')
-        if not simulator_info['backup']['flg']:
-            return False
-        
-        if self.simulation_count % simulator_info['backup']['interval'] != 0:
-            return False
-        
-        if simulator_info['control_method'] != 'drl':
-            return False
-        
-        return True
-    
-    @property
-    def finish_flg(self):
-        if self.simulation_count == self.config.get('simulator_info')['num_simulations']:
-            return True
-        
-        if self.simulation.get('control_method') != 'drl':
-            return False
-        
-        for master_agent in self.network.master_agents.getAll():
-            if master_agent.get('finish_flg'):
-                return True
-        
-        return False
 
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, vissim):

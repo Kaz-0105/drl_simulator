@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
+import random
+from torch.utils.data.dataloader import default_collate
 
 class MasterAgents(Container):
     def __init__(self, network, device):
@@ -25,7 +27,10 @@ class MasterAgents(Container):
 
         self._initElements()
         return
-
+    
+    @property
+    def finish_flg(self):
+        return any(agent.get('finish_flg') for agent in self.getAll())
     
     def _initElements(self):
         # make master agent objects
@@ -44,9 +49,9 @@ class MasterAgents(Container):
         
         return
 
-    def saveLearningData(self):
+    def updateBuffer(self):
         for master_agent in self.getAll():
-            self.executor.submit(master_agent.saveLearningData)
+            self.executor.submit(master_agent.updateBuffer)
         
         self.executor.wait()
         return
@@ -90,7 +95,7 @@ class MasterAgent(Object):
         self._initProps(num_roads, num_lanes_tuple)
         self._initIntersections()
         
-        # set symmetry_phase_map, random_phase_prob_map, save_dir_path_map
+        # set symmetry_phase_map, save_dir_path_map
         self._makeSymmetryPhaseMap()
         self._makeSaveDirPathMap()
 
@@ -105,18 +110,20 @@ class MasterAgent(Object):
         return
     
     @property
-    def num_learning_data(self):
-        num_learning_data = 0
-        for local_agent in self.local_agents.getAll():
-            num_learning_data += local_agent.get('num_learning_data')
-        return num_learning_data
-    
-    @property
     def learning_data_list(self):
         learning_data_list = []
         for local_agent in self.local_agents.getAll():
             learning_data_list.extend(local_agent.get('learning_data_list'))
         return learning_data_list
+    
+    @property
+    def finish_flg(self):
+        if self.stop_type == 'interval':
+            return self.episode % self.stop_interval == 0
+        elif self.stop_type == 'episode':
+            return self.episode == self.stop_episode
+        else:
+            raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
     
     def _initProps(self, num_roads, num_lanes_tuple):
         # set id and num_roads
@@ -140,23 +147,39 @@ class MasterAgent(Object):
         self.num_lanes_map = {}
         for road_id in range(1, self.num_roads + 1):
             self.num_lanes_map[road_id] = num_lanes_tuple[road_id - 1]
-
-        # set num_simulations
-        simulator_info = self.config.get('simulator_info')
-        self.num_simulations = simulator_info['num_simulations']
-
+        
         # set drl information
         drl_info = self.config.get('drl_info')
-        self.learning_flg = drl_info['learning']['flg']
+        self.type = drl_info['type']
+
+        self.num_batches = drl_info['training']['batch']['number']
+        self.batch_size = drl_info['training']['batch']['size']
+        self.num_epochs = drl_info['training']['epoch']
+        self.learning_rate = float(drl_info['training']['learning_rate'])
+        self.weight_decay = float(drl_info['training']['weight_decay'])
+        self.norm_clip = float(drl_info['training']['norm_clip'])
+
+        self.stop_type = drl_info['stop']['type']
+        if self.stop_type == 'episode':
+            self.stop_episode = drl_info['stop']['episode']
+        elif self.stop_type == 'interval':
+            self.stop_interval = drl_info['stop']['interval']
+        else:
+            raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
+
+        self.td_steps = drl_info['framework']['apex']['td_steps']
+        self.update_interval = drl_info['framework']['apex']['target_network']['update_interval']
+
         self.architecture = drl_info['architecture']['type']
-        self.learning_rate = float(drl_info['learning']['learning_rate'])
-        self.weight_decay = float(drl_info['learning']['weight_decay'])
+        
+        self.gamma = float(drl_info['reward']['gamma'])
 
         # set update_count, episode, and session_df
         self.update_count = 0
         self.episode = 1
         self.session_df = None
-        self.random_phase_probs_df = None
+        self.phase_probs_df = None
+        self.epsilon_record_df = None
         return
     
     def _initIntersections(self):
@@ -237,14 +260,14 @@ class MasterAgent(Object):
     def _initDrlObjects(self):
         # initialize model and target_model
         if self.architecture == 'proto':
-            self.model = ProtoQNet(self)
+            self.model = ProtoQNet(self, requires_grad=True)
         else:
             raise NotImplementedError(f"Not supported architecture: {self.architecture}")
         self.model.train()
         self.model.to(self.device)
 
         if self.architecture == 'proto':
-            self.target_model = ProtoQNet(self)
+            self.target_model = ProtoQNet(self, requires_grad=False)
         else:
             raise NotImplementedError(f"Not supported architecture: {self.architecture}")
         
@@ -267,11 +290,11 @@ class MasterAgent(Object):
 
     def _load(self):
         # load session_info, session_df
-        if self.simulation_count > 1:
+        if self.simulation_id > 1:
             self.update_count = self.shared_resources.get('update_count')
             self.session_df = self.shared_resources.get('session_df')
-            self.random_phase_probs_df = self.shared_resources.get('random_phase_probs_df')
-            self.episode = self.session_df.len() + 1
+            self.phase_probs_df = self.shared_resources.get('phase_probs_df')
+            self.episode = len(self.session_df) + 1
 
         else:
             session_info_file_path = self.save_dir_path_map['session'] / 'session_info.json'
@@ -285,16 +308,17 @@ class MasterAgent(Object):
             if session_df_file_path.exists():
                 with open(session_df_file_path, 'r', encoding='utf-8') as f:
                     self.session_df = pd.read_csv(f)
-                    self.episode = len(self.session_df) + 1
+                
+                self.episode = len(self.session_df) + 1
             
-            random_phase_probs_df_file_path = self.save_dir_path_map['session'] / 'random_phase_probs_df.csv'
-            if random_phase_probs_df_file_path.exists():
-                with open(random_phase_probs_df_file_path, 'r', encoding='utf-8') as f:
-                    self.random_phase_probs_df = pd.read_csv(f)
+            phase_probs_df_file_path = self.save_dir_path_map['session'] / 'phase_probs_df.csv'
+            if phase_probs_df_file_path.exists():
+                with open(phase_probs_df_file_path, 'r', encoding='utf-8') as f:
+                    self.phase_probs_df = pd.read_csv(f)
                     
 
         # load model
-        if self.simulation_count > 1:
+        if self.simulation_id > 1:
             self.model = self.shared_resources.get('model')
         
         else:
@@ -304,7 +328,7 @@ class MasterAgent(Object):
         
         if self.update_count == 0:
             self.target_model.load_state_dict(self.model.state_dict())
-        elif self.simulation_count > 1:
+        elif self.simulation_id > 1:
             self.target_model = self.shared_resources.get('target_model')
         else:
             target_model_file_path = self.save_dir_path_map['model'] / 'target_q_net.pth'
@@ -329,96 +353,108 @@ class MasterAgent(Object):
         self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode - 1) % schedule_interval]
         return
     
-    def saveLearningData(self):
-        if self.num_learning_data == 0:
-            self.buffer.set('change_flg', False)
+    def _toDevice(self, data):
+        if isinstance(data, dict):
+            return {key: self._toDevice(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._toDevice(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.to(self.device)
+        else:
+            return data
+        
+    def _showInfo(self, loss_list_map):
+        print('==============================================')
+        print('status: training results')
+        print(f"master agent id: {self.id}")
+        print(f"update count: {self.update_count}/{self.update_interval}")
+        for epoch, avg_loss in enumerate(loss_list_map['avg'], start=1):
+            print(f"epoch [{epoch}/{self.num_epochs}]: average loss = {avg_loss:.3f}")
+            
+
+        if self.update_count != 0:
             return
         
-        self.buffer.update()
+        print('==============================================')
+        print('status: check gradients')
+        for name, param in self.model.named_parameters():
+            if param.grad is not None:
+                print(f"{name}: {param.grad.norm().item():.3f}")
+        return
+    
+    def updateBuffer(self):
+        self.buffer.update(learning_data_list=self.learning_data_list)
         return
     
     def train(self):
-        if not self.learning_flg:
+        if self.type == 'test':
             return
-        
+        if not self.buffer.get('change_flg'):
+            return
         if not self.buffer.get('enough_new_data_flg'):
             return
 
-        batch_data = self.buffer.sample()
-        for epoch in range(self.num_epochs):
-            losses = []
-            for data, data_indices in batch_data:
-                # 勾配を初期化
+        # sample data from buffer
+        data_id_list, learning_data_list = self.buffer.sample(self.num_batches * self.batch_size)
+
+        loss_list_map = {key: [] for key in ['avg', 'max', 'min']}
+        for epoch in range(1, self.num_epochs + 1):
+            # shuffle data_id_list
+            id_list = list(range(len(data_id_list)))
+            random.shuffle(id_list)
+            shuffled_data_id_list = [data_id_list[i] for i in id_list]
+            shuffled_learning_data_list = [learning_data_list[i] for i in id_list]
+            shuffled_priority_list = []
+            loss_list = []
+            for batch in range(1, self.num_batches + 1):
+                # get mini batch data
+                batch_learning_data_list = shuffled_learning_data_list[(batch - 1) * self.batch_size : batch * self.batch_size]
+                batch_learning_data = default_collate(batch_learning_data_list)
+                batch_learning_data = self._toDevice(batch_learning_data)
+
                 self.optimizer.zero_grad()
                 
-                if self.network_id == 1:
-                    # とった行動をテンソルに変換
-                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1).to(self.device)
-
-                    # 状態を配列にする
-                    states = [tmp_data[0] for tmp_data in data]
-
-                    # 勾配をトラッキングするように設定
-                    self.model.set('requires_grad', True)
-
-                    # Q値を計算し，選ばれた行動のQ値を取得
-                    q_values = self.model(states).gather(1, actions)
-
-                    # メインモデルを評価モードに設定
-                    self.model.eval()
-
-                    # TDターゲットを計算するアルゴリズムここから
-                    with torch.no_grad():
-                        # 次の状態を配列にする
-                        states_next = [tmp_data[3] for tmp_data in data]
-
-                        # 勾配をトラッキングしないように設定
-                        self.model.set('requires_grad', False)
-
-                        # 次の状態のメインモデルのQ値の最大値を与える行動を取得
-                        max_actions = torch.argmax(self.model(states_next), dim=1).unsqueeze(1)
-
-                        # ターゲットモデルのQ値を取得
-                        target_q_values = self.target_model(states_next).gather(1, max_actions)
-
-                        # 累積報酬をテンソルに変換（multi step bootstrap を実装している）
-                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
-
-                        # 終了フラグをテンソルに変換
-                        done_flgs = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
-
-                        # TDターゲットを計算
-                        td_targets = cumurative_rewards + (1 - done_flgs) * (self.gamma ** self.td_steps) * target_q_values
-
-                    # メインモデルを学習モードに戻す
-                    self.model.train()
-
-                # 損失を計算
-                loss = self.criterion(q_values, td_targets)
-                losses.append(loss.item())
-
-                # 勾配を計算
-                loss.backward()
-
-                # 勾配爆発を防ぐために勾配をクリッピング
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
-
-                # パラメータを更新
-                self.optimizer.step()
+                self.model.train()
+                q_values = self.model(batch_learning_data['state']).gather(dim=1, index=(batch_learning_data['action'].long() - 1))
                 
-                # 優先度を計算しバッファーを更新
-                if epoch == self.num_epochs - 1:
-                    priorities = torch.abs(q_values - td_targets).detach().cpu().numpy()
-                    self.buffer.update(data_indices, priorities)
+                self.model.eval()
+                with torch.no_grad():
+                    max_actions = self.model(batch_learning_data['next_state']).argmax(dim=1, keepdim=True)
+                    target_q_values = self.target_model(batch_learning_data['next_state']).gather(dim=1, index=max_actions)
+                    td_targets = batch_learning_data['cumulative_reward'] + (1 - batch_learning_data['done_flg']) * (self.gamma ** self.td_steps) * target_q_values
+                self.model.train()
 
-                # 更新カウントを増やす（更新のインターバルを超えたらターゲットモデルを更新，10回ごとに更新回数を表示）
-                self.update_count += 1
-                if self.update_count >= self.update_interval:
-                    self.target_model.load_state_dict(self.model.state_dict())
-                    self.update_count = 0
+                loss = self.criterion(q_values, td_targets)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.norm_clip)
+                self.optimizer.step()
+                loss_list.append(loss.item())
 
-            # 更新情報を表示
-            self._showUpdateInfo(epoch, losses)
+                if epoch == self.num_epochs:
+                    shuffled_priority_list.extend(torch.abs(q_values - td_targets).squeeze().detach().cpu().numpy().tolist())
+
+            # synchronize target model if update interval is reached
+            self.update_count += 1
+            if self.update_count >= self.update_interval:
+                self.target_model.load_state_dict(self.model.state_dict())
+                self.update_count = 0
+            
+            # update avg_loss_list
+            loss_list_map['avg'].append(np.mean(loss_list).item())
+            loss_list_map['max'].append(np.max(loss_list).item())
+            loss_list_map['min'].append(np.min(loss_list).item())
+
+        # update priorities and initial_priority
+        zipped_priority_data = sorted(zip(shuffled_data_id_list, shuffled_priority_list))
+        _, priority_tuple = zip(*zipped_priority_data)
+        self.buffer.update(data_id_list=data_id_list, priority_list=list(priority_tuple))     
+        self.buffer.set('initial_priority', max(loss_list_map['max']))
+        
+        # show training results and gradients
+        self._showInfo(loss_list_map)
+
+        # reset new_data_count
+        self.buffer.reset('new_data_count')
         return
     
     def clearLearningData(self):
@@ -427,97 +463,88 @@ class MasterAgent(Object):
             learning_data_list.clear()
         
         return
-    
-    def _showUpdateInfo(self, epoch, losses):
-        # 更新情報を表示
-        losses = np.array(losses)
-        mean_loss = np.mean(losses)
-        min_loss = np.min(losses)
-        max_loss = np.max(losses)
-        std_loss = np.std(losses)
-        print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}]")
-        print(f"Average Loss: {mean_loss:.3f}, Min Loss: {min_loss:.3f}, Max Loss: {max_loss:.3f}, Std Loss: {std_loss:.3f}")
-
-        if epoch == 0:
-            self.buffer.set('initial_priority', max_loss)
-            
-
-        # 10回ごとに更新情報を表示（それ以外はスキップ）
-        if self.update_count % 1000 != 0:
-            return 
-
-        # 勾配消失・爆発の確認
-        for name, param in self.model.named_parameters():
-            if param.grad is not None:
-                print(f"{name}: {param.grad.norm().item():.3f}")
-        return
             
     def save(self):
-        if not self.learning_flg:
+        if self.type == 'test':
             return
         
-        if self.finish_flg or self.simulation_count % self.save_interval == 0:
-            # save session_info, session_df and random_phase_probs_df
-            with open(self.save_dir_path_map['session'] / 'session_info.json', 'w', encoding='utf-8') as f:
-                json.dump({'update_count': self.update_count,}, f)
-
-            with open(self.save_dir_path_map['session'] / 'session_df.csv', 'w', encoding='utf-8') as f:
-                self.session_df.to_csv(f, index=False)
-            
-            with open(self.save_dir_path_map['session'] / 'random_phase_probs_df.csv', 'w', encoding='utf-8') as f:
-                self.random_phase_probs_df.to_csv(f, index=False)
-            
-            # save model and optimizer
-            torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')
-            torch.save(self.target_model.state_dict(), self.save_dir_path_map['model'] / 'target_q_net.pth')
-            torch.save(self.optimizer.state_dict(), self.save_dir_path_map['optimizer'] / 'optimizer.pth')  
+        # save session_info, session_df, phase_probs_df, and epsilon_record_df
+        with open(self.save_dir_path_map['session'] / 'session.json', 'w', encoding='utf-8') as f:
+            json.dump({
+                'episode': self.episode,
+                'target_network': {
+                    'update_count': self.update_count,
+                },
+                'buffer': {
+                    'new_data_count': self.buffer.get('new_data_count'),
+                    'next_data_id': self.buffer.get('next_data_id'),
+                    'current_size': self.buffer.get('current_size'),
+                }
+            }, f)
         
-            # save replay buffer
-            self.buffer.save()
+        with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8') as f:
+            self.session_df.to_csv(f, index=False)
+        
+        with open(self.save_dir_path_map['session'] / 'phase_probs.csv', 'w', encoding='utf-8') as f:
+            self.phase_probs_df.to_csv(f, index=False)
+        
+        with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8') as f:
+            self.epsilon_record_df.to_csv(f, index=False)
+
+        torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')
+        torch.save(self.target_model.state_dict(), self.save_dir_path_map['model'] / 'target_q_net.pth')
+        torch.save(self.optimizer.state_dict(), self.save_dir_path_map['optimizer'] / 'optimizer.pth')
 
         # set properties to shared resources
         self.shared_resources.set('model', self.model)
         self.shared_resources.set('target_model', self.target_model)
         self.shared_resources.set('update_count', self.update_count)
         self.shared_resources.set('session_df', self.session_df)
-        self.shared_resources.set('random_phase_probs_df', self.random_phase_probs_df)  
+        self.shared_resources.set('phase_probs_df', self.phase_probs_df)  
+        self.shared_resources.set('epsilon_record_df', self.epsilon_record_df)
         self.shared_resources.set('buffer', self.buffer)
         return
 
     def updateSessionData(self):
         self._updateAverageTotalReward()
 
-        if not self.learning_flg:
+        if self.type == 'test':
             return
         
         # update session_df
-        new_session_data = {
+        session_row = pd.DataFrame({
             'episode': self.episode,
             'total_reward': self.avg_total_reward,
             'update_interval': self.update_interval,
-            'num_new_data': self.buffer.get('num_new_data'),
+            'new_data_count': self.buffer.get('new_data_count'),
             'num_batches': self.buffer.get('num_batches'),
             'batch_size': self.buffer.get('batch_size'),
             'num_epochs': self.num_epochs,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
-            'epsilon': self.epsilon,
             'simulation_time': self.simulation_time,
-        }
-        new_session_df = pd.DataFrame(new_session_data, index=[0])
-
+        }, index=[0])
         if self.session_df is None:
-            self.session_df = new_session_df
+            self.session_df = session_row.copy()
         else:
-            self.session_df = pd.concat([self.session_df, new_session_df], ignore_index=True)
+            self.session_df = pd.concat([self.session_df, session_row], ignore_index=True)
 
-        # update random_phase_probs_df
-        new_random_phase_probs_df = pd.DataFrame(self.random_phase_prob_map, index=[0])
-        if self.random_phase_probs_df is None:
-            self.random_phase_probs_df = new_random_phase_probs_df
+        # update phase_probs_df
+        phase_probs_row = pd.DataFrame({f"phase_{phase_id}": prob for phase_id, prob in self.random_phase_prob_map.items()}, index=[0])
+        if self.phase_probs_df is None:
+            self.phase_probs_df = phase_probs_row.copy()
         else:
-            self.random_phase_probs_df = pd.concat([self.random_phase_probs_df, new_random_phase_probs_df], ignore_index=True)
+            self.phase_probs_df = pd.concat([self.phase_probs_df, phase_probs_row], ignore_index=True)
 
+        # update epsilons_df
+        epsilon_record_row = pd.DataFrame(
+            {f"intersection_{agent.intersection.get('id')}": agent.get('epsilon') for agent in self.local_agents.getAll()}, 
+            index=[0]
+        )
+        if self.epsilon_record_df is None:
+            self.epsilon_record_df = epsilon_record_row.copy()
+        else:
+            self.epsilon_record_df = pd.concat([self.epsilon_record_df, epsilon_record_row], ignore_index=True)
         return
     
     def _updateAverageTotalReward(self):
@@ -526,6 +553,16 @@ class MasterAgent(Object):
             total_reward = local_agent.get('total_reward')
             sum_total_reward += total_reward
         self.avg_total_reward = sum_total_reward / self.local_agents.count()
+        return
+    
+    def showInfo(self):
+        print('==============================================')
+        print('status: total rewards')
+        for local_agent_id in self.local_agents.getKeys(container_flg=True, sorted_flg=True):
+            local_agent = self.local_agents[local_agent_id]
+            print(f"local agent (id: {local_agent_id}): ")
+            print(f"Local Agent {local_agent_id}: Total Reward = {local_agent.get('total_reward'):.1f}")
+        print(f"Master Agent {self.id}: Average Total Reward = {self.avg_total_reward:.1f}")
         return
     
     def showTotalReward(self):
@@ -537,25 +574,8 @@ class MasterAgent(Object):
         return
     
     @property
-    def simulation_count(self):
-        vissim = self.network.vissim
-        return vissim.get('simulation_count')
-    
-    @property
-    def finish_flg(self):
-        if self.simulation_count == self.num_simulations:
-            return True
-        
-        if not self.stop_flg:
-            return False
-        
-        if self.stop_type == 'episode' and self.episode == self.stop_episode:
-            return True
-
-        if self.stop_type == 'interval' and (self.episode % self.stop_interval == 0):
-            return True
-    
-        return False
+    def simulation_id(self):
+        return self.network.simulation.get('id')
         
     @property
     def simulation_time(self):

@@ -24,16 +24,16 @@ import re
 
 class Network(Common):
     def __init__(self, vissim):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = vissim.config
         self.executor = vissim.executor
         self.shared_resources = vissim.shared_resources
-
         self.vissim = vissim
         self.simulation = self.vissim.simulation
+        return
+    
+    def activate(self):
         self.com = self.vissim.com.Net
 
         self._initProps()
@@ -57,7 +57,6 @@ class Network(Common):
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
         self.inflow_name = simulator_info['inflow_name']
-        self.num_simulations = simulator_info['num_simulations']
 
         save_info = self.config.get('save_info')
         self.save_flg_map = save_info['common']['performance_metrics']
@@ -89,11 +88,9 @@ class Network(Common):
 
         if self.control_method == 'drl':
             # set master_agents and local_agents objects
-            device = self.simulation.get('device')
-
             if self.drl_framework == 'apex':
-                self.master_agents = MasterAgents(self, device)
-                self.local_agents = LocalAgents(self, device)
+                self.master_agents = MasterAgents(self, self.vissim.device)
+                self.local_agents = LocalAgents(self, self.vissim.device)
             else:
                 raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
             
@@ -229,14 +226,14 @@ class Network(Common):
 
             data_map = {}
             for delay_measurement in road.delay_measurements.getAll():
-                direction_id = delay_measurement.get('direction_id')
+                route_id = delay_measurement.get('route_id')
                 tmp_record_df = delay_measurement.get('record_df')
                 if data_map == {}:
                     data_map['time'] = tmp_record_df['time'].values
                 
-                if f"direction_{direction_id}" not in data_map:
-                    data_map[f"direction_{direction_id}"] = []
-                data_map[f"direction_{direction_id}"].append(tmp_record_df['value'].values)
+                if f"route_{route_id}" not in data_map:
+                    data_map[f"route_{route_id}"] = []
+                data_map[f"route_{route_id}"].append(tmp_record_df['value'].values)
             
             # average delay for each direction (NaN is ignored in mean calculation)
             for key in data_map.keys():
@@ -278,10 +275,10 @@ class Network(Common):
             weighted_sum = pd.Series(0.0, index=record_df.index)
             total_weight = pd.Series(0.0, index=record_df.index)
             valid_mask = pd.Series(True, index=record_df.index)
-            for direction_id in range(1, intersection.get('num_roads')):
-                turn_ratio = turn_ratios[direction_id]
-                mask = record_df[f"direction_{direction_id}"].notna()
-                weighted_sum.loc[mask] += record_df.loc[mask, f"direction_{direction_id}"] * turn_ratio
+            for route_id in range(1, intersection.get('num_roads')):
+                turn_ratio = turn_ratios[route_id]
+                mask = record_df[f"route_{route_id}"].notna()
+                weighted_sum.loc[mask] += record_df.loc[mask, f"route_{route_id}"] * turn_ratio
                 total_weight.loc[mask] += turn_ratio
                 valid_mask &= mask
 
@@ -291,9 +288,9 @@ class Network(Common):
             # calculate max delay (if there is NaN, it is ignored in calculation)
             max_delay = pd.Series(0.0, index=record_df.index)
             valid_mask = pd.Series(True, index=record_df.index)
-            for direction_id in range(1, intersection.get('num_roads')):
-                mask = record_df[f"direction_{direction_id}"].notna()
-                max_delay.loc[mask] = np.maximum(max_delay.loc[mask], record_df.loc[mask, f"direction_{direction_id}"])
+            for route_id in range(1, intersection.get('num_roads')):
+                mask = record_df[f"route_{route_id}"].notna()
+                max_delay.loc[mask] = np.maximum(max_delay.loc[mask], record_df.loc[mask, f"route_{route_id}"])
                 valid_mask &= mask
             
             record_df['max'] = np.nan
@@ -547,14 +544,14 @@ class Network(Common):
                     if data_map == {}:
                         data_map['time'] = tmp_record_df['time'].values
                     
-                    direction_list = []
+                    route_list = []
                     for column in tmp_record_df.columns:
-                        match_obj = re.match(rf"direction_(\d+)", column)
+                        match_obj = re.match(rf"route_(\d+)", column)
                         if match_obj:
-                            direction_list.append(int(match_obj.group(1)))
+                            route_list.append(int(match_obj.group(1)))
                     
-                    for direction_id in direction_list:
-                        data_map[f"delay_direction_{direction_id}"] = tmp_record_df[f"direction_{direction_id}"].values
+                    for route_id in route_list:
+                        data_map[f"delay_route_{route_id}"] = tmp_record_df[f"route_{route_id}"].values
                     
                     data_map['delay_avg_1'] = tmp_record_df['avg_1'].values
                     data_map['delay_avg_2'] = tmp_record_df['avg_2'].values

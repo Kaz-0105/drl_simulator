@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 class ProtoQNet(ExtendedModule):
-    def __init__(self, agent):
+    def __init__(self, agent, requires_grad=True):
         super().__init__()
         
         if agent.__class__.__name__ == 'MasterAgent':
@@ -20,6 +20,9 @@ class ProtoQNet(ExtendedModule):
 
         self._initProps()
         self._makeNetwork()
+        
+        for param in self.parameters():
+            param.requires_grad = requires_grad
         return
     
     def _initProps(self):
