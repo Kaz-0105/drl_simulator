@@ -311,14 +311,14 @@ class MasterAgent(Object):
 
             session_df_file_path = self.save_dir_path_map['session'] / 'session_df.csv'
             if session_df_file_path.exists():
-                with open(session_df_file_path, 'r', encoding='utf-8') as f:
+                with open(session_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.session_df = pd.read_csv(f)
                 
                 self.episode = len(self.session_df) + 1
             
             phase_probs_df_file_path = self.save_dir_path_map['session'] / 'phase_probs_df.csv'
             if phase_probs_df_file_path.exists():
-                with open(phase_probs_df_file_path, 'r', encoding='utf-8') as f:
+                with open(phase_probs_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.phase_probs_df = pd.read_csv(f)
                     
 
@@ -535,13 +535,13 @@ class MasterAgent(Object):
                 }
             }, f)
         
-        with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8') as f:
+        with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8', newline='') as f:
             self.session_df.to_csv(f, index=False)
         
-        with open(self.save_dir_path_map['session'] / 'phase_probs.csv', 'w', encoding='utf-8') as f:
+        with open(self.save_dir_path_map['session'] / 'phase_probs.csv', 'w', encoding='utf-8', newline='') as f:
             self.phase_probs_df.to_csv(f, index=False)
         
-        with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8') as f:
+        with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8', newline='') as f:
             self.epsilon_record_df.to_csv(f, index=False)
 
         torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')

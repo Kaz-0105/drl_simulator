@@ -47,23 +47,23 @@ class Config(Common):
         self.layout_dir_path = self.root_dir_path / 'layout' / self.simulator_info['layout_name']
 
         # set network information
-        with open(self.layout_dir_path / 'roads.csv', 'r', encoding='utf-8') as f:
+        with open(self.layout_dir_path / 'roads.csv', 'r', encoding='utf-8', newline='') as f:
             self.roads_df = pd.read_csv(f, index_col=False)
         
-        with open(self.layout_dir_path / 'road_link_tags.csv', 'r', encoding='utf-8') as f:
+        with open(self.layout_dir_path / 'road_link_tags.csv', 'r', encoding='utf-8', newline='') as f:
             self.road_link_tags_df = pd.read_csv(f, index_col=False)
         
-        with open(self.layout_dir_path / 'intersections.csv', 'r', encoding='utf-8') as f:
+        with open(self.layout_dir_path / 'intersections.csv', 'r', encoding='utf-8', newline='') as f:
             self.intersections_df = pd.read_csv(f, index_col=False)
 
-        with open(self.layout_dir_path / 'intersection_road_tags.csv', 'r', encoding='utf-8') as f:
+        with open(self.layout_dir_path / 'intersection_road_tags.csv', 'r', encoding='utf-8', newline='') as f:
             self.intersection_road_tags_df = pd.read_csv(f, index_col=False)
 
-        with open(self.layout_dir_path / 'intersection_turn_ratio_tags.csv', 'r', encoding='utf-8') as f:
+        with open(self.layout_dir_path / 'intersection_turn_ratio_tags.csv', 'r', encoding='utf-8', newline='') as f:
             self.intersection_turn_ratio_tags_df = pd.read_csv(f, index_col=False)
         
         if self.simulator_info['control_method'] == 'drl':
-            with open(self.layout_dir_path / 'epsilons.csv', 'r', encoding='utf-8') as f:
+            with open(self.layout_dir_path / 'epsilons.csv', 'r', encoding='utf-8', newline='') as f:
                 self.epsilons_df = pd.read_csv(f, index_col=False)
 
         link_input_tags_dir_path = self.layout_dir_path / 'link_input_tags'
@@ -72,7 +72,7 @@ class Config(Common):
         
         self.link_input_tags_df_map = {}
         for link_input_tags_file_path in link_input_tags_dir_path.glob('*.csv'):
-            with open(link_input_tags_file_path, 'r', encoding='utf-8') as f:
+            with open(link_input_tags_file_path, 'r', encoding='utf-8', newline='') as f:
                 self.link_input_tags_df_map[link_input_tags_file_path.stem] = pd.read_csv(f, index_col=False)
         
         # set turn_ratio_df_map

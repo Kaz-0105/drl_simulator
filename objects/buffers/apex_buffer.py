@@ -2,7 +2,6 @@ from libs.common import Common
 from libs.torch_module import ExtendedDataset
 
 import h5py
-from tqdm import tqdm
 import numpy as np
 import random
 import math
@@ -104,18 +103,6 @@ class ApexBuffer (Common):
         self.change_flg = False
         return
     
-    def _resetPriority(self):
-        if not self.priority_reset_flg:
-            return
-        
-        if self.priority_reset_type == 'episode' and self.episode == self.priority_reset_episode:
-            self.sum_tree.resetPriority()
-        
-        elif self.priority_reset_type == 'interval' and (self.episode % self.priority_reset_interval == 0):
-            self.sum_tree.resetPriority()
-
-        return
-    
     def _showInfo(self):
         print('==============================================')
         print(f"status: buffer update")
@@ -195,6 +182,11 @@ class SumTree (Common):
         self.shared_resources = buffer.shared_resources 
 
         self._initProps()
+        
+        if self.reset_flg and self.episode % self.reset_interval == 0:
+            self._resetPriority()
+            self._showInfo()
+
         return
     
     @property
@@ -217,10 +209,17 @@ class SumTree (Common):
     def total_priority(self):
         return self.tree_array[0]
     
+    @property
+    def episode(self):
+        return self.buffer.get('episode')
+    
     def _initProps(self):
         # set initial priority and size
         drl_info = self.config.get('drl_info')
         self.initial_priority = drl_info['framework']['apex']['buffer']['priority']['initial_value']
+        self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['flg']
+        if self.reset_flg:
+            self.reset_interval = drl_info['framework']['apex']['buffer']['priority']['reset']['interval']
         self.size = self.buffer.get('size')
 
         self.buffer_file_path_map = self.buffer.get('buffer_file_path_map')
@@ -240,7 +239,29 @@ class SumTree (Common):
 
         else:
             self.tree_array = np.zeros(2 * self.num_leaves - 1, dtype=np.float32)
+        return
     
+    def _resetPriority(self):
+        self.tree_array = np.zeros(2 * self.num_leaves - 1, dtype=np.float32)
+
+        for data_id in range(self.current_size):
+            tree_id = data_id + self.num_leaves - 1
+            self.tree_array[tree_id] = self.initial_priority
+
+            change = self.initial_priority
+            self._propagate(tree_id, change)
+
+        return
+    
+    def _showInfo(self, type='reset'):
+        print('==============================================')
+        if type == 'reset':
+            print(f"status: buffer priority reset")
+            print(f"buffer size: {self.current_size}/{self.size}")
+            print(f"priority value: {self.initial_priority}")
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+        
         return
 
     def _propagate(self, tree_id, change):
