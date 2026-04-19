@@ -21,14 +21,29 @@ class ProtoQNet(ExtendedModule):
         self._initProps()
         self._makeNetwork()
         
+        if self.init_weights_flg:
+            self.apply(self._initWeights)
+            self._initOptimisticWeights()
+        
         for param in self.parameters():
             param.requires_grad = requires_grad
         return
     
     def _initProps(self):
+        # set information from master_agent
         self.num_roads = self.master_agent.get('num_roads')
         self.num_phases = self.master_agent.get('num_phases')
         self.num_lanes_map = self.master_agent.get('num_lanes_map')
+        
+        # set network initialization information
+        drl_info = self.config.get('drl_info')
+        self.init_weights_flg = drl_info['architecture']['common']['initialization']['type'] is not None
+        if self.init_weights_flg:
+            self.init_weights_type = drl_info['architecture']['common']['initialization']['type']
+            self.activation_function = drl_info['architecture']['common']['activation_function']['type']
+            if self.activation_function == 'leaky_relu':
+                self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
+
         return
     
     def _makeNetwork(self):
@@ -89,6 +104,30 @@ class ProtoQNet(ExtendedModule):
             num_intersection_outputs=self.network_map['intersection'].get('num_outputs'),
             num_roads=self.num_roads,
         )
+        return
+    
+    def _initWeights(self, module):
+        if not isinstance(module, nn.Linear):
+            return
+        
+        if self.init_weights_type == 'xavier':
+            nn.init.xavier_uniform_(module.weight)
+        elif self.init_weights_type == 'he':
+            if self.activation_function == 'relu':
+                nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
+            elif self.activation_function == 'leaky_relu':
+                nn.init.kaiming_uniform_(module.weight, a=self.alpha, nonlinearity='leaky_relu')
+
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0.1)
+
+        return
+    
+    def _initOptimisticWeights(self):
+        for part in ['value', 'advantage']:
+            final_layer = self.network_map['dueling'].network_map[part][-1]
+            if isinstance(final_layer, nn.Linear):
+                nn.init.constant_(final_layer.bias, 10.0)
         return
 
     def forward(self, states):
@@ -885,18 +924,7 @@ class DuelingNet(ExtendedModule):
         
         if self.num_hidden_layers == 0:
             for part in ['value', 'advantage']:
-                module_list = nn.ModuleList()   
-
-                module_list.append(nn.Linear(self.num_inputs, self.num_outputs_map[part]))
-                if self.activation_function == 'leaky_relu':
-                    module_list.append(nn.LeakyReLU(self.alpha))
-                elif self.activation_function == 'relu':
-                    module_list.append(nn.ReLU())
-                else:
-                    raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
-                
-                self.network_map[part] = nn.Sequential(*module_list)
-
+                self.network_map[part] = nn.Sequential(nn.Linear(self.num_inputs, self.num_outputs_map[part]))
             return
         
         for part in ['value', 'advantage']:

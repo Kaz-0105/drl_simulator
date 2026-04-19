@@ -128,6 +128,14 @@ class LocalAgent(Object):
         return self._toDevice(self.state_record[-1]) if len(self.state_record) > 0 else None
 
     @property
+    def current_action(self):
+        return self.action_record[-1] if len(self.action_record) > 0 else None
+    
+    @property
+    def current_reward(self):
+        return self.reward_record[-1] if len(self.reward_record) > 0 else None
+
+    @property
     def num_learning_data(self):
         return len(self.learning_data_list)
     
@@ -163,8 +171,8 @@ class LocalAgent(Object):
         self.reward_record = deque(maxlen=self.td_steps)
         self.calc_time_record_list = []
         self.done_flg = False
-        self.total_reward = 0
         self.learning_data_list = []
+        self.total_reward = 0
         return
     
     def _makeRoadLanesMap(self):
@@ -257,49 +265,61 @@ class LocalAgent(Object):
                 vehicles_df['position'] = length_info['length'] - vehicles_df['position']
 
                 if self.reward_id in [1, 2]:
-                    # define near_flg
-                    near_flgs = []
+                    # get near_flg_list
+                    near_flg_list = []
                     for _, vehicle_row in vehicles_df.iterrows():
-                        near_flgs.append(True if vehicle_row['position'] <= near_length else False)
-                    vehicles_df['near_flg'] = near_flgs
+                        near_flg_list.append(True if vehicle_row['position'] <= near_length else False)
+                    vehicles_df['near_flg'] = near_flg_list
 
-                    # define red_flgs
-                    red_flgs = []
+                    # get red_flg_list
+                    red_flg_list = []
                     for _, vehicle_row in vehicles_df.iterrows():
-                        signal_color = route_signal_color_map[vehicle_row['direction_id']] if vehicle_row['direction_id'] != 0 else 'red'
-                        red_flgs.append(True if signal_color == self.RED else False)
-                    vehicles_df['red_flg'] = red_flgs
-                    
-                    # define wait_flg
-                    wait_flgs = []
-                    direction_ids = vehicles_df['direction_id']
-                    for idx, vehicle_row in vehicles_df.iterrows():
-                        if not near_flgs[idx]:
-                            wait_flgs.append(False)
+                        # if route is not definedl, set red_flg to True
+                        if vehicle_row['route_id'] == 0:
+                            red_flg_list.append(True)
                             continue
 
-                        if red_flgs[idx]:
-                            wait_flgs.append(True)
+                        signal_color = route_signal_color_map[vehicle_row['route_id']]
+                        red_flg_list.append(True if signal_color == self.RED else False)
+                        
+                    vehicles_df['red_flg'] = red_flg_list
+                    
+                    # get wait_flg_list
+                    wait_flg_list = []
+                    route_ids = vehicles_df['route_id'].tolist()
+                    for idx, vehicle_row in vehicles_df.iterrows():
+                        # if the vehicle is not close to the intersection, then False
+                        if not near_flg_list[idx]:
+                            wait_flg_list.append(False)
                             continue
                         
-                        if len(wait_flgs) == 0:
-                            wait_flgs.append(False)
+                        # if the signal is red for the vehicle, then True
+                        if red_flg_list[idx]:
+                            wait_flg_list.append(True)
                             continue
-
+                        
+                        # if there is no vehicle ahead, then False
+                        if len(wait_flg_list) == 0:
+                            wait_flg_list.append(False)
+                            continue
+                        
+                        # if the following vehicle with different route_id is waiting, then True
                         found_flg = False
-                        for tmp_idx in reversed(range(len(wait_flgs))):
-                            if direction_ids[tmp_idx] == vehicle_row['direction_id']:
+                        for tmp_idx in reversed(range(len(wait_flg_list))):
+                            if route_ids[tmp_idx] == vehicle_row['route_id']:
                                 continue
 
-                            wait_flgs.append(True if red_flgs[tmp_idx] else False)
+                            wait_flg_list.append(True if red_flg_list[tmp_idx] else False)
                             found_flg = True
                             break
                         
                         if found_flg:
                             continue
                         
-                        wait_flgs.append(False)
-                    vehicles_df['wait_flg'] = wait_flgs
+                        # if there is no vehicle with different route_id ahead, then False
+                        wait_flg_list.append(False)
+
+                    vehicles_df['wait_flg'] = wait_flg_list
                 
                 self.vehicles_df_map[road_id, lane_order_id] = vehicles_df
         return
@@ -366,7 +386,7 @@ class LocalAgent(Object):
                             break
 
                         vehicle_features = [0] * self.num_roads
-                        vehicle_features[int(vehicle_row['direction_id'])] = 1
+                        vehicle_features[int(vehicle_row['route_id'])] = 1
                         vehicle_features.extend([
                             vehicle_row['position'],
                             vehicle_row['speed'],
@@ -395,7 +415,6 @@ class LocalAgent(Object):
             start_time = time.time()
 
             with torch.no_grad():
-                self.model.set('requires_grad_flg', False)
                 action_values = self.model(self.current_state)
                 action = torch.argmax(action_values).item() + 1
             
@@ -404,7 +423,6 @@ class LocalAgent(Object):
             self.calc_time_record_list.append({'time': self.current_time, 'calc_time': calc_time})
 
         # 記録
-        self.current_action = action
         self.action_record.append(action)
         self.signal_controller.setPhases([self.current_action] * self.duration_steps)
         return
@@ -425,10 +443,10 @@ class LocalAgent(Object):
                     lane = lanes[lane_order_id]
                     vehicles_df = lane.get('vehicles_df')
                     for _, vehicle_row in vehicles_df.iterrows():
-                        direction_id = vehicle_row['direction_id']
-                        if direction_id == 0:
+                        if vehicle_row['route_id'] == 0:
                             continue
-                        signal_num_vehs_map[(road_order_id - 1) * (self.num_roads - 1) + direction_id] += 1
+    
+                        signal_num_vehs_map[(road_order_id - 1) * (self.num_roads - 1) + vehicle_row['route_id']] += 1
 
             phase_num_vehs_map = {}
             for phase_id, phase_list in self.phase_map.items():
@@ -472,8 +490,7 @@ class LocalAgent(Object):
                 reward += (~vehicles_df['wait_flg']).sum()
                 reward -= vehicles_df['wait_flg'].sum()
 
-            # normalize the reward
-            self.current_reward = reward / num_vehs if num_vehs > 0 else 0
+            reward = reward / num_vehs if num_vehs > 0 else 0
         
         elif self.reward_id == 2:
             # (the number of not-waiting vehicles) - (the number of waiting vehicles) + (the number of passing vehicles)
@@ -505,11 +522,11 @@ class LocalAgent(Object):
                         num_vehs += num_pass_vehs
             
             # normalize the reward
-            self.current_reward = reward / num_vehs if num_vehs > 0 else 0
+            reward = reward / num_vehs if num_vehs > 0 else 0
         
         elif self.reward_id == 3:
             # 一定速度以上の自動車台数 + 通過自動車台数
-            self.current_reward = 0
+            reward = 0
             for lane_str, vehicles_df in self.lane_str_vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
                     continue
@@ -520,7 +537,7 @@ class LocalAgent(Object):
 
                 for _, row in vehicles_df.iterrows():
                     if row['speed'] > v_max / 2:
-                        self.current_reward += 1
+                        reward += 1
 
             for road in self.roads.getAll():
                 for data_collection_point in road.data_collection_points.getAll():
@@ -533,11 +550,11 @@ class LocalAgent(Object):
                         
                         num_vehs_record = data_collection_measurement.get('num_vehs_record')
                         num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                        self.current_reward += sum(num_vehs_list)
-                        
+                        reward += sum(num_vehs_list)
+                                                
         elif self.reward_id == 4:
             # 法定速度の半分以上の自動車台数 - 法定速度の半分以下の自動車台数 + 通過自動車台数
-            self.current_reward = 0
+            reward = 0
             for lane_str, vehicles_df in self.lane_str_vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
                     continue
@@ -548,9 +565,9 @@ class LocalAgent(Object):
 
                 for _, row in vehicles_df.iterrows():
                     if 2 * row['speed'] >= v_max:
-                        self.current_reward += 1
+                        reward += 1
                     else:
-                        self.current_reward -= 1
+                        reward -= 1
 
             for road in self.roads.getAll():
                 for data_collection_point in road.data_collection_points.getAll():
@@ -563,21 +580,19 @@ class LocalAgent(Object):
 
                     num_vehs_record = data_collection_measurement.get('num_vehs_record')
                     num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                    self.current_reward += sum(num_vehs_list)
+                    reward += sum(num_vehs_list)
 
-            self.current_reward /= 10  # 報酬のスケールを調整
-
-        elif self.reward_id == 5:
+        elif self.reward_id == 5:       
             # 流入道路の入れるスペースの和
-            self.current_reward = 0
+            reward = 0
             for road_order_id in range(1, self.num_roads + 1):
                 road = self.roads[road_order_id]
                 space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 10 - 5  # -5〜5に正規化
-                self.current_reward += space
+                reward += space
 
-        # 記録する
-        self.reward_record.append(self.current_reward)
-        self.total_reward += self.current_reward 
+        self.reward_record.append(reward)
+        self.total_reward += reward
+
         return
     
     # 学習データを作成するメソッド

@@ -72,7 +72,7 @@ class VehicleRoutingDecision(Object):
             self.num_routes_map[route_id] += 1
 
         # set turn_ratio for each vehicle_route
-        lcm = reduce(math.lcm, list(self.num_routes_map.values()))
+        lcm = reduce(math.lcm, list(num_routes for num_routes in self.num_routes_map.values() if num_routes > 0))
         for vehicle_route in self.vehicle_routes.getAll():
             route_id = vehicle_route.get('route_id')
             vehicle_route.set('turn_ratio', self.turn_ratios[route_id] / self.num_routes_map[route_id] * lcm)

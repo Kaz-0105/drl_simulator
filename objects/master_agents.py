@@ -176,6 +176,7 @@ class MasterAgent(Object):
 
         self.td_steps = drl_info['framework']['apex']['td_steps']
         self.update_interval = drl_info['framework']['apex']['target_network']['update_interval']
+        self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['type'] is not None and drl_info['framework']['apex']['buffer']['priority']['reset']['type'] == 'target'
 
         self.architecture = drl_info['architecture']['type']
         
@@ -368,23 +369,30 @@ class MasterAgent(Object):
         else:
             return data
         
-    def _showInfo(self, loss_list_map):
+    def _showInfo(self, type, loss_list_map = None):
         print('==============================================')
-        print('status: training results')
-        print(f"master agent id: {self.id}")
-        print(f"update count: {self.update_count}/{self.update_interval}")
-        for epoch, avg_loss in enumerate(loss_list_map['avg'], start=1):
-            print(f"epoch [{epoch}/{self.num_epochs}]: average loss = {avg_loss:.3f}")
-            
+        if type == 'training':
+            print('status: training results')
+            print(f"master agent id: {self.id}")
+            print(f"update count: {self.update_count}/{self.update_interval}")
 
-        if self.update_count != 0:
-            return
+            for epoch, avg_loss in enumerate(loss_list_map['avg'], start=1):
+                print(f"epoch [{epoch}/{self.num_epochs}]: average loss = {avg_loss:.3f}")
+
+        elif type == 'gradient':
+            print('status: check gradients')
+            for name, param in self.model.named_parameters():
+                if param.grad is not None:
+                    print(f"{name}: {param.grad.norm().item():.3f}")
+
+        elif type == 'result':
+            print('status: total rewards')
+            print(f"master agent id: {self.id}")
+            print(f"average total reward: {self.avg_total_reward:.1f}")
+
+        else:
+            raise NotImplementedError(f"Not supported info type: {type}")
         
-        print('==============================================')
-        print('status: check gradients')
-        for name, param in self.model.named_parameters():
-            if param.grad is not None:
-                print(f"{name}: {param.grad.norm().item():.3f}")
         return
     
     def _updateSession(self):
@@ -410,17 +418,22 @@ class MasterAgent(Object):
             self.session_df = pd.concat([self.session_df, session_row], ignore_index=True)
 
         # update phase_probs_df
-        phase_probs_row = pd.DataFrame({f"phase_{phase_id}": prob for phase_id, prob in self.random_phase_prob_map.items()}, index=[0])
+        phase_probs_info = {'episode': self.episode}
+        for phase_id, prob in self.random_phase_prob_map.items():
+            phase_probs_info[f"phase_{phase_id}"] = prob
+        phase_probs_row = pd.DataFrame(phase_probs_info, index=[0])
+
         if self.phase_probs_df is None:
             self.phase_probs_df = phase_probs_row.copy()
         else:
             self.phase_probs_df = pd.concat([self.phase_probs_df, phase_probs_row], ignore_index=True)
 
         # update epsilons_df
-        epsilon_record_row = pd.DataFrame(
-            {f"intersection_{agent.intersection.get('id')}": agent.get('epsilon') for agent in self.local_agents.getAll()}, 
-            index=[0]
-        )
+        epsilon_info = {'episode': self.episode}
+        for agent in self.local_agents.getAll():
+            epsilon_info[f"intersection_{agent.intersection.get('id')}"] = agent.get('epsilon')
+        epsilon_record_row = pd.DataFrame(epsilon_info, index=[0])
+
         if self.epsilon_record_df is None:
             self.epsilon_record_df = epsilon_record_row.copy()
         else:
@@ -444,12 +457,14 @@ class MasterAgent(Object):
             return
         if not self.buffer.get('change_flg'):
             return
-        if not self.buffer.get('enough_new_data_flg'):
-            return
 
         # sample data from buffer
         data_id_list, learning_data_list = self.buffer.sample(self.num_batches * self.batch_size)
 
+        # if the number of data is smaller than batch size, do not train and return
+        if len(data_id_list) < self.batch_size:
+            return
+        
         loss_list_map = {key: [] for key in ['avg', 'max', 'min']}
         for epoch in range(1, self.num_epochs + 1):
             # shuffle data_id_list
@@ -460,6 +475,10 @@ class MasterAgent(Object):
             shuffled_priority_list = []
             loss_list = []
             for batch in range(1, self.num_batches + 1):
+                # when the number of data is smaller than batch size, break the loop
+                if batch * self.batch_size > len(shuffled_data_id_list):
+                    break
+
                 # get mini batch data
                 batch_learning_data_list = shuffled_learning_data_list[(batch - 1) * self.batch_size : batch * self.batch_size]
                 batch_learning_data = default_collate(batch_learning_data_list)
@@ -488,23 +507,29 @@ class MasterAgent(Object):
                 if self.update_count >= self.update_interval:
                     self.target_model.load_state_dict(self.model.state_dict())
                     self.update_count = 0
+
+                    if self.reset_flg:
+                        self.buffer.reset('priority')
+
+                if self.update_count % 100 == 0:
+                    self._showInfo('gradient')
                 
                 if epoch == self.num_epochs:
                     shuffled_priority_list.extend(torch.abs(q_values - td_targets).squeeze().detach().cpu().numpy().tolist())
-            
+
             # update avg_loss_list
             loss_list_map['avg'].append(np.mean(loss_list).item())
             loss_list_map['max'].append(np.max(loss_list).item())
             loss_list_map['min'].append(np.min(loss_list).item())
-
+        
         # update priorities and initial_priority
         zipped_priority_data = sorted(zip(shuffled_data_id_list, shuffled_priority_list))
         _, priority_tuple = zip(*zipped_priority_data)
-        self.buffer.update(data_id_list=data_id_list, priority_list=list(priority_tuple))     
+        self.buffer.update(data_id_list=data_id_list, priority_list=list(priority_tuple))
         self.buffer.set('initial_priority', max(loss_list_map['max']))
         
         # show training results and gradients
-        self._showInfo(loss_list_map)
+        self._showInfo('training', loss_list_map)
 
         # reset new_data_count
         self.buffer.reset('new_data_count')
@@ -521,7 +546,7 @@ class MasterAgent(Object):
         if self.simulation_type == 'test':
             return
         
-        # save session_info, session_df, phase_probs_df, and epsilon_record_df
+        # save session information and tree data
         with open(self.save_dir_path_map['session'] / 'session.json', 'w', encoding='utf-8') as f:
             json.dump({
                 'episode': self.episode,
@@ -535,6 +560,9 @@ class MasterAgent(Object):
                 }
             }, f)
         
+        self.buffer.save('tree')
+        
+        # save session_df, phase_probs_df, and epsilon_record_df
         with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8', newline='') as f:
             self.session_df.to_csv(f, index=False)
         
@@ -559,22 +587,7 @@ class MasterAgent(Object):
         return
     
     def showInfo(self, type):
-        if type == 'result':
-            print('==============================================')
-            print('status: total rewards')
-            print(f"mastar agent id: {self.id}")
-            print(f"average total reward: {self.avg_total_reward:.1f}")
-        else:
-            raise NotImplementedError(f"Not supported info type: {type}")
-        
-        return
-    
-    def showTotalReward(self):
-        for local_agent_id in self.local_agents.getKeys(container_flg=True, sorted_flg=True):
-            local_agent = self.local_agents[local_agent_id]
-            print(f"Local Agent {local_agent_id}: Total Reward = {local_agent.get('total_reward'):.1f}")
-        
-        print(f"Master Agent {self.id}: Average Total Reward = {self.avg_total_reward:.1f}")
+        self._showInfo(type)
         return
     
     @property

@@ -164,20 +164,16 @@ class Road(Object):
 
         # initialize vehicles_df if it is None
         if self.vehicles_df is None:
-            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id'])
+            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
 
         # if the road is not input road, skip the rest of the process    
         if not self.has('output_intersection'):
             return
         
         # calculate route_num_vehs_map
-        self.route_num_vehs_map = {}
-        for direction_id in range(self.output_intersection.get('num_roads')):
-            self.route_num_vehs_map[direction_id] = 0        
-
-        for _, tmp_vehicles_df in self.vehicles_df.iterrows():
-            direction_id = tmp_vehicles_df['direction_id']
-            self.route_num_vehs_map[int(direction_id)] += 1
+        self.route_num_vehs_map = {route_id: 0 for route_id in range(self.output_intersection.get('num_roads'))}    
+        for _, vehicle_row in self.vehicles_df.iterrows():
+            self.route_num_vehs_map[vehicle_row['route_id']] += 1
 
         # update speed_record_list
         self.speed_record_list.append({

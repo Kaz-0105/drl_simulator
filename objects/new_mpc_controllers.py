@@ -360,7 +360,7 @@ class NewMpcController(Object):
             if vehicles_df.shape[0] == 0:
                 vehicles_df_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
-                    vehicles_df_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'direction_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
+                    vehicles_df_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'route_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
                 self.road_vehicles_df_map[road_order_id] = vehicles_df_map
                 continue
             
@@ -383,8 +383,8 @@ class NewMpcController(Object):
             signal_id_list = []
             for _, vehicle_row in vehicles_df.iterrows():
                 # define signal_id
-                direction_id = vehicle_row['direction_id'] if vehicle_row['direction_id'] != 0 else random.choice(range(1, self.num_roads))
-                signal_id = (road_order_id - 1) * (self.num_roads - 1) + direction_id
+                route_id = vehicle_row['route_id'] if vehicle_row['route_id'] != 0 else random.choice(range(1, self.num_roads))
+                signal_id = (road_order_id - 1) * (self.num_roads - 1) + route_id
                 signal_id_list.append(int(signal_id))
 
                 if vehicle_row['next_link_id'] not in road.links.getKeys():
@@ -1046,7 +1046,7 @@ class NewMpcController(Object):
 
                 if len(lane_str_list) == 1:
                     # initialize last_vehs_map
-                    last_vehs_map = {direction_id: {'idx': -1} for direction_id in range(1, self.num_roads)}
+                    last_vehs_map = {route_id: {'idx': -1} for route_id in range(1, self.num_roads)}
                     
                     p_s = params['p_s'][lane_str_list[0]]
                     h1_min = - p_max + p_s - D_s
@@ -1127,14 +1127,14 @@ class NewMpcController(Object):
                             col_delta_w1 = 6
 
                             # search target vehicle for delta_w2(7)
-                            target_info = {'idx': -1, 'direction_id': None}
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle_row['direction_id']):
+                            target_info = {'idx': -1, 'route_id': None}
+                            for route_id in range(1, self.num_roads):
+                                if route_id == int(vehicle_row['route_id']):
                                     continue
                                 
-                                if last_vehs_map[direction_id]['idx'] > target_info['idx']:
-                                    target_info['idx'] = last_vehs_map[direction_id]['idx']
-                                    target_info['direction_id'] = direction_id
+                                if last_vehs_map[route_id]['idx'] > target_info['idx']:
+                                    target_info['idx'] = last_vehs_map[route_id]['idx']
+                                    target_info['route_id'] = route_id
                             
                             # define delta_w2(7)
                             if target_info['idx'] == -1:
@@ -1162,7 +1162,7 @@ class NewMpcController(Object):
                         col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
 
                         # update last_vehs_map
-                        last_vehs_map[int(vehicle_row['direction_id'])] = {
+                        last_vehs_map[int(vehicle_row['route_id'])] = {
                             'idx': idx,
                             'rows': [row + row_D3 for row in rows_delta_w2],
                             'col': col_delta_w1 + col_D3,
@@ -1176,8 +1176,8 @@ class NewMpcController(Object):
                             continue
 
                         if target_info['idx'] != -1:
-                            target_rows = last_vehs_map[int(vehicle_row['direction_id'])]['rows']
-                            target_col = last_vehs_map[target_info['direction_id']]['col']
+                            target_rows = last_vehs_map[int(vehicle_row['route_id'])]['rows']
+                            target_col = last_vehs_map[target_info['route_id']]['col']
 
                             D3_matrix[target_rows, target_col] = [-1, 1]                 
                         
@@ -1191,7 +1191,7 @@ class NewMpcController(Object):
                     # initialize last_vehs_map
                     last_vehs_map = {}
                     for lane_str in lane_str_list:
-                        last_vehs_map[lane_str] = {direction_id: {'idx': -1, 'pos': float('inf')} for direction_id in range(1, self.num_roads)}
+                        last_vehs_map[lane_str] = {route_id: {'idx': -1, 'pos': float('inf')} for route_id in range(1, self.num_roads)}
 
                     for idx, vehicle_row in vehicles_df.iterrows():
                         lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
@@ -1290,20 +1290,20 @@ class NewMpcController(Object):
                             col_delta_w1 = 7
 
                             # search target vehicles for delta_w2(8)
-                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'direction_id': None, 'lane_str': None} for pos_type in ['before', 'after']}
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle_row['direction_id']):
+                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'route_id': None, 'lane_str': None} for pos_type in ['before', 'after']}
+                            for route_id in range(1, self.num_roads):
+                                if route_id == int(vehicle_row['route_id']):
                                     continue
                                 
                                 for tmp_lane_str in lane_str_list:
                                     if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
                                         continue
 
-                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    last_veh_info = last_vehs_map[tmp_lane_str][route_id]
                                     if last_veh_info['pos'] < target_info['before']['pos']:
                                         target_info['before']['idx'] = last_veh_info['idx']
                                         target_info['before']['pos'] = last_veh_info['pos']
-                                        target_info['before']['direction_id'] = direction_id
+                                        target_info['before']['route_id'] = route_id
                                         target_info['before']['lane_str'] = tmp_lane_str
 
                             # define delta_w2(8)
@@ -1383,9 +1383,9 @@ class NewMpcController(Object):
                             col_delta_w1 = 9
 
                             # search target_idx for delta_w2(10) and delta_w3(11)
-                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'direction_id': None} for pos_type in ['before', 'after']}
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle_row['direction_id']):
+                            target_info = {pos_type: {'idx': -1, 'pos': float('inf'), 'route_id': None} for pos_type in ['before', 'after']}
+                            for route_id in range(1, self.num_roads):
+                                if route_id == int(vehicle_row['route_id']):
                                     continue
 
                                 # regarding before branching point
@@ -1393,20 +1393,20 @@ class NewMpcController(Object):
                                     if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
                                         continue
 
-                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    last_veh_info = last_vehs_map[tmp_lane_str][route_id]
                                     if last_veh_info['pos'] < target_info['before']['pos']:
                                         target_info['before']['idx'] = last_veh_info['idx']
                                         target_info['before']['pos'] = last_veh_info['pos']
                                         target_info['before']['lane_str'] = tmp_lane_str
-                                        target_info['before']['direction_id'] = direction_id
+                                        target_info['before']['route_id'] = route_id
                                 
                                 # regarding after branching point
-                                last_veh_info = last_vehs_map[lane_str][direction_id]
+                                last_veh_info = last_vehs_map[lane_str][route_id]
                                 if last_veh_info['pos'] < target_info['after']['pos']:
                                     target_info['after']['idx'] = last_veh_info['idx']
                                     target_info['after']['pos'] = last_veh_info['pos']
                                     target_info['after']['lane_str'] = lane_str
-                                    target_info['after']['direction_id'] = direction_id
+                                    target_info['after']['route_id'] = route_id
 
                             # define delta_w2(10)
                             if target_info['before']['idx'] == -1:
@@ -1452,7 +1452,7 @@ class NewMpcController(Object):
                         col_D3 = D3_matrix.shape[1] if 'D3_matrix' in locals() else 0
 
                         # update last_vehs_map
-                        last_vehs_map[lane_str][int(vehicle_row['direction_id'])] = {
+                        last_vehs_map[lane_str][int(vehicle_row['route_id'])] = {
                             'idx': idx,
                             'rows': {
                                 'delta_w2': [row + row_D3 for row in rows_delta_w2],
@@ -1470,14 +1470,14 @@ class NewMpcController(Object):
                             continue
 
                         if target_info['before']['idx'] != -1:
-                            target_rows = last_vehs_map[lane_str][int(vehicle_row['direction_id'])]['rows']['delta_w2']
-                            target_col = last_vehs_map[target_info['before']['lane_str']][target_info['before']['direction_id']]['col']
+                            target_rows = last_vehs_map[lane_str][int(vehicle_row['route_id'])]['rows']['delta_w2']
+                            target_col = last_vehs_map[target_info['before']['lane_str']][target_info['before']['route_id']]['col']
 
                             D3_matrix[target_rows, target_col] = [-1, 1]
 
                         if target_info['after']['idx'] != -1:
-                            target_rows = last_vehs_map[lane_str][int(vehicle_row['direction_id'])]['rows']['delta_w3']
-                            target_col = last_vehs_map[target_info['after']['lane_str']][target_info['after']['direction_id']]['col']
+                            target_rows = last_vehs_map[lane_str][int(vehicle_row['route_id'])]['rows']['delta_w3']
+                            target_col = last_vehs_map[target_info['after']['lane_str']][target_info['after']['route_id']]['col']
 
                             D3_matrix[target_rows, target_col] = [-1, 1]
                         
@@ -1512,7 +1512,7 @@ class NewMpcController(Object):
 
                 if len(lane_str_list) == 1:
                     # initialize last_vehs_map
-                    last_vehs_map = {direction_id: {'idx': -1} for direction_id in range(1, self.num_roads)}
+                    last_vehs_map = {route_id: {'idx': -1} for route_id in range(1, self.num_roads)}
 
                     p_s = params['p_s'][lane_str_list[0]]
                     h1_min = - p_max + p_s - D_s
@@ -1573,12 +1573,12 @@ class NewMpcController(Object):
                             
                             # search target vehicle for delta_w2
                             target_info = {'idx': -1}
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle_row['direction_id']):
+                            for route_id in range(1, self.num_roads):
+                                if route_id == int(vehicle_row['route_id']):
                                     continue
                                 
-                                if last_vehs_map[direction_id]['idx'] > target_info['idx']:
-                                    target_info['idx'] = last_vehs_map[direction_id]['idx']
+                                if last_vehs_map[route_id]['idx'] > target_info['idx']:
+                                    target_info['idx'] = last_vehs_map[route_id]['idx']
 
                             # define delta_w2
                             if target_info['idx'] == -1:
@@ -1597,7 +1597,7 @@ class NewMpcController(Object):
                             e[24:28, 0] = [0, 0, p_max, -p_min]
                             
                         # update last_vehs_map
-                        last_vehs_map[int(vehicle_row['direction_id'])]['idx'] = idx
+                        last_vehs_map[int(vehicle_row['route_id'])]['idx'] = idx
                         
                         # push to E_matrix
                         E_matrix = np.vstack([E_matrix, e]) if 'E_matrix' in locals() else e
@@ -1612,7 +1612,7 @@ class NewMpcController(Object):
                     # initialize last_vehs_map
                     last_vehs_map = {}
                     for lane_str in lane_str_list:
-                        last_vehs_map[lane_str] = {direction_id: {'idx': -1, 'pos': float('inf')} for direction_id in range(1, self.num_roads)}
+                        last_vehs_map[lane_str] = {route_id: {'idx': -1, 'pos': float('inf')} for route_id in range(1, self.num_roads)}
 
                     for idx, vehicle_row in vehicles_df.iterrows():
                         lane_str = f"{int(vehicle_row['wait_link_id'])}-{int(vehicle_row['wait_lane_id'])}"
@@ -1685,8 +1685,8 @@ class NewMpcController(Object):
                             
                             # search target vehicle for delta_w2
                             target_info = {'idx': -1, 'pos': float('inf')}
-                            for direction_id in range(1, self.num_roads):
-                                if direction_id == int(vehicle_row['direction_id']):
+                            for route_id in range(1, self.num_roads):
+                                if route_id == int(vehicle_row['route_id']):
                                     continue
 
                                 for tmp_lane_str in lane_str_list:
@@ -1696,7 +1696,7 @@ class NewMpcController(Object):
                                     if not full_flg_map[tmp_lane_str]:
                                         continue
 
-                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    last_veh_info = last_vehs_map[tmp_lane_str][route_id]
                                     if last_veh_info['pos'] < target_info['pos']:
                                         target_info['idx'] = last_veh_info['idx']
                                         target_info['pos'] = last_veh_info['pos']
@@ -1759,9 +1759,9 @@ class NewMpcController(Object):
                             
                             # search target vehicles for delta_w2 and delta_w3
                             target_info = {pos_type: {'idx': -1, 'pos': float('inf')} for pos_type in ['before', 'after']}
-                            for direction_id in range(1, self.num_roads):
-                                # skip own direction_id
-                                if int(vehicle_row['direction_id']) == direction_id:
+                            for route_id in range(1, self.num_roads):
+                                # skip own route_id
+                                if int(vehicle_row['route_id']) == route_id:
                                     continue
 
                                 # regarding before branching point
@@ -1770,13 +1770,13 @@ class NewMpcController(Object):
                                     if not (tmp_lane_str == lane_str or full_flg_map[tmp_lane_str]):
                                         continue
                                     
-                                    last_veh_info = last_vehs_map[tmp_lane_str][direction_id]
+                                    last_veh_info = last_vehs_map[tmp_lane_str][route_id]
                                     if last_veh_info['pos'] < target_info['before']['pos']:
                                         target_info['before']['idx'] = last_veh_info['idx']
                                         target_info['before']['pos'] = last_veh_info['pos']
                                 
                                 # regarding after branching point
-                                last_veh_info = last_vehs_map[lane_str][direction_id]
+                                last_veh_info = last_vehs_map[lane_str][route_id]
                                 if last_veh_info['pos'] < target_info['after']['pos']:
                                     target_info['after']['idx'] = last_veh_info['idx']
                                     target_info['after']['pos'] = last_veh_info['pos']
@@ -1811,7 +1811,7 @@ class NewMpcController(Object):
                             e[40:44, 0] = [0, 0, p_max, -p_min]
                         
                         # update last_vehs_map
-                        last_vehs_map[lane_str][int(vehicle_row['direction_id'])] = {
+                        last_vehs_map[lane_str][int(vehicle_row['route_id'])] = {
                             'idx': idx,
                             'pos': vehicle_row['position'],
                         }
@@ -2650,8 +2650,8 @@ class NewMpcController(Object):
                 # wait_flg（信号待ちかどうか）を初期化
                 wait_flgs = []
 
-                # direction_idを取得
-                direction_ids = vehicles_df['direction_id']
+                # route_idを取得
+                route_ids = vehicles_df['route_id']
                 for idx, row in vehicles_df.iterrows():
                     # 交差点に近くない自動車はスコープから外す
                     if not near_flgs[idx]:
@@ -2659,7 +2659,7 @@ class NewMpcController(Object):
                         continue
 
                     # 信号が赤の場合は信号待ち（3は青信号，1は赤信号を表す）
-                    signal_value = 3 if row['direction_id'] == 0 else direction_signal_value_map[row['direction_id']]
+                    signal_value = 3 if row['route_id'] == 0 else direction_signal_value_map[row['route_id']]
                     if signal_value == 1:
                         wait_flgs.append(True)
                         continue
@@ -2673,7 +2673,7 @@ class NewMpcController(Object):
                     # その自動車が信号待ちをしていたら自分も信号待ちにする
                     found_flg = False
                     for tmp_idx in range(len(wait_flgs) - 1, - 1, -1):
-                        if direction_ids[tmp_idx] != row['direction_id']:
+                        if route_ids[tmp_idx] != row['route_id']:
                             wait_flgs.append(True if wait_flgs[tmp_idx] else False)
                             found_flg = True
                             break
@@ -2745,7 +2745,7 @@ class NewMpcController(Object):
                                 # 方向に関する状態量はone-hotベクトルに変換，それ以外はそのまま追加
                                 if feature_name == 'direction':
                                     direction_vector = [0] * (self.intersection.get('num_roads'))
-                                    direction_vector[int(vehicle['direction_id'])] = 1
+                                    direction_vector[int(vehicle['route_id'])] = 1
                                     vehicle_state.extend(direction_vector)
                                 else: 
                                     vehicle_state.append(float(vehicle[feature_name]))

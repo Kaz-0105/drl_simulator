@@ -16,16 +16,16 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 100
+    episode: 10
     interval: 100
   training:
     learning_rate: 1e-4        # learning rate for drl
-    threshold: 50              # the number of new data for each learning update
+    threshold: 25              # the number of new data for each learning update
     batch:
       number: 10                 # batch number for learning
       size: 128                  # batch size for learning
-    epoch: 1                     # epoch for learning
-    weight_decay: 1e-5           # weight decay for learning
+    epoch: 2                     # epoch for learning
+    weight_decay: 0.0            # weight decay for learning
     norm_clip: 10.0              # max norm for gradient clipping
   framework: 
     type: apex
@@ -39,8 +39,9 @@ drl:
         priority:
           initial_value: 500
           reset:
-            flg: true
-            interval: 10
+            type: target # episode or target or none
+            episode:
+              interval: 10
       epsilon:
         type: linear # linear or fix
         linear:
@@ -51,7 +52,7 @@ drl:
   duration_steps: 5
   state:
     vehicle:
-      number : 20
+      number : 10
       position: true
       speed: true
       route: true
@@ -64,7 +65,7 @@ drl:
       delay: true
     phase:
   action:
-    random_type: 2 # 1: completely random, 2: random based on the number of vehicles
+    random_type: 1 # 1: completely random, 2: random based on the number of vehicles
   reward: 
     id: 2
     done_penalty: -50
@@ -78,7 +79,7 @@ drl:
         rate: 0.5
     common:
       initialization:
-        type: null # null or bc
+        type: null # null or he
       activation_function:
         type: leaky_relu # relu or leaky_relu
         leaky_relu:

@@ -27,15 +27,8 @@ class ApexBuffer (Common):
         return
     
     @property
-    def enough_new_data_flg(self):
-        if not self.change_flg:
-            return False
-        if self.new_data_count < self.threshold:
-            return False
-        if self.current_size < self.batch_size * self.num_batches:
-            return False
-        
-        return True
+    def change_flg(self):
+        return self.new_data_count >= self.threshold
         
     @property
     def simulation_id(self):
@@ -58,9 +51,9 @@ class ApexBuffer (Common):
         drl_info = self.config.get('drl_info')
         self.size = drl_info['framework']['apex']['buffer']['size']
         self.file_capacity = drl_info['framework']['apex']['buffer']['file_capacity']
-        self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['flg']
+        self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['type'] is not None and drl_info['framework']['apex']['buffer']['priority']['reset']['type'] == 'episode'
         if self.reset_flg:
-            self.reset_interval = drl_info['framework']['apex']['buffer']['priority']['reset']['interval']
+            self.reset_interval = drl_info['framework']['apex']['buffer']['priority']['reset']['episode']['interval']
         
         self.threshold = drl_info['training']['threshold']
         self.batch_size = drl_info['training']['batch']['size']
@@ -99,8 +92,6 @@ class ApexBuffer (Common):
             self.next_data_id = 0   
             self.current_size = 0
         
-        # initialize change_flg
-        self.change_flg = False
         return
     
     def _showInfo(self):
@@ -146,12 +137,11 @@ class ApexBuffer (Common):
             self.dataset.update(data_id_list, learning_data_list)
             self.sum_tree.update(data_id_list)
 
-            # update next_data_id, new_data_count, current_size and change_flg
+            # update next_data_id, new_data_count and current_size
             self.next_data_id = (self.next_data_id + len(learning_data_list)) % self.size
             self.new_data_count += len(learning_data_list)
             self.current_size = min(self.current_size + len(learning_data_list), self.size)
-            self.change_flg = True
-
+            
             # clear learning_data_list and hdf5_obj
             self.master_agent.clearLearningData()
             self.dataset.close()
@@ -170,8 +160,17 @@ class ApexBuffer (Common):
     def reset(self, property_name):
         if property_name == 'new_data_count':
             self.new_data_count %= self.threshold
+        elif property_name == 'priority':
+            self.sum_tree.reset()
         else:
             raise NotImplementedError(f"Not supported property_name: {property_name}")
+    
+    def save(self, type):
+        if type == 'tree':
+            self.sum_tree.save()
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+        return
         
 class SumTree (Common):
     def __init__(self, buffer):
@@ -185,7 +184,7 @@ class SumTree (Common):
         
         if self.reset_flg and self.episode % self.reset_interval == 0:
             self._resetPriority()
-            self._showInfo()
+            self._showInfo('reset')
 
         return
     
@@ -208,6 +207,10 @@ class SumTree (Common):
     @property
     def total_priority(self):
         return self.tree_array[0]
+
+    @property
+    def priority_list(self):
+        return self.tree_array[self.num_leaves - 1 : self.num_leaves - 1 + self.current_size]
     
     @property
     def episode(self):
@@ -217,12 +220,14 @@ class SumTree (Common):
         # set initial priority and size
         drl_info = self.config.get('drl_info')
         self.initial_priority = drl_info['framework']['apex']['buffer']['priority']['initial_value']
-        self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['flg']
+        self.reset_flg = self.buffer.get('reset_flg')
         if self.reset_flg:
-            self.reset_interval = drl_info['framework']['apex']['buffer']['priority']['reset']['interval']
+            self.reset_interval = self.buffer.get('reset_interval')
         self.size = self.buffer.get('size')
 
-        self.buffer_file_path_map = self.buffer.get('buffer_file_path_map')
+        # set tree_file_path
+        buffer_file_path_map = self.buffer.get('buffer_file_path_map')
+        self.tree_file_path = buffer_file_path_map['tree']
 
         # set num_leaves (the number of leaf nodes in tree_array)
         self.num_leaves = 2**math.ceil(math.log2(self.size))
@@ -232,13 +237,14 @@ class SumTree (Common):
             saved_sum_tree = self.shared_resources.buffer.sum_tree
             self.tree_array = saved_sum_tree.get('tree_array')
 
-        elif self.buffer_file_path_map['tree'].exists() and self.buffer_file_path_map['meta'].exists():
-            tree_obj = h5py.File(self.buffer_file_path_map['tree'], 'r')
-            self.tree_array = tree_obj[:]
+        elif self.tree_file_path.exists():
+            tree_obj = h5py.File(self.tree_file_path, 'r')
+            self.tree_array = tree_obj['tree_array'][:]
             tree_obj.close()
 
         else:
             self.tree_array = np.zeros(2 * self.num_leaves - 1, dtype=np.float32)
+
         return
     
     def _resetPriority(self):
@@ -290,6 +296,11 @@ class SumTree (Common):
             # otherwise, go to the right child node and adjust random_value by subtracting the left child node's value
             return self._retrieve(right_child_id, random_value - self.tree_array[left_child_id])
         
+    def reset(self):
+        self._resetPriority()
+        self._showInfo('reset')
+        return
+        
     def sample(self, number):
         if self.current_size < number:
             return list(range(self.current_size))
@@ -323,15 +334,15 @@ class SumTree (Common):
             self._propagate(tree_id, change)
 
         return
+    
+    def save(self):
+        # save tree_array
+        with h5py.File(self.tree_file_path, 'w') as tree_obj:
+            if 'tree_array' in tree_obj:
+                tree_obj['tree_array'][:] = self.tree_array
+            else:
+                tree_obj.create_dataset('tree_array', data=self.tree_array, dtype=np.float32)
 
-    def resetPriority(self):
-        for data_idx in range(self.current_size):
-            tree_idx = data_idx + self.num_leaves - 1
-            change = self.initial_priority - self.tree_array[tree_idx]
-            self.tree_array[tree_idx] = self.initial_priority
-
-            self._propagate(tree_idx, change.item())
-        
         return
     
 class Dataset(ExtendedDataset):
