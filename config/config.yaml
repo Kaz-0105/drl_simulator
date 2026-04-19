@@ -19,7 +19,7 @@ drl:
     episode: 10
     interval: 100
   training:
-    learning_rate: 1e-4        # learning rate for drl
+    learning_rate: 5e-4        # learning rate for drl
     threshold: 25              # the number of new data for each learning update
     batch:
       number: 10                 # batch number for learning

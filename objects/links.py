@@ -106,6 +106,7 @@ class Links(Container):
             road.links.add(link)
             if tag_row['type'] == 'main':
                 road.set('main_link', link)
+                road.set('length', link.get('length'))
             elif tag_row['type'] == 'right':
                 road.set('right_link', link)
             elif tag_row['type'] == 'left':
@@ -324,10 +325,9 @@ class Lane(Object):
         # set com objects
         self.com = com
 
-        # set id, length_info
-        self.id = int(self.com.AttValue('Index'))
-        self.length_info = self.link.get('length_info')
-    
+        self._initProps()
+        return
+
     @property
     def num_vehicles(self):
         return self.vehicles_df.shape[0]
@@ -335,6 +335,14 @@ class Lane(Object):
     @property
     def num_vehs_in_queue(self):
         return self.vehicles_df[self.vehicles_df['in_queue']].shape[0]
+    
+    def _initProps(self):
+        # set id, length_info
+        self.id = int(self.com.AttValue('Index'))
+        self.length_info = self.link.get('length_info')
+
+        self.length = self.length_info['length']
+        return
 
     def update(self):
         # get vehicles_df from link

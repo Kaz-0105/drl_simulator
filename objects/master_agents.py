@@ -300,6 +300,7 @@ class MasterAgent(Object):
             self.update_count = self.shared_resources.get('update_count')
             self.session_df = self.shared_resources.get('session_df')
             self.phase_probs_df = self.shared_resources.get('phase_probs_df')
+            self.epsilon_record_df = self.shared_resources.get('epsilon_record_df')
             self.episode = len(self.session_df) + 1
 
         else:
@@ -321,8 +322,12 @@ class MasterAgent(Object):
             if phase_probs_df_file_path.exists():
                 with open(phase_probs_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.phase_probs_df = pd.read_csv(f)
-                    
 
+            epsilon_record_df_file_path = self.save_dir_path_map['session'] / 'epsilon_record_df.csv'
+            if epsilon_record_df_file_path.exists():
+                with open(epsilon_record_df_file_path, 'r', encoding='utf-8', newline='') as f:
+                    self.epsilon_record_df = pd.read_csv(f)
+                    
         # load model
         if self.simulation_id > 1:
             self.model = self.shared_resources.get('model')
@@ -342,6 +347,14 @@ class MasterAgent(Object):
                 self.target_model.load_state_dict(torch.load(target_model_file_path))
             else:
                 self.target_model.load_state_dict(self.model.state_dict())
+
+        # load optimizer
+        if self.simulation_id > 1:
+            self.optimizer = self.shared_resources.get('optimizer')
+        else:
+            optimizer_file_path = self.save_dir_path_map['optimizer'] / 'optimizer.pth'
+            if optimizer_file_path.exists():
+                self.optimizer.load_state_dict(torch.load(optimizer_file_path))
         return
     
     def _makeEpsilon(self):
@@ -579,6 +592,7 @@ class MasterAgent(Object):
         # set properties to shared resources
         self.shared_resources.set('model', self.model)
         self.shared_resources.set('target_model', self.target_model)
+        self.shared_resources.set('optimizer', self.optimizer)
         self.shared_resources.set('update_count', self.update_count)
         self.shared_resources.set('session_df', self.session_df)
         self.shared_resources.set('phase_probs_df', self.phase_probs_df)  

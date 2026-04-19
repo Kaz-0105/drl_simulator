@@ -31,6 +31,15 @@ class Roads(Container):
         
         return
     
+    @property
+    def max_length(self):
+        max_length = 0
+        for road in self.getAll():
+            if road.get('length') > max_length:
+                max_length = road.get('length')
+        
+        return max_length
+    
     def _initElements(self):
         if self.has('network'):
             roads_df = self.config.get('roads_df')
@@ -118,11 +127,39 @@ class Road(Object):
         self.vehicle_routing_decision = None
         return
 
+    @property
+    def max_queue_length(self):
+        return self.queue_counters.get('max_queue_length')
+
+    @property
+    def average_delay(self):
+        delays = []
+        for delay_measurement in self.delay_measurements.getAll():
+            delays.append(delay_measurement.get('current_delay'))
+        
+        return sum(delays) / len(delays) if len(delays) > 0 else 0
+    
+    @property
+    def num_vehicles(self):
+        return self.vehicles_df.shape[0]
+    
+    @property
+    def route_signal_color_map(self):
+        route_signal_color_map = {}
+        for route_id, signal_group_id in self.route_signal_group_map.items():
+            signal_group = self.signal_groups[signal_group_id]
+            route_signal_color_map[route_id] = signal_group.get('current_signal_color')
+        
+        return route_signal_color_map
+
     def _initProps(self, road_row):
         # set id, max_speed, type
         self.id = int(road_row['id'])
         self.max_speed = int(road_row['max_speed'])
         self.type = road_row['type']
+
+        # set length (set in links initialization process)
+        self.length = None
     
         # initialize route_signal_group_map
         self.route_signal_group_map = {}
@@ -192,31 +229,6 @@ class Road(Object):
         self.speed_record_df = DataFrame(self.speed_record_list)
         self.num_vehs_record_df = DataFrame(self.num_vehs_record_list)
         return
-                
-    @property
-    def max_queue_length(self):
-        return self.queue_counters.get('max_queue_length')
-
-    @property
-    def average_delay(self):
-        delays = []
-        for delay_measurement in self.delay_measurements.getAll():
-            delays.append(delay_measurement.get('current_delay'))
-        
-        return sum(delays) / len(delays) if len(delays) > 0 else 0
-    
-    @property
-    def num_vehicles(self):
-        return self.vehicles_df.shape[0]
-    
-    @property
-    def route_signal_color_map(self):
-        route_signal_color_map = {}
-        for route_id, signal_group_id in self.route_signal_group_map.items():
-            signal_group = self.signal_groups[signal_group_id]
-            route_signal_color_map[route_id] = signal_group.get('current_signal_color')
-        
-        return route_signal_color_map
 
 
     

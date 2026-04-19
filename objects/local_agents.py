@@ -80,10 +80,18 @@ class LocalAgents(Container):
         return False
     
 class LocalAgent(Object):
+    # random action type
     TOTALLY_RANDOM = 1
     NUM_VEHICLES_RANDOM = 2
+
+    # signal color
     RED = 1
     GREEN = 3
+
+    # average spacing and max delay
+    AVG_SPACING = 7
+    MAX_DELAY = 120
+
 
     def __init__(self, local_agents, intersection, epsilon):
         super().__init__()
@@ -350,8 +358,8 @@ class LocalAgent(Object):
             for road_id in range(1, self.num_roads + 1):
                 road = self.roads[road_id]
                 state['roads'][f"road_{road_id}"]['road'] = torch.tensor([
-                    road.get('max_queue_length'),
-                    road.get('average_delay'),
+                    road.get('max_queue_length') / road.get('length'),
+                    road.get('average_delay') / self.MAX_DELAY,
                 ], dtype=torch.float32)
 
             # lanes
@@ -361,7 +369,10 @@ class LocalAgent(Object):
                 
                 for lane_id in range(1, lanes.count() + 1):
                     lane = lanes[lane_id]
-                    lane_features = [lane.get('num_vehicles'), lane.get('length_info')['length']]
+                    lane_features = [
+                        lane.get('num_vehicles') / (lane.get('length') / self.AVG_SPACING),
+                        lane.get('length') / self.roads.get('max_length'),
+                    ]
 
                     if lane.link.get('type') == 'left':
                         lane_features.extend([1, 0, 0])       
@@ -388,8 +399,8 @@ class LocalAgent(Object):
                         vehicle_features = [0] * self.num_roads
                         vehicle_features[int(vehicle_row['route_id'])] = 1
                         vehicle_features.extend([
-                            vehicle_row['position'],
-                            vehicle_row['speed'],
+                            vehicle_row['position'] / road.get('length'),
+                            vehicle_row['speed'] / road.get('max_speed'),
                             1,
                         ])
                         vehicle_features_list.append(vehicle_features)
