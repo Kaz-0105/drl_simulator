@@ -14,6 +14,7 @@ import yaml
 import json
 import random
 from torch.utils.data.dataloader import default_collate
+import copy
 
 class MasterAgents(Container):
     def __init__(self, network, device):
@@ -180,7 +181,7 @@ class MasterAgent(Object):
 
         self.architecture = drl_info['architecture']['type']
         
-        self.gamma = float(drl_info['reward']['gamma'])
+        self.gamma = float(drl_info['reward']['common']['gamma'])
 
         # set update_count, episode, and session_df
         self.update_count = 0
@@ -225,6 +226,73 @@ class MasterAgent(Object):
         drl_dir_path = root_dir_path / 'data' / 'drl'
         drl_dir_path.mkdir(parents=True, exist_ok=True)
         
+        # make saved_drl_info
+        saved_drl_info = copy.deepcopy(self.config.get('drl_info'))
+
+        saved_drl_info.pop('simulation_type')
+        saved_drl_info.pop('stop')
+        saved_drl_info.pop('training')
+        saved_drl_info.pop('data_augmentation')
+
+        # framework
+        saved_framework_info = saved_drl_info['framework']
+
+        for key in copy.deepcopy(saved_framework_info):
+            if key == 'type':
+                continue
+            if key == saved_framework_info['type']:
+                continue
+            saved_framework_info.pop(key)
+
+        if saved_framework_info['type'] == 'apex':
+            saved_apex_info = saved_framework_info['apex']
+
+            saved_apex_info.pop('local_agent')
+            saved_apex_info.pop('target_network')
+            
+            saved_buffer_info = saved_apex_info['buffer']
+            saved_buffer_info.pop('priority')
+
+        else:
+            raise NotImplementedError(f"Not supported framework type: {saved_framework_info['type']}")
+        
+        # action
+        saved_drl_info.pop('action')
+
+        # reward
+        reward_info = saved_drl_info['reward']
+        for key in copy.deepcopy(reward_info):
+            if key == 'type':
+                continue
+            if key == 'common':
+                continue
+            if key == reward_info['type']:
+                continue
+            reward_info.pop(key)
+        
+        # architecture
+        saved_architecture_info = saved_drl_info['architecture']
+
+        for key in copy.deepcopy(saved_architecture_info):
+            if key == 'type':
+                continue
+            if key == 'common':
+                continue
+            if key == saved_architecture_info['type']:
+                continue
+
+            saved_architecture_info.pop(key)
+
+        common_info = saved_architecture_info['common']
+        activation_info = common_info['activation_function']
+        for key in copy.deepcopy(activation_info):
+            if key == 'type':
+                continue
+            if key == activation_info['type']:
+                continue
+
+            activation_info.pop(key)
+        
         # get target config_dir_path
         found_flg = False
         for config_dir_path in drl_dir_path.glob('config_*'):
@@ -235,7 +303,7 @@ class MasterAgent(Object):
             with open(config_file_path, 'r', encoding='utf-8') as f:
                 config_yaml = yaml.safe_load(f)
 
-            if config_yaml == self.config.get('drl_info'):
+            if config_yaml == saved_drl_info:
                 found_flg = True
                 break
         
@@ -247,7 +315,7 @@ class MasterAgent(Object):
                     config_dir_path.mkdir(parents=True, exist_ok=False)
                     config_file_path = config_dir_path / 'config.yaml'
                     with config_file_path.open('w', encoding='utf-8') as f:
-                        yaml.dump(self.config.get('drl_info'), f)
+                        yaml.dump(saved_drl_info, f)
                     break
                 config_id += 1
         
@@ -304,26 +372,26 @@ class MasterAgent(Object):
             self.episode = len(self.session_df) + 1
 
         else:
-            session_info_file_path = self.save_dir_path_map['session'] / 'session_info.json'
+            session_info_file_path = self.save_dir_path_map['session'] / 'session.json'
             if session_info_file_path.exists():
                 with session_info_file_path.open('r', encoding='utf-8') as f:
                     session_info = json.load(f)
                 
-                self.update_count = session_info['update_count']
+                self.update_count = session_info['target_network']['update_count']
 
-            session_df_file_path = self.save_dir_path_map['session'] / 'session_df.csv'
+            session_df_file_path = self.save_dir_path_map['session'] / 'session.csv'
             if session_df_file_path.exists():
                 with open(session_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.session_df = pd.read_csv(f)
                 
                 self.episode = len(self.session_df) + 1
             
-            phase_probs_df_file_path = self.save_dir_path_map['session'] / 'phase_probs_df.csv'
+            phase_probs_df_file_path = self.save_dir_path_map['session'] / 'phase_probs.csv'
             if phase_probs_df_file_path.exists():
                 with open(phase_probs_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.phase_probs_df = pd.read_csv(f)
 
-            epsilon_record_df_file_path = self.save_dir_path_map['session'] / 'epsilon_record_df.csv'
+            epsilon_record_df_file_path = self.save_dir_path_map['session'] / 'epsilon_record.csv'
             if epsilon_record_df_file_path.exists():
                 with open(epsilon_record_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.epsilon_record_df = pd.read_csv(f)
@@ -573,7 +641,7 @@ class MasterAgent(Object):
                 }
             }, f)
         
-        self.buffer.save('tree')
+        self.buffer.save()
         
         # save session_df, phase_probs_df, and epsilon_record_df
         with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8', newline='') as f:

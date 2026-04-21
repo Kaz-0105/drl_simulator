@@ -107,7 +107,6 @@ class ApexBuffer (Common):
 
         data_id_list = self.sum_tree.sample(number)
         learning_data_list = [self.dataset[data_id] for data_id in data_id_list]
-        self.dataset.close()
 
         if not use_collate:
             return data_id_list, learning_data_list
@@ -142,9 +141,8 @@ class ApexBuffer (Common):
             self.new_data_count += len(learning_data_list)
             self.current_size = min(self.current_size + len(learning_data_list), self.size)
             
-            # clear learning_data_list and hdf5_obj
+            # clear learning_data_list
             self.master_agent.clearLearningData()
-            self.dataset.close()
 
             # show buffer update info
             self._showInfo()
@@ -165,11 +163,10 @@ class ApexBuffer (Common):
         else:
             raise NotImplementedError(f"Not supported property_name: {property_name}")
     
-    def save(self, type):
-        if type == 'tree':
-            self.sum_tree.save()
-        else:
-            raise NotImplementedError(f"Not supported type: {type}")
+    def save(self):
+        self.dataset.flush()
+        self.dataset.close()
+        self.sum_tree.save()
         return
         
 class SumTree (Common):
@@ -248,8 +245,12 @@ class SumTree (Common):
         return
     
     def _resetPriority(self):
-        self.tree_array = np.zeros(2 * self.num_leaves - 1, dtype=np.float32)
+        # reset initial priority
+        drl_info = self.config.get('drl_info')
+        self.initial_priority = drl_info['framework']['apex']['buffer']['priority']['initial_value']
 
+        # reset tree_array
+        self.tree_array = np.zeros(2 * self.num_leaves - 1, dtype=np.float32)
         for data_id in range(self.current_size):
             tree_id = data_id + self.num_leaves - 1
             self.tree_array[tree_id] = self.initial_priority
@@ -387,7 +388,7 @@ class Dataset(ExtendedDataset):
             if data_file_path.exists():
                 continue
             
-            with h5py.File(data_file_path, 'w') as data_obj:
+            with h5py.File(data_file_path, 'a') as data_obj:
                 if data_file_id != data_file_ids[-1]:
                     capacity = self.file_capacity
                 else:
@@ -459,7 +460,7 @@ class Dataset(ExtendedDataset):
         tmp_id = id % self.file_capacity
 
         if file_id not in self.hdf5_obj_map:
-            self.hdf5_obj_map[file_id] = h5py.File(self.data_file_path_map[file_id], 'r')
+            self.hdf5_obj_map[file_id] = h5py.File(self.data_file_path_map[file_id], 'a')
         
         data_obj = self.hdf5_obj_map[file_id]
 
@@ -525,17 +526,25 @@ class Dataset(ExtendedDataset):
     def __len__(self):
         return self.current_size
     
+    def __del__(self):
+        self.flush()
+        self.close()
+        return
+    
     def update(self, id_list, data_list):
         data_list = self._toNumpy(data_list)
         for id, data in zip(id_list, data_list):
             self[id] = data
         return
     
-    def close(self):
+    def flush(self):
         for hdf5_obj in self.hdf5_obj_map.values():
             hdf5_obj.flush()
+        return
+    
+    def close(self):
+        for hdf5_obj in self.hdf5_obj_map.values():
             hdf5_obj.close()
-        
         self.hdf5_obj_map = {}
         return
     

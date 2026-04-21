@@ -300,10 +300,12 @@ class NewMpcController(Object):
             # push to road_combinations_map
             self.road_combinations_map[road_order_id] = combination_lane_list_map
         return
-
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list, columns=['time', 'value'])
-        return
+    
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list, columns=['time', 'value'])
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
 
     def optimize(self):
         # 残りのステップ数がfixed_stepsと等しくなるまではスキップ

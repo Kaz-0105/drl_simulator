@@ -123,13 +123,12 @@ class DelayMeasurements(Container):
         
         return
 
-    def syncDataFrame(self):
+    def sync(self, type):
         for delay_measurement in self.getAll():
-            self.executor.submit(delay_measurement.syncDataFrame)
-        
+            self.executor.submit(delay_measurement.sync, type)
+
         self.executor.wait()
         return
-    
 
 class DelayMeasurement(Object):
     def __init__(self, com, delay_measurements):
@@ -196,6 +195,9 @@ class DelayMeasurement(Object):
             
         return
 
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list)
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return

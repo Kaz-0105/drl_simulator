@@ -112,6 +112,7 @@ class ProtoQNet(ExtendedModule):
         
         if self.init_weights_type == 'xavier':
             nn.init.xavier_uniform_(module.weight)
+
         elif self.init_weights_type == 'he':
             if self.activation_function == 'relu':
                 nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
@@ -935,12 +936,12 @@ class DuelingNet(ExtendedModule):
                     self.num_hidden_layer_features_map[part][layer_id]
                 ))
 
-            if self.activation_function == 'leaky_relu':
-                module_list.append(nn.LeakyReLU(self.alpha))
-            elif self.activation_function == 'relu':
-                module_list.append(nn.ReLU())
-            else:
-                raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+                if self.activation_function == 'leaky_relu':
+                    module_list.append(nn.LeakyReLU(self.alpha))
+                elif self.activation_function == 'relu':
+                    module_list.append(nn.ReLU())
+                else:
+                    raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
 
             module_list.append(nn.Linear(
                 self.num_hidden_layer_features_map[part][self.num_hidden_layers],

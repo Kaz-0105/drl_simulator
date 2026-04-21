@@ -34,11 +34,10 @@ class QueueCounters(Container):
         for index, queue_counter_id in enumerate(queue_counter_ids):
             self.executor.submit(self[queue_counter_id].update, queue_lengths[index])
         return
-
-    def syncDataFrame(self):
+    
+    def sync(self, type):
         for queue_counter in self.getAll():
-            self.executor.submit(queue_counter.syncDataFrame)
-
+            self.executor.submit(queue_counter.sync, type)
         self.executor.wait()
         return
     
@@ -85,10 +84,12 @@ class QueueCounter(Object):
             'value': 0.0 if value is None else value,
         })
         return
-
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list)
-        return
+    
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
 
     @property
     def current_queue_length(self):

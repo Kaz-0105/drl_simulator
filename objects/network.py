@@ -182,7 +182,7 @@ class Network(Common):
             'intersections': {},
         }
 
-        self.queue_counters.syncDataFrame()
+        self.queue_counters.sync('dataframe')
         for road in self.roads.getAll():
             if road.queue_counters.count() == 0:
                 continue
@@ -228,7 +228,7 @@ class Network(Common):
             'intersections': {},
         }
 
-        self.delay_measurements.syncDataFrame()
+        self.delay_measurements.sync('dataframe')
 
         for road in self.roads.getAll():
             if road.delay_measurements.count() == 0:
@@ -395,7 +395,7 @@ class Network(Common):
             'intersections': {},
         }
 
-        self.roads.syncDataFrame()
+        self.roads.sync('dataframe')
 
         for road in self.roads.getAll():
             if not road.has('output_intersection'):
@@ -441,9 +441,9 @@ class Network(Common):
         self.calc_time_records_map = {}
 
         if self.control_method == 'mpc':
-            self.mpc_controllers.syncDataFrame()
+            self.mpc_controllers.sync('dataframe')
         elif self.control_method == 'drl':
-            self.local_agents.syncDataFrame()
+            self.local_agents.sync(type='dataframe')
         else:
             raise NotImplementedError(f"Not supported control method: {self.control_method}")
         
@@ -461,7 +461,7 @@ class Network(Common):
         if not self.save_flg_map['phase']:
             return
 
-        self.signal_controllers.syncDataFrame()
+        self.signal_controllers.sync('dataframe')
         self.phase_records_map = {}
         for intersection in self.intersections.getAll():
             self.phase_records_map[intersection.get('id')] = intersection.signal_controller.get('record_df')

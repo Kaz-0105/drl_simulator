@@ -26,10 +26,10 @@ class SignalControllers(Container):
     def setNextPhaseToVissim(self):
         for signal_controller in self.getAll():
             signal_controller.setNextPhaseToVissim()
-        
-    def syncDataFrame(self):
+    
+    def sync(self, type):
         for signal_controller in self.getAll():
-            self.executor.submit(signal_controller.syncDataFrame)
+            self.executor.submit(signal_controller.sync, type)
         self.executor.wait()
         return
 
@@ -177,8 +177,11 @@ class SignalController(Object):
             raise NotImplementedError(f"Not supported type: {type}")
         return
 
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list)
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
     
     @property

@@ -67,10 +67,10 @@ class MpcControllers(Container):
         self.executor.wait()
         return
 
-    def syncDataFrame(self):
+    def sync(self, type):
         for mpc_controller in self.getAll():
-            self.executor.submit(mpc_controller.syncDataFrame)
-
+            self.executor.submit(mpc_controller.sync, type)
+        
         self.executor.wait()
         return
     
@@ -2624,8 +2624,11 @@ class MpcController(Object):
             })
         return
 
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list)
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
     
     def showOptimizationResult(self):

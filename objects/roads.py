@@ -98,11 +98,11 @@ class Roads(Container):
             road.update()
         self.executor.wait()        
         return
-
-    def syncDataFrame(self):
+    
+    def sync(self, type):
         for road in self.getAll():
-            self.executor.submit(road.syncDataFrame)
-        
+            self.executor.submit(road.sync, type)
+
         self.executor.wait()
         return
 
@@ -225,10 +225,12 @@ class Road(Object):
         })
         return
 
-    def syncDataFrame(self):
-        self.speed_record_df = DataFrame(self.speed_record_list)
-        self.num_vehs_record_df = DataFrame(self.num_vehs_record_list)
+    def sync(self, type):
+        if type == 'dataframe':
+            self.speed_record_df = pd.DataFrame(self.speed_record_list)
+            self.num_vehs_record_df = pd.DataFrame(self.num_vehs_record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
-
 
     

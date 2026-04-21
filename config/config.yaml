@@ -16,10 +16,10 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 10
+    episode: 20
     interval: 100
   training:
-    learning_rate: 5e-4        # learning rate for drl
+    learning_rate: 1e-5        # learning rate for drl
     threshold: 25              # the number of new data for each learning update
     batch:
       number: 10                 # batch number for learning
@@ -31,6 +31,8 @@ drl:
     type: apex
     apex:
       td_steps: 1
+      local_agent:
+        update_interval: 10
       target_network:
         update_interval: 1000
       buffer:
@@ -42,13 +44,6 @@ drl:
             type: target # episode or target or none
             episode:
               interval: 10
-      epsilon:
-        type: linear # linear or fix
-        linear:
-          min: 0.0
-          max: 1.0
-        fix:
-          value: 0.0
   duration_steps: 5
   state:
     vehicle:
@@ -63,23 +58,31 @@ drl:
     road:
       queue: true
       delay: true
-    phase:
+    intersection:
+      phase: true
   action:
     random_type: 1 # 1: completely random, 2: random based on the number of vehicles
   reward: 
-    id: 2
-    done_penalty: -50
-    gamma: 0.95
+    type: waiting_vehicles # waiting_vehicles, speedy_vehicles
+    common:
+      gamma: 0.95
+    waiting_vehicles:
+      scaling:
+        type: tanh # tanh or none
+        tanh:
+          alpha: 5
+    speedy_vehicles:
+      threshold: 0.5
   architecture:
     type: proto # proto only
     proto:
       num_hidden_layers: 1
       compression:
         type: linear # linear or geometric
-        rate: 0.5
+        rate: 0.8
     common:
       initialization:
-        type: null # null or he
+        type: he # null or he
       activation_function:
         type: leaky_relu # relu or leaky_relu
         leaky_relu:

@@ -114,6 +114,9 @@ class Simulation(Common):
         local_agents.update('initial_state')
         
         while self.current_time < self.end_time:
+            # sync local agents
+            local_agents.sync(type='model')
+
             # get action
             local_agents.update('action')
 

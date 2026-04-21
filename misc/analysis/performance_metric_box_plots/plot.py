@@ -173,7 +173,9 @@ for performance_metric in config_yaml['target']['performance_metrics']:
 
     ax.set_title(config_yaml['figure']['title'][performance_metric])
     ax.set_xlabel('')
-    ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric])
+    for label in ax.get_xticklabels():
+        label.set_fontweight('bold')
+    ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric], fontweight='bold')
     ax.set_ylim(bottom=0)
 
     fig.tight_layout()

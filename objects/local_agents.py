@@ -4,10 +4,12 @@ from objects.links import Lanes
 from objects.neural_networks.apex.proto_q_net import ProtoQNet
 
 import torch
+import numpy as np
 import random
 from collections import deque
 import pandas as pd
 import time
+import copy
 
 class LocalAgents(Container):
     def __init__(self, upper_object, device=None):
@@ -47,10 +49,10 @@ class LocalAgents(Container):
                 self.epsilons_df.iloc[(self.simulation_id - 1) % len(self.epsilons_df):],
                 self.epsilons_df.iloc[:(self.simulation_id - 1) % len(self.epsilons_df)]
              ], ignore_index=True)  
-        
         return
     
     def _initElements(self):
+        
         for intersection in self.network.intersections.getAll(sorted_flg=True):
 
             self.add(LocalAgent(
@@ -66,9 +68,9 @@ class LocalAgents(Container):
         self.executor.wait()
         return
     
-    def syncDataFrame(self):
+    def sync(self, type):
         for agent in self.getAll():
-            self.executor.submit(agent.syncDataFrame)
+            self.executor.submit(agent.sync, type)
         self.executor.wait()
         return
     
@@ -164,13 +166,38 @@ class LocalAgent(Object):
         drl_info = self.config.get('drl_info')
         self.duration_steps = drl_info['duration_steps']
         self.td_steps = drl_info['framework']['apex']['td_steps']
+        self.update_interval = drl_info['framework']['apex']['local_agent']['update_interval']
         self.architecture = drl_info['architecture']['type']
 
+        # state information
         self.num_vehicles = drl_info['state']['vehicle']['number']
-        self.state_info = drl_info['state']
+        self.state_info = copy.deepcopy(drl_info['state'])
+        del self.state_info['vehicle']['number']
+
+        # reward information
         self.random_action_type = drl_info['action']['random_type']
-        self.reward_id = drl_info['reward']['id']
-        self.gamma = float(drl_info['reward']['gamma'])
+        self.reward_type = drl_info['reward']['type']
+        self.gamma = float(drl_info['reward']['common']['gamma'])
+        
+        if self.reward_type == 'waiting_vehicles':
+            waiting_vehicles_info = drl_info['reward']['waiting_vehicles']
+            self.reward_scaling_flg = (waiting_vehicles_info['scaling']['type'] is not None)
+            if self.reward_scaling_flg:
+                self.reward_scaling_type = waiting_vehicles_info['scaling']['type']
+
+                if self.reward_scaling_type == 'tanh':
+                    self.tanh_alpha = waiting_vehicles_info['scaling']['tanh']['alpha']
+                    self.tanh_center = (3 - self.num_roads) / (self.num_roads - 1)
+                else:
+                    raise NotImplementedError(f"Not supported reward_scaling_type: {self.reward_scaling_type}")
+        
+        elif self.reward_type == 'speedy_vehicles':
+            speedy_vehicles_info = drl_info['reward']['speedy_vehicles']
+            self.speed_threshold = speedy_vehicles_info['threshold']
+        
+        else: 
+            raise NotImplementedError(f"Not supported reward_type: {self.reward_type}")
+        
         self.data_augmentation_flg = drl_info['data_augmentation']['flg']
 
         # initialize other properties
@@ -181,6 +208,7 @@ class LocalAgent(Object):
         self.done_flg = False
         self.learning_data_list = []
         self.total_reward = 0
+        self.num_model_runs = 0 
         return
     
     def _makeRoadLanesMap(self):
@@ -255,7 +283,7 @@ class LocalAgent(Object):
             lanes = self.road_lanes_map[road_id]    
 
             # get needed information for making vehicle_data
-            if self.reward_id in [1, 2]:
+            if self.reward_type == 'waiting_vehicles':
                 route_signal_color_map = road.get('route_signal_color_map')
                 v_max = road.get('max_speed')
                 max_queue_length = self.intersection.get('max_queue_length')
@@ -272,7 +300,7 @@ class LocalAgent(Object):
                 length_info = lane.get('length_info')
                 vehicles_df['position'] = length_info['length'] - vehicles_df['position']
 
-                if self.reward_id in [1, 2]:
+                if self.reward_type == 'waiting_vehicles':
                     # get near_flg_list
                     near_flg_list = []
                     for _, vehicle_row in vehicles_df.iterrows():
@@ -336,7 +364,6 @@ class LocalAgent(Object):
         if not self.infer_flg:
             return
         
-        # 自動車に関する情報を更新
         self._updateVehiclesDf()
 
         if self.architecture == 'proto':
@@ -427,11 +454,12 @@ class LocalAgent(Object):
 
             with torch.no_grad():
                 action_values = self.model(self.current_state)
-                action = torch.argmax(action_values).item() + 1
-            
+            action = torch.argmax(action_values).item() + 1
+
             end_time = time.time()
-            calc_time = end_time - start_time
-            self.calc_time_record_list.append({'time': self.current_time, 'calc_time': calc_time})
+            self.calc_time_record_list.append({'time': self.current_time, 'calc_time': end_time - start_time})
+
+            self.num_model_runs += 1
 
         # 記録
         self.action_record.append(action)
@@ -486,127 +514,107 @@ class LocalAgent(Object):
     def _getReward(self):
         if not self.infer_flg:
             return
-        
-        if self.reward_id == 1:
-            # (the number of not waiting vehicles) - (the number of waiting vehicles)
-            reward = 0
-            num_vehs = 0
 
-            for _, vehicles_df in self.lane_str_vehicles_df_map.items():
-                # skip if there is no vehicle in the lane
-                if vehicles_df.shape[0] == 0:
-                    continue
-
-                num_vehs += vehicles_df.shape[0]
-                reward += (~vehicles_df['wait_flg']).sum()
-                reward -= vehicles_df['wait_flg'].sum()
-
-            reward = reward / num_vehs if num_vehs > 0 else 0
-        
-        elif self.reward_id == 2:
-            # (the number of not-waiting vehicles) - (the number of waiting vehicles) + (the number of passing vehicles)
-            reward = 0
-            num_vehs = 0
-
-            # the number of waiting and not-waiting vehicles
-            for _, vehicles_df in self.vehicles_df_map.items():
-                if vehicles_df.shape[0] == 0:
-                    continue
-
-                num_vehs += vehicles_df.shape[0]
-                reward += (~vehicles_df['wait_flg']).sum()
-                reward -= vehicles_df['wait_flg'].sum()
-
-            # the number of passing vehicles
-            for road in self.roads.getAll():
-                for data_collection_point in road.data_collection_points.getAll():
-                    if data_collection_point.get('type') != 'intersection':
-                        continue
-
-                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
-                        if data_collection_measurement.get('type') == 'multiple':
-                            continue
-                        
-                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
-                        num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
-                        reward += num_pass_vehs
-                        num_vehs += num_pass_vehs
-            
-            # normalize the reward
-            reward = reward / num_vehs if num_vehs > 0 else 0
-        
-        elif self.reward_id == 3:
-            # 一定速度以上の自動車台数 + 通過自動車台数
-            reward = 0
-            for lane_str, vehicles_df in self.lane_str_vehicles_df_map.items():
-                if vehicles_df.shape[0] == 0:
-                    continue
-
-                road_order_id, _ = map(int, lane_str.split('-'))
-                road = self.roads[road_order_id]
-                v_max = road.get('max_speed')
-
-                for _, row in vehicles_df.iterrows():
-                    if row['speed'] > v_max / 2:
-                        reward += 1
-
-            for road in self.roads.getAll():
-                for data_collection_point in road.data_collection_points.getAll():
-                    if data_collection_point.get('type') != 'intersection':
-                        continue
-
-                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
-                        if data_collection_measurement.get('type') == 'multiple':
-                            continue
-                        
-                        num_vehs_record = data_collection_measurement.get('num_vehs_record')
-                        num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                        reward += sum(num_vehs_list)
+        if self.reward_type == 'waiting_vehicles':
+            reward = self._getWaitingVehiclesReward()
                                                 
-        elif self.reward_id == 4:
-            # 法定速度の半分以上の自動車台数 - 法定速度の半分以下の自動車台数 + 通過自動車台数
-            reward = 0
-            for lane_str, vehicles_df in self.lane_str_vehicles_df_map.items():
-                if vehicles_df.shape[0] == 0:
-                    continue
+        elif self.reward_type == 'speedy_vehicles':
+            reward = self._getSpeedyVehiclesReward()
 
-                road_order_id, _ = map(int, lane_str.split('-'))
-                road = self.roads[road_order_id]
-                v_max = road.get('max_speed')
-
-                for _, row in vehicles_df.iterrows():
-                    if 2 * row['speed'] >= v_max:
-                        reward += 1
-                    else:
-                        reward -= 1
-
-            for road in self.roads.getAll():
-                for data_collection_point in road.data_collection_points.getAll():
-                    if data_collection_point.get('type') != 'intersection':
-                        continue
-
-                    for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
-                        if data_collection_measurement.get('type') == 'multiple':
-                            continue
-
-                    num_vehs_record = data_collection_measurement.get('num_vehs_record')
-                    num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
-                    reward += sum(num_vehs_list)
-
-        elif self.reward_id == 5:       
-            # 流入道路の入れるスペースの和
-            reward = 0
-            for road_order_id in range(1, self.num_roads + 1):
-                road = self.roads[road_order_id]
-                space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 10 - 5  # -5〜5に正規化
-                reward += space
+        elif self.reward_type == 'space':
+            reward = self._getSpaceReward()
 
         self.reward_record.append(reward)
         self.total_reward += reward
-
         return
     
-    # 学習データを作成するメソッド
+    def _getWaitingVehiclesReward(self):
+        # (the number of not-waiting vehicles) - (the number of waiting vehicles) + (the number of passing vehicles)
+        reward = 0
+        num_vehs = 0
+
+        # the number of waiting and not-waiting vehicles
+        for _, vehicles_df in self.vehicles_df_map.items():
+            if vehicles_df.shape[0] == 0:
+                continue
+
+            num_vehs += vehicles_df.shape[0]
+            reward += (~vehicles_df['wait_flg']).sum()
+            reward -= vehicles_df['wait_flg'].sum()
+
+        # the number of passing vehicles
+        for road in self.roads.getAll():
+            for data_collection_point in road.data_collection_points.getAll():
+                if data_collection_point.get('type') != 'intersection':
+                    continue
+
+                for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                    if data_collection_measurement.get('type') == 'multiple':
+                        continue
+                    
+                    num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                    num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
+                    reward += num_pass_vehs
+                    num_vehs += num_pass_vehs
+        
+        # normalize the reward
+        reward = reward / num_vehs if num_vehs > 0 else 0
+
+        if not self.reward_scaling_flg:
+            return reward
+        
+        if self.reward_scaling_type == 'tanh':
+            reward = np.tanh(self.tanh_alpha * (reward - self.tanh_center))
+        else:
+            raise NotImplementedError(f"Not supported reward_scaling_type: {self.reward_scaling_type}")
+
+        return reward
+    
+    def _getSpeedyVehiclesReward(self):
+        reward = 0
+        num_vehs = 0
+        for (road_id, _), vehicles_df in self.vehicles_df_map.items():
+            if vehicles_df.shape[0] == 0:
+                continue
+
+            road = self.roads[road_id]
+            v_max = road.get('max_speed')
+
+            for _, vehicle_row in vehicles_df.iterrows():
+                if vehicle_row['speed'] <= self.speed_threshold * v_max:
+                    reward -= 1
+                else:
+                    reward += 1
+            
+            num_vehs += vehicles_df.shape[0]
+
+        for road in self.roads.getAll():
+            for data_collection_point in road.data_collection_points.getAll():
+                if data_collection_point.get('type') != 'intersection':
+                    continue
+
+                for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                    if data_collection_measurement.get('type') == 'multiple':
+                        continue
+
+                num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                num_vehs_list = num_vehs_record['num_vehs'].tail(self.duration_steps).tolist()
+                reward += sum(num_vehs_list)
+                num_vehs += sum(num_vehs_list)
+        
+        reward = reward / num_vehs if num_vehs > 0 else 0
+
+        return reward
+    
+    def _getSpaceReward(self):
+        reward = 0
+        for road_order_id in range(1, self.num_roads + 1):
+            road = self.roads[road_order_id]
+            space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 10 - 5  # -5〜5に正規化
+            reward += space
+
+        return reward
+    
     def _updateLearningDataList(self):
         if self.infer_flg == False:
             return
@@ -708,8 +716,20 @@ class LocalAgent(Object):
         else:
             raise NotImplementedError(f"Not supported type: {type}")
         
-    def syncDataFrame(self):
-        self.calc_time_record_df = pd.DataFrame(self.calc_time_record_list)
+    def sync(self, type):
+        if type == 'model':
+            if self.num_model_runs < self.update_interval:
+                return
+            
+            self._syncModel()
+            self.num_model_runs = 0 
+
+        elif type == 'dataframe':
+            self.calc_time_record_df = pd.DataFrame(self.calc_time_record_list)
+
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+        
         return
     
     def _toDevice(self, data):
@@ -732,7 +752,6 @@ class LocalAgent(Object):
         else:
             return data
 
-    
     @property
     def infer_flg(self):
         future_phase_ids = self.signal_controller.get('future_phase_ids')
