@@ -80,6 +80,7 @@ class ProtoQNet(ExtendedModule):
 
             self.network_map['road'][str(num_lanes)] = RoadNet(  
                 config=self.config,
+                num_lanes=num_lanes,
                 num_lanes_outputs=self.network_map['lanes'][str(num_lanes)].get('num_outputs'),
             )
         
@@ -130,6 +131,24 @@ class ProtoQNet(ExtendedModule):
             if isinstance(final_layer, nn.Linear):
                 nn.init.constant_(final_layer.bias, 10.0)
         return
+    
+    def _showInfo(self, type):
+        print('==============================================')
+        if type == 'gradient':
+            print('status: check gradients')
+            print(f"master agent id: {self.master_agent.get('id')}")
+            
+            for sub_network_name in self.network_map:
+                if sub_network_name in ['lanes', 'road']:
+                    for num_lanes in self.network_map[sub_network_name]:
+                        self.network_map[sub_network_name][num_lanes].showInfo('gradient')
+                else:
+                    self.network_map[sub_network_name].showInfo('gradient')
+                
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
 
     def forward(self, states):
         # get phase_outputs (batch, phase features)
@@ -178,7 +197,11 @@ class ProtoQNet(ExtendedModule):
         q_values = value_output + (advantage_outputs - advantage_outputs.mean(dim=1, keepdim=True))
 
         return q_values
-
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
+    
 class VehicleNet(ExtendedModule):
     def __init__(self, config, num_roads):
         super().__init__()
@@ -258,9 +281,30 @@ class VehicleNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"vehicle sub network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+            
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         # xは（batch_size × num_vehicles × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
         
 class VehiclesNet(ExtendedModule):
     def __init__(self, config, num_vehicle_outputs):
@@ -349,9 +393,30 @@ class VehiclesNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"vehicles sub network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         # xは（batch_size × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return  
 
 class LaneNet(ExtendedModule):
     def __init__(self, config, num_vehicles_outputs):
@@ -437,9 +502,30 @@ class LaneNet(ExtendedModule):
         
         self.net = nn.Sequential(*module_list)
         return
+    
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"lane sub network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
 
     def forward(self, x):
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return  
     
 class LanesNet(ExtendedModule):
     def __init__(self, config, num_lane_outputs, num_lanes):
@@ -463,6 +549,9 @@ class LanesNet(ExtendedModule):
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
         self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+
+        # set num_lanes
+        self.num_lanes = num_lanes
 
         # get num_features
         num_features = num_lanes * num_lane_outputs
@@ -525,20 +614,41 @@ class LanesNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"lanes sub network (num lanes = {self.num_lanes}):")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
 
 class RoadNet(ExtendedModule):
-    def __init__(self, config, num_lanes_outputs):
+    def __init__(self, config, num_lanes_outputs, num_lanes):
         super().__init__()
 
         self.config = config
 
-        self._initProps(num_lanes_outputs)
+        self._initProps(num_lanes, num_lanes_outputs)
         self._makeNetwork()
         return
 
-    def _initProps(self, num_lanes_outputs):
+    def _initProps(self, num_lanes, num_lanes_outputs):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
@@ -550,6 +660,9 @@ class RoadNet(ExtendedModule):
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
         self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+
+        # set num_lanes
+        self.num_lanes = num_lanes
 
         # get num_features
         num_features = self.config.get('num_features_map')['road']
@@ -613,8 +726,29 @@ class RoadNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"road sub network (num lanes = {self.num_lanes}):")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
     
 class RoadsNet(ExtendedModule):
     def __init__(self, config, num_road_outputs_map):
@@ -700,8 +834,29 @@ class RoadsNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"roads sub network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
 
 class PhaseNet(ExtendedModule):
     def __init__(self, config, num_roads):
@@ -787,8 +942,29 @@ class PhaseNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"phase sub network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         return self.net(x)
+
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
     
 class IntersectionNet(ExtendedModule):
     def __init__(self, config, num_roads_outputs, num_phase_outputs):
@@ -873,8 +1049,29 @@ class IntersectionNet(ExtendedModule):
         self.net = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"intersection sub network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
     def forward(self, x):
         return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
     
 class DuelingNet(ExtendedModule):
     def __init__(self, config, num_intersection_outputs, num_roads):
@@ -922,7 +1119,6 @@ class DuelingNet(ExtendedModule):
     def _makeNetwork(self):
         self.network_map = nn.ModuleDict()
 
-        
         if self.num_hidden_layers == 0:
             for part in ['value', 'advantage']:
                 self.network_map[part] = nn.Sequential(nn.Linear(self.num_inputs, self.num_outputs_map[part]))
@@ -951,5 +1147,24 @@ class DuelingNet(ExtendedModule):
             self.network_map[part] = nn.Sequential(*module_list)
         return
     
+    def _showInfo(self, type):
+        if type == 'gradient':
+            for part in ['value', 'advantage']:
+                print(f"{part} sub network:")
+                counter = 1
+                for layer in self.network_map[part]:
+                    if not isinstance(layer, nn.Linear):
+                        continue
+
+                    print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                    counter += 1
+
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+    
     def forward(self, x):
         return self.network_map['value'](x), self.network_map['advantage'](x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return

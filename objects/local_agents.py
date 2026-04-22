@@ -134,6 +134,10 @@ class LocalAgent(Object):
         return
     
     @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
+    
+    @property
     def current_state(self):
         return self._toDevice(self.state_record[-1]) if len(self.state_record) > 0 else None
 
@@ -148,6 +152,11 @@ class LocalAgent(Object):
     @property
     def num_learning_data(self):
         return len(self.learning_data_list)
+    
+    @property
+    def infer_flg(self):
+        future_phase_ids = self.signal_controller.get('future_phase_ids')
+        return len(future_phase_ids) <= 1
     
     def _initProps(self, epsilon):
         # set num_roads and num_phases
@@ -461,7 +470,7 @@ class LocalAgent(Object):
 
             self.num_model_runs += 1
 
-        # 記録
+        # save action and set signal phase
         self.action_record.append(action)
         self.signal_controller.setPhases([self.current_action] * self.duration_steps)
         return
@@ -697,6 +706,37 @@ class LocalAgent(Object):
         rotated_state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
 
         return rotated_state
+    
+    def _toDevice(self, data):
+        if isinstance(data, dict):
+            return {key: self._toDevice(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._toDevice(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.to(self.device)
+        else:
+            return data
+    
+    def _unsqueeze(self, data):
+        if isinstance(data, dict):
+            return {key: self._unsqueeze(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._unsqueeze(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.unsqueeze(0)
+        else:
+            return data
+        
+    def _showInfo(self, type):
+        print('==============================================')
+        if type == 'model':
+            print(f"status: syncronized local agent to master agent")
+            print(f"local agent id: {self.id}")
+            print(f"master agent id: {self.master_agent.get('id')}")
+            print(f"update interval: {self.update_interval}")
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
 
     def update(self, type):
         if not self.infer_flg:
@@ -722,6 +762,7 @@ class LocalAgent(Object):
                 return
             
             self._syncModel()
+            self._showInfo('model')
             self.num_model_runs = 0 
 
         elif type == 'dataframe':
@@ -731,34 +772,5 @@ class LocalAgent(Object):
             raise NotImplementedError(f"Not supported type: {type}")
         
         return
-    
-    def _toDevice(self, data):
-        if isinstance(data, dict):
-            return {key: self._toDevice(value) for key, value in data.items()}
-        elif isinstance(data, list):
-            return [self._toDevice(item) for item in data]
-        elif isinstance(data, torch.Tensor):
-            return data.to(self.device)
-        else:
-            return data
-    
-    def _unsqueeze(self, data):
-        if isinstance(data, dict):
-            return {key: self._unsqueeze(value) for key, value in data.items()}
-        elif isinstance(data, list):
-            return [self._unsqueeze(item) for item in data]
-        elif isinstance(data, torch.Tensor):
-            return data.unsqueeze(0)
-        else:
-            return data
-
-    @property
-    def infer_flg(self):
-        future_phase_ids = self.signal_controller.get('future_phase_ids')
-        return len(future_phase_ids) <= 1
-
-    @property
-    def current_time(self):
-        return self.network.simulation.get('current_time')
     
 

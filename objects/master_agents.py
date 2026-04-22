@@ -460,12 +460,6 @@ class MasterAgent(Object):
             for epoch, avg_loss in enumerate(loss_list_map['avg'], start=1):
                 print(f"epoch [{epoch}/{self.num_epochs}]: average loss = {avg_loss:.3f}")
 
-        elif type == 'gradient':
-            print('status: check gradients')
-            for name, param in self.model.named_parameters():
-                if param.grad is not None:
-                    print(f"{name}: {param.grad.norm().item():.3f}")
-
         elif type == 'result':
             print('status: total rewards')
             print(f"master agent id: {self.id}")
@@ -593,7 +587,7 @@ class MasterAgent(Object):
                         self.buffer.reset('priority')
 
                 if self.update_count % 100 == 0:
-                    self._showInfo('gradient')
+                    self.model.showInfo('gradient')
                 
                 if epoch == self.num_epochs:
                     shuffled_priority_list.extend(torch.abs(q_values - td_targets).squeeze().detach().cpu().numpy().tolist())
