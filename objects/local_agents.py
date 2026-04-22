@@ -1,10 +1,12 @@
 from libs.container import Container
 from libs.object import Object
+from libs.torch_module import ExtendedModule
 from objects.links import Lanes
 from objects.neural_networks.apex.proto_q_net import ProtoQNet
 
+
 import torch
-import numpy as np
+import torch.nn.functional as F
 import random
 from collections import deque
 import pandas as pd
@@ -72,6 +74,13 @@ class LocalAgents(Container):
         for agent in self.getAll():
             self.executor.submit(agent.sync, type)
         self.executor.wait()
+
+        for agent in self.getAll():
+            if not agent.get('sync_flg'):
+                continue
+            agent.showInfo('sync')
+            agent.set('sync_flg', False)    
+
         return
     
     @property
@@ -192,13 +201,7 @@ class LocalAgent(Object):
             waiting_vehicles_info = drl_info['reward']['waiting_vehicles']
             self.reward_scaling_flg = (waiting_vehicles_info['scaling']['type'] is not None)
             if self.reward_scaling_flg:
-                self.reward_scaling_type = waiting_vehicles_info['scaling']['type']
-
-                if self.reward_scaling_type == 'tanh':
-                    self.tanh_alpha = waiting_vehicles_info['scaling']['tanh']['alpha']
-                    self.tanh_center = (3 - self.num_roads) / (self.num_roads - 1)
-                else:
-                    raise NotImplementedError(f"Not supported reward_scaling_type: {self.reward_scaling_type}")
+                self.reward_scaling_function = WaitingVehiclesRewardScaler(self)
         
         elif self.reward_type == 'speedy_vehicles':
             speedy_vehicles_info = drl_info['reward']['speedy_vehicles']
@@ -217,7 +220,8 @@ class LocalAgent(Object):
         self.done_flg = False
         self.learning_data_list = []
         self.total_reward = 0
-        self.num_model_runs = 0 
+        self.num_model_runs = 0
+        self.sync_flg = False
         return
     
     def _makeRoadLanesMap(self):
@@ -387,7 +391,7 @@ class LocalAgent(Object):
             else:
                 phase_feature_list[phase_id - 1] = 1
             
-            state['phase'] = torch.tensor(phase_feature_list, dtype=torch.float32)
+            state['intersection'] = torch.tensor(phase_feature_list, dtype=torch.float32)
             
             # roads
             state['roads'] = {f"road_{road_id}": {} for road_id in range(1, self.num_roads + 1)}
@@ -395,7 +399,7 @@ class LocalAgent(Object):
                 road = self.roads[road_id]
                 state['roads'][f"road_{road_id}"]['road'] = torch.tensor([
                     road.get('max_queue_length') / road.get('length'),
-                    road.get('average_delay') / self.MAX_DELAY,
+                    road.get('average_delay') / LocalAgent.MAX_DELAY,
                 ], dtype=torch.float32)
 
             # lanes
@@ -406,7 +410,7 @@ class LocalAgent(Object):
                 for lane_id in range(1, lanes.count() + 1):
                     lane = lanes[lane_id]
                     lane_features = [
-                        lane.get('num_vehicles') / (lane.get('length') / self.AVG_SPACING),
+                        lane.get('num_vehicles') / (lane.get('length') / LocalAgent.AVG_SPACING),
                         lane.get('length') / self.roads.get('max_length'),
                     ]
 
@@ -572,11 +576,7 @@ class LocalAgent(Object):
         if not self.reward_scaling_flg:
             return reward
         
-        if self.reward_scaling_type == 'tanh':
-            reward = np.tanh(self.tanh_alpha * (reward - self.tanh_center))
-        else:
-            raise NotImplementedError(f"Not supported reward_scaling_type: {self.reward_scaling_type}")
-
+        reward = self.reward_scaling_function(reward).item()
         return reward
     
     def _getSpeedyVehiclesReward(self):
@@ -691,7 +691,7 @@ class LocalAgent(Object):
             rotated_state['roads'][f"road_{new_road_order_id}"] = state['roads'][f"road_{road_order_id}"]        
 
         # get phase_id
-        for id, flg in enumerate(state['phase'].squeeze(0).tolist()):
+        for id, flg in enumerate(state['intersection'].squeeze(0).tolist()):
             if flg == 0:
                 continue
             phase_id = id + 1    
@@ -700,10 +700,10 @@ class LocalAgent(Object):
         # get symmetry_phase_id
         symmetry_phase_id = self.symmetry_phase_map[phase_id][symmetry_type]
 
-        # set rotated phase features
-        phase_state = [0] * (self.intersection.get('num_phases'))
-        phase_state[symmetry_phase_id - 1] = 1
-        rotated_state['phase'] = torch.tensor(phase_state, dtype=torch.float32)
+        # set rotated intersection features
+        intersection_state = [0] * (self.intersection.get('num_phases'))
+        intersection_state[symmetry_phase_id - 1] = 1
+        rotated_state['intersection'] = torch.tensor(intersection_state, dtype=torch.float32)
 
         return rotated_state
     
@@ -729,7 +729,7 @@ class LocalAgent(Object):
         
     def _showInfo(self, type):
         print('==============================================')
-        if type == 'model':
+        if type == 'sync':
             print(f"status: syncronized local agent to master agent")
             print(f"local agent id: {self.id}")
             print(f"master agent id: {self.master_agent.get('id')}")
@@ -762,7 +762,7 @@ class LocalAgent(Object):
                 return
             
             self._syncModel()
-            self._showInfo('model')
+            self.sync_flg = True
             self.num_model_runs = 0 
 
         elif type == 'dataframe':
@@ -772,5 +772,56 @@ class LocalAgent(Object):
             raise NotImplementedError(f"Not supported type: {type}")
         
         return
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
+    
+class WaitingVehiclesRewardScaler(ExtendedModule):
+    def __init__(self, local_agent):
+        super().__init__()
+
+        self.local_agent = local_agent
+        self.config = local_agent.config
+
+        self._initProps()
+        self.eval()
+        return
+    
+    def _initProps(self):
+        # set num_roads
+        self.num_roads = self.local_agent.get('num_roads')
+
+        # set scaler information
+        drl_info = self.config.get('drl_info')
+        waiting_vehicles_info = drl_info['reward']['waiting_vehicles']
+
+        self.scale_type = waiting_vehicles_info['scaler']['type']
+        if self.scale_type == 'tanh':
+            self.alpha = waiting_vehicles_info['scaler']['tanh']['alpha']
+            self.center = (3 - self.num_roads) / (self.num_roads - 1)
+
+        elif self.scale_type == 'tanh-linear':
+            self.alpha = waiting_vehicles_info['scaler']['tanh_linear']['tanh']['alpha']
+            self.center = (3 - self.num_roads) / (self.num_roads - 1)
+    
+        else:
+            raise NotImplementedError(f"Not supported reward_scaling_type: {self.scale_type}")
+        
+        return
+
+    def forward(self, reward):
+        if self.scale_type == 'tanh':
+            reward = F.tanh(self.alpha * (reward - self.center))
+        elif self.scale_type == 'tanh-linear':
+            if reward < self.center:
+                reward = F.tanh(self.alpha * (reward - self.center))
+            else:
+                reward = self.alpha * (reward - self.center)
+                reward = torch.tensor(reward, dtype=torch.float32)
+        else:
+            raise NotImplementedError(f"Not supported reward_scaling_type: {self.scale_type}")
+        
+        return  reward
     
 

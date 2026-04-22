@@ -16,7 +16,7 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 20
+    episode: 10
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
@@ -26,7 +26,7 @@ drl:
       size: 128                  # batch size for learning
     epoch: 2                     # epoch for learning
     weight_decay: 0.0            # weight decay for learning
-    norm_clip: 10.0              # max norm for gradient clipping
+    norm_clip: 1.0              # max norm for gradient clipping
   framework: 
     type: apex
     apex:
@@ -61,25 +61,50 @@ drl:
     intersection:
       phase: true
   action:
-    random_type: 1 # 1: completely random, 2: random based on the number of vehicles
+    random_type: 2 # 1: completely random, 2: random based on the number of vehicles
   reward: 
     type: waiting_vehicles # waiting_vehicles, speedy_vehicles
     common:
-      gamma: 0.95
+      gamma: 0.80
     waiting_vehicles:
-      scaling:
-        type: tanh # tanh or none
+      scaler:
+        type: tanh-linear # tanh, tanh-linear or none
         tanh:
+          alpha: 5
+        tanh-linear:
           alpha: 5
     speedy_vehicles:
       threshold: 0.5
   architecture:
     type: proto # proto only
     proto:
-      num_hidden_layers: 1
+      hidden_layers:
+        number:
+          vehicle_encoder: 2
+          vehicles: 1
+          lane_encoder: 2
+          lane: 1
+          lanes: 1
+          road_encoder: 2
+          road: 1
+          roads: 1
+          intersection_encoder: 2
+          intersection: 1
+          dueling: 2
       compression:
         type: linear # linear or geometric
-        rate: 0.8
+        rate: 
+          vehicle_encoder: 5.0
+          vehicles: 1.0
+          lane_encoder: 5.0
+          lane: 1.0
+          lanes: 0.5
+          road_encoder: 5.0
+          road: 1.0
+          roads: 0.5
+          intersection_encoder: 5.0
+          intersection: 0.5
+          dueling: 1.0
     common:
       initialization:
         type: he # null or he

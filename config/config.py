@@ -297,6 +297,6 @@ class Config(Common):
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
         self.num_features_map['road'] = tmp_num_features
 
-        # phase features
-        self.num_features_map['phase'] = {num_roads: len(phases) for num_roads, phases in self.phases_df_map.items()}
+        # intersection features
+        self.num_features_map['intersection'] = {num_roads: len(phases) for num_roads, phases in self.phases_df_map.items()}
         return

@@ -398,8 +398,8 @@ class Dataset(ExtendedDataset):
                 for state_type in ['state', 'next_state']:
                     state_group =data_obj.create_group(state_type)
                     state_group.create_dataset(
-                        'phase',
-                        shape=(capacity, self.num_features_map['phase'][self.num_roads]),
+                        'intersection',
+                        shape=(capacity, self.num_features_map['intersection'][self.num_roads]),
                         dtype=np.float32                    
                     )
                     roads_group = state_group.create_group('roads')
@@ -466,7 +466,7 @@ class Dataset(ExtendedDataset):
 
         return {
             'state': {
-                'phase': data_obj['state/phase'][tmp_id],
+                'intersection': data_obj['state/intersection'][tmp_id],
                 'roads': {
                     f"road_{road_id}": {
                         'road': data_obj[f"state/roads/road_{road_id}/road"][tmp_id],
@@ -482,7 +482,7 @@ class Dataset(ExtendedDataset):
             'action': data_obj['action'][tmp_id],
             'cumulative_reward': data_obj['cumulative_reward'][tmp_id],
             'next_state': {
-                'phase': data_obj['next_state/phase'][tmp_id],
+                'intersection': data_obj['next_state/intersection'][tmp_id],
                 'roads': {
                     f"road_{road_id}": {
                         'road': data_obj[f"next_state/roads/road_{road_id}/road"][tmp_id],
@@ -509,7 +509,7 @@ class Dataset(ExtendedDataset):
 
         # update state and next_state
         for state_type in ['state', 'next_state']:
-            data_obj[f"{state_type}/phase"][tmp_id] = learning_data[state_type]['phase']
+            data_obj[f"{state_type}/intersection"][tmp_id] = learning_data[state_type]['intersection']
             for road_id in range(1, self.num_roads + 1):
                 data_obj[f"{state_type}/roads/road_{road_id}/road"][tmp_id] = learning_data[state_type]['roads'][f"road_{road_id}"]['road']
                 for lane_id in range(1, self.num_lanes_map[road_id] + 1):

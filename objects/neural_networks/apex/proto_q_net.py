@@ -20,6 +20,9 @@ class ProtoQNet(ExtendedModule):
 
         self._initProps()
         self._makeNetwork()
+
+        if agent.__class__.__name__ == 'MasterAgent':
+            self._showInfo('parameters')
         
         if self.init_weights_flg:
             self.apply(self._initWeights)
@@ -49,23 +52,27 @@ class ProtoQNet(ExtendedModule):
     def _makeNetwork(self):
         self.network_map = nn.ModuleDict()
 
-        self.network_map['vehicle'] = VehicleNet(
+        self.network_map['vehicle_encoder'] = VehicleEncoderNet(
             config=self.config, 
             num_roads=self.num_roads,
         )
 
         self.network_map['vehicles'] = VehiclesNet(
             config=self.config,
-            num_vehicle_outputs=self.network_map['vehicle'].get('num_outputs'),
+            num_vehicle_outputs=self.network_map['vehicle_encoder'].get('num_outputs'),
+        )
+
+        self.network_map['lane_encoder'] = LaneEncoderNet(
+            config=self.config,
         )
 
         self.network_map['lane'] = LaneNet(
             config=self.config,
             num_vehicles_outputs=self.network_map['vehicles'].get('num_outputs'),
+            num_lane_encoder_outputs=self.network_map['lane_encoder'].get('num_outputs'),
         )
 
         self.network_map['lanes'] = nn.ModuleDict()
-        self.network_map['road'] = nn.ModuleDict()
         for road_id in range(1, self.num_roads + 1):
             num_lanes = self.num_lanes_map[road_id]
 
@@ -77,11 +84,23 @@ class ProtoQNet(ExtendedModule):
                 num_lane_outputs=self.network_map['lane'].get('num_outputs'),
                 num_lanes=num_lanes,
             )
+        
+        self.network_map['road_encoder'] = RoadEncoderNet(
+            config=self.config,
+        )
+        
+        self.network_map['road'] = nn.ModuleDict()
+        for road_id in range(1, self.num_roads + 1):
+            num_lanes = self.num_lanes_map[road_id]
+
+            if num_lanes in self.network_map['road']:
+                continue
 
             self.network_map['road'][str(num_lanes)] = RoadNet(  
                 config=self.config,
                 num_lanes=num_lanes,
                 num_lanes_outputs=self.network_map['lanes'][str(num_lanes)].get('num_outputs'),
+                num_road_encoder_outputs=self.network_map['road_encoder'].get('num_outputs'),
             )
         
         self.network_map['roads'] = RoadsNet(
@@ -89,7 +108,7 @@ class ProtoQNet(ExtendedModule):
             num_road_outputs_map={road_id: self.network_map['road'][str(self.num_lanes_map[road_id])].get('num_outputs') for road_id in range(1, self.num_roads + 1)},
         )
 
-        self.network_map['phase'] = PhaseNet(
+        self.network_map['intersection_encoder'] = IntersectionEncoderNet(
             config=self.config,
             num_roads=self.num_roads,
         )
@@ -97,7 +116,7 @@ class ProtoQNet(ExtendedModule):
         self.network_map['intersection'] = IntersectionNet(
             config=self.config,
             num_roads_outputs=self.network_map['roads'].get('num_outputs'),
-            num_phase_outputs=self.network_map['phase'].get('num_outputs'),
+            num_phase_outputs=self.network_map['intersection_encoder'].get('num_outputs'),
         )
 
         self.network_map['dueling'] = DuelingNet(
@@ -144,50 +163,75 @@ class ProtoQNet(ExtendedModule):
                         self.network_map[sub_network_name][num_lanes].showInfo('gradient')
                 else:
                     self.network_map[sub_network_name].showInfo('gradient')
-                
+
+        elif type == 'parameters':
+            print('status: number of model parameters')
+            print(f"master agent id: {self.master_agent.get('id')}")
+
+            for sub_network_name in self.network_map:
+                if sub_network_name in ['lanes', 'road']:
+                    for num_lanes in self.network_map[sub_network_name]:
+                        self.network_map[sub_network_name][num_lanes].showInfo('parameters')
+                else:
+                    self.network_map[sub_network_name].showInfo('parameters')
+
+            total_params = sum(p.numel() for p in self.parameters())
+            print(f"total parameters: {total_params}")
+
         else:
             raise NotImplementedError(f"Not supported type: {type}")
 
         return
 
     def forward(self, states):
-        # get phase_outputs (batch, phase features)
-        phase_outputs = self.network_map['phase'](states['phase'])
-
         roads_inputs = []
         for road_id in range(1, self.num_roads + 1):
             lanes_inputs = []
             for lane_id in range(1, self.num_lanes_map[road_id] + 1):
                 # get vehicles_outputs (batch, vehicles features)
-                vehicle_outputs = self.network_map['vehicle'](states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'])
+                vehicle_outputs = self.network_map['vehicle_encoder'](states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'])
                 vehicle_outputs = vehicle_outputs.view(vehicle_outputs.size(0), -1)
                 vehicles_outputs = self.network_map['vehicles'](vehicle_outputs)
 
+                # get lane_encoder_outputs (batch, lane_encoder features)
+                lane_encoder_outputs = self.network_map['lane_encoder'](states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane'])
+
                 # get lane_outputs (batch, lane features)
                 lane_inputs = torch.cat([
-                    states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane'],
-                    vehicles_outputs
+                    vehicles_outputs, 
+                    lane_encoder_outputs
                 ], dim=1)
                 lane_outputs = self.network_map['lane'](lane_inputs)
+
+                # append lane_outputs to lanes_inputs
                 lanes_inputs.append(lane_outputs)
 
             # get lanes_outputs (batch, lanes features)
             lanes_inputs = torch.cat(lanes_inputs, dim=1)
             lanes_outputs = self.network_map['lanes'][str(self.num_lanes_map[road_id])](lanes_inputs)
 
+            # get road_encoder_outputs (batch, road_encoder features)
+            road_encoder_outputs = self.network_map['road_encoder'](states['roads'][f"road_{road_id}"]['road'])
+
+            # get road_outputs (batch, road features)
             road_inputs = torch.cat([
                 lanes_outputs,
-                states['roads'][f"road_{road_id}"]['road']
+                road_encoder_outputs
             ], dim=1)
             road_outputs = self.network_map['road'][str(self.num_lanes_map[road_id])](road_inputs)
+
+            # append road_outputs to roads_inputs
             roads_inputs.append(road_outputs)
         
         # get roads_outputs (batch, roads features)
         roads_inputs = torch.cat(roads_inputs, dim=1)
         roads_outputs = self.network_map['roads'](roads_inputs)
 
+        # get intersection_encoder_outputs (batch, phase features)
+        intersection_encoder_outputs = self.network_map['intersection_encoder'](states['intersection'])
+
         # get intersection_outputs (batch, intersection features)
-        intersection_inputs = torch.cat([roads_outputs, phase_outputs], dim=1)
+        intersection_inputs = torch.cat([roads_outputs, intersection_encoder_outputs], dim=1)
         intersection_outputs = self.network_map['intersection'](intersection_inputs)
 
         # get value_output and advantage_outputs (batch, num_actions)
@@ -202,7 +246,7 @@ class ProtoQNet(ExtendedModule):
         self._showInfo(type)
         return
     
-class VehicleNet(ExtendedModule):
+class VehicleEncoderNet(ExtendedModule):
     def __init__(self, config, num_roads):
         super().__init__()
 
@@ -216,14 +260,14 @@ class VehicleNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers']
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['vehicle_encoder']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['vehicle_encoder']
 
         # get num_features
         num_features = self.config.get('num_features_map')['vehicle'][num_roads]
@@ -283,7 +327,7 @@ class VehicleNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"vehicle sub network:")
+            print(f"vehicle network:")
 
             counter = 1
             for layer in self.net:
@@ -292,6 +336,10 @@ class VehicleNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+        
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"vehicle network parameters: {num_params}")
             
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -320,14 +368,14 @@ class VehiclesNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['vehicles']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['vehicles']
 
         self.num_vehicles = drl_info['state']['vehicle']['number']
 
@@ -395,7 +443,7 @@ class VehiclesNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"vehicles sub network:")
+            print(f"vehicles network:")
 
             counter = 1
             for layer in self.net:
@@ -404,6 +452,10 @@ class VehiclesNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"vehicles network parameters: {num_params}")
         
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -417,33 +469,144 @@ class VehiclesNet(ExtendedModule):
     def showInfo(self, type):
         self._showInfo(type)
         return  
-
-class LaneNet(ExtendedModule):
-    def __init__(self, config, num_vehicles_outputs):
+    
+class LaneEncoderNet(ExtendedModule):
+    def __init__(self, config):
         super().__init__()
 
         self.config = config
 
-        self._initProps(num_vehicles_outputs)
+        self._initProps()
         self._makeNetwork()
         return
     
-    def _initProps(self, num_vehicles_outputs):
+    def _initProps(self):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['lane_encoder']
+
+        self.activation_function = drl_info['architecture']['common']['activation_function']['type']
+        if self.activation_function == 'leaky_relu':
+            self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
+
+        self.compression_type = drl_info['architecture']['proto']['compression']['type']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['lane_encoder']
+
+        # get num_features
+        num_features = self.config.get('num_features_map')['lane']
+
+        # set num_input, num_output
+        self.num_inputs = num_features
+        self.num_outputs = int(num_features * self.compression_rate)
+
+        # set num_hidden_layer_features_map
+        self.num_hidden_layer_features_map = {}
+        for layer_id in range(1, self.num_hidden_layers + 1):
+            if self.compression_type == 'linear':
+                self.num_hidden_layer_features_map[layer_id] = int(self.num_inputs - (layer_id * (self.num_inputs - self.num_outputs) / (self.num_hidden_layers + 1)))
+            elif self.compression_type == 'geometric':
+                self.num_hidden_layer_features_map[layer_id] = int(self.num_inputs * (self.num_outputs / self.num_inputs) ** (layer_id / (self.num_hidden_layers + 1)))
+            else:
+                raise NotImplementedError(f"Not supported compression type: {self.compression_type}")
+        return
+    
+    def _makeNetwork(self):
+        module_list = nn.ModuleList()
+        if self.num_hidden_layers == 0:
+            module_list.append(nn.Linear(self.num_inputs, self.num_outputs))
+
+            if self.activation_function == 'leaky_relu':
+                module_list.append(nn.LeakyReLU(self.alpha))
+            elif self.activation_function == 'relu':
+                module_list.append(nn.ReLU())
+            else:
+                raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+            
+            self.net = nn.Sequential(*module_list)
+            return
+        
+        for layer_id in range(1, self.num_hidden_layers + 1):
+            module_list.append(nn.Linear(
+                self.num_inputs if layer_id == 1 else self.num_hidden_layer_features_map[layer_id - 1],
+                self.num_hidden_layer_features_map[layer_id]
+            ))
+
+            if self.activation_function == 'leaky_relu':
+                module_list.append(nn.LeakyReLU(self.alpha))
+            elif self.activation_function == 'relu':
+                module_list.append(nn.ReLU())
+            else:
+                raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+        
+        module_list.append(nn.Linear(
+            self.num_hidden_layer_features_map[self.num_hidden_layers],
+            self.num_outputs
+        ))
+
+        if self.activation_function == 'leaky_relu':
+            module_list.append(nn.LeakyReLU(self.alpha))
+        elif self.activation_function == 'relu':
+            module_list.append(nn.ReLU())
+        else:
+            raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+        
+        self.net = nn.Sequential(*module_list)
+        return
+    
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"lane encoder network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"lane encoder network parameters: {num_params}")
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return  
+    
+    def forward(self, x):
+        return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
+
+class LaneNet(ExtendedModule):
+    def __init__(self, config, num_vehicles_outputs, num_lane_encoder_outputs):
+        super().__init__()
+
+        self.config = config
+
+        self._initProps(num_vehicles_outputs, num_lane_encoder_outputs)
+        self._makeNetwork()
+        return
+    
+    def _initProps(self, num_vehicles_outputs, num_lane_encoder_outputs):
+        # set network parameters
+        drl_info = self.config.get('drl_info')
+
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['lane']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['lane']
 
         # get num_features
-        num_features = self.config.get('num_features_map')['lane']
-        num_features += num_vehicles_outputs
+        num_features = num_vehicles_outputs + num_lane_encoder_outputs
 
         # set num_input, num_output
         self.num_inputs = num_features
@@ -505,7 +668,7 @@ class LaneNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"lane sub network:")
+            print(f"lane network:")
 
             counter = 1
             for layer in self.net:
@@ -514,6 +677,10 @@ class LaneNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"lane network parameters: {num_params}")
         
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -541,14 +708,14 @@ class LanesNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['lanes']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['lanes']
 
         # set num_lanes
         self.num_lanes = num_lanes
@@ -616,7 +783,7 @@ class LanesNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"lanes sub network (num lanes = {self.num_lanes}):")
+            print(f"lanes network (num lanes = {self.num_lanes}):")
 
             counter = 1
             for layer in self.net:
@@ -625,6 +792,123 @@ class LanesNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"lanes network parameters (num lanes = {self.num_lanes}): {num_params}")
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
+        return
+    
+    def forward(self, x):
+        return self.net(x)
+    
+    def showInfo(self, type):
+        self._showInfo(type)
+        return
+    
+class RoadEncoderNet(ExtendedModule):
+    def __init__(self, config):
+        super().__init__()
+
+        self.config = config
+
+        self._initProps()
+        self._makeNetwork()
+        return
+    
+    def _initProps(self):
+        # set network parameters
+        drl_info = self.config.get('drl_info')
+
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['road_encoder']
+
+        self.activation_function = drl_info['architecture']['common']['activation_function']['type']
+        if self.activation_function == 'leaky_relu':
+            self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
+        
+        self.compression_type = drl_info['architecture']['proto']['compression']['type']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['road_encoder']
+
+        # get num_features
+        num_features = self.config.get('num_features_map')['road']
+
+        # set num_input, num_output
+        self.num_inputs = num_features
+        self.num_outputs = int(num_features * self.compression_rate)
+
+        # set num_hidden_layer_features_map
+        self.num_hidden_layer_features_map = {}
+        for layer_id in range(1, self.num_hidden_layers + 1):
+            if self.compression_type == 'linear':
+                self.num_hidden_layer_features_map[layer_id] = int(self.num_inputs - (layer_id * (self.num_inputs - self.num_outputs) / (self.num_hidden_layers + 1)))
+            elif self.compression_type == 'geometric':
+                self.num_hidden_layer_features_map[layer_id] = int(self.num_inputs * (self.num_outputs / self.num_inputs) ** (layer_id / (self.num_hidden_layers + 1)))
+            else:
+                raise NotImplementedError(f"Not supported compression type: {self.compression_type}")
+        
+        return
+    
+    def _makeNetwork(self):
+        module_list = nn.ModuleList()
+        if self.num_hidden_layers == 0:
+            module_list.append(nn.Linear(self.num_inputs, self.num_outputs))
+
+            if self.activation_function == 'leaky_relu':
+                module_list.append(nn.LeakyReLU(self.alpha))
+            elif self.activation_function == 'relu':
+                module_list.append(nn.ReLU())
+            else:
+                raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+            
+            self.net = nn.Sequential(*module_list)
+            return
+        
+        for layer_id in range(1, self.num_hidden_layers + 1):
+            module_list.append(nn.Linear(
+                self.num_inputs if layer_id == 1 else self.num_hidden_layer_features_map[layer_id - 1],
+                self.num_hidden_layer_features_map[layer_id]
+            ))
+
+            if self.activation_function == 'leaky_relu':
+                module_list.append(nn.LeakyReLU(self.alpha))
+            elif self.activation_function == 'relu':
+                module_list.append(nn.ReLU())
+            else:
+                raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+        
+        module_list.append(nn.Linear(
+            self.num_hidden_layer_features_map[self.num_hidden_layers],
+            self.num_outputs
+        ))
+
+        if self.activation_function == 'leaky_relu':
+            module_list.append(nn.LeakyReLU(self.alpha))
+        elif self.activation_function == 'relu':
+            module_list.append(nn.ReLU())
+        else:
+            raise NotImplementedError(f"Not supported activation function: {self.activation_function}")
+        
+        self.net = nn.Sequential(*module_list)
+
+        return
+    
+    def _showInfo(self, type):
+        if type == 'gradient':
+            print(f"road encoder network:")
+
+            counter = 1
+            for layer in self.net:
+                if not isinstance(layer, nn.Linear):
+                    continue
+
+                print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
+                counter += 1
+
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"road encoder network parameters: {num_params}")
         
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -638,35 +922,35 @@ class LanesNet(ExtendedModule):
         self._showInfo(type)
         return
 
+
 class RoadNet(ExtendedModule):
-    def __init__(self, config, num_lanes_outputs, num_lanes):
+    def __init__(self, config, num_lanes_outputs, num_lanes, num_road_encoder_outputs):
         super().__init__()
 
         self.config = config
 
-        self._initProps(num_lanes, num_lanes_outputs)
+        self._initProps(num_lanes, num_lanes_outputs, num_road_encoder_outputs)
         self._makeNetwork()
         return
 
-    def _initProps(self, num_lanes, num_lanes_outputs):
+    def _initProps(self, num_lanes, num_lanes_outputs, num_road_encoder_outputs):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['road']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['road']
 
         # set num_lanes
         self.num_lanes = num_lanes
 
         # get num_features
-        num_features = self.config.get('num_features_map')['road']
-        num_features += num_lanes_outputs
+        num_features = num_lanes_outputs + num_road_encoder_outputs
 
         # set num_input, num_output
         self.num_inputs = num_features
@@ -728,7 +1012,7 @@ class RoadNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"road sub network (num lanes = {self.num_lanes}):")
+            print(f"road network (num lanes = {self.num_lanes}):")
 
             counter = 1
             for layer in self.net:
@@ -737,6 +1021,9 @@ class RoadNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"road network parameters (num lanes = {self.num_lanes}): {num_params}")
         
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -764,14 +1051,14 @@ class RoadsNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['roads']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['roads']
 
         # get num_features
         num_features = sum(num_road_outputs_map.values())
@@ -836,7 +1123,7 @@ class RoadsNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"roads sub network:")
+            print(f"roads network:")
 
             counter = 1
             for layer in self.net:
@@ -845,6 +1132,10 @@ class RoadsNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"roads network parameters: {num_params}")
         
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -858,7 +1149,7 @@ class RoadsNet(ExtendedModule):
         self._showInfo(type)
         return
 
-class PhaseNet(ExtendedModule):
+class IntersectionEncoderNet(ExtendedModule):
     def __init__(self, config, num_roads):
         super().__init__()
 
@@ -872,17 +1163,17 @@ class PhaseNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['intersection_encoder']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['intersection_encoder']
 
         # get num_features
-        num_features = self.config.get('num_features_map')['phase'][num_roads]
+        num_features = self.config.get('num_features_map')['intersection'][num_roads]
 
         # set num_input, num_output
         self.num_inputs = num_features
@@ -944,7 +1235,7 @@ class PhaseNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"phase sub network:")
+            print(f"intersection encoder network:")
 
             counter = 1
             for layer in self.net:
@@ -953,6 +1244,10 @@ class PhaseNet(ExtendedModule):
 
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
+        
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"intersection encoder network parameters: {num_params}")
         
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -980,14 +1275,14 @@ class IntersectionNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['intersection']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['intersection']
 
         # get num_features
         num_features = num_roads_outputs + num_phase_outputs
@@ -1051,7 +1346,7 @@ class IntersectionNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"intersection sub network:")
+            print(f"intersection network:")
 
             counter = 1
             for layer in self.net:
@@ -1061,6 +1356,10 @@ class IntersectionNet(ExtendedModule):
                 print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                 counter += 1
         
+        elif type == 'parameters':
+            num_params = sum(p.numel() for p in self.parameters())
+            print(f"intersection network parameters: {num_params}")
+
         else:
             raise NotImplementedError(f"Not supported type: {type}")
 
@@ -1087,20 +1386,20 @@ class DuelingNet(ExtendedModule):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
-        self.num_hidden_layers = drl_info['architecture']['proto']['num_hidden_layers'] 
+        self.num_hidden_layers = drl_info['architecture']['proto']['hidden_layers']['number']['dueling']
 
         self.activation_function = drl_info['architecture']['common']['activation_function']['type']
         if self.activation_function == 'leaky_relu':
             self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
         
         self.compression_type = drl_info['architecture']['proto']['compression']['type']
-        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']
+        self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['dueling']
 
         # set num_input, num_output
         self.num_inputs = num_intersection_outputs
         self.num_outputs_map = {
             'value': 1,
-            'advantage': self.config.get('num_features_map')['phase'][num_roads]
+            'advantage': self.config.get('num_features_map')['intersection'][num_roads]
         } 
 
         # set num_hidden_layer_features_map
@@ -1108,9 +1407,9 @@ class DuelingNet(ExtendedModule):
         for part in ['value', 'advantage']:
             for layer_id in range(1, self.num_hidden_layers + 1):
                 if self.compression_type == 'linear':
-                    self.num_hidden_layer_features_map[part][layer_id] = int(self.num_inputs - (layer_id * (self.num_inputs - self.num_outputs_map[part]) / (self.num_hidden_layers + 1)))
+                    self.num_hidden_layer_features_map[part][layer_id] = int(self.num_inputs - (layer_id * (self.num_inputs - self.num_inputs * self.compression_rate) / (self.num_hidden_layers + 1)))
                 elif self.compression_type == 'geometric':
-                    self.num_hidden_layer_features_map[part][layer_id] = int(self.num_inputs * (self.num_outputs_map[part] / self.num_inputs) ** (layer_id / (self.num_hidden_layers + 1)))
+                    self.num_hidden_layer_features_map[part][layer_id] = int(self.num_inputs * (self.num_inputs * self.compression_rate / self.num_inputs) ** (layer_id / (self.num_hidden_layers + 1)))
                 else:
                     raise NotImplementedError(f"Not supported compression type: {self.compression_type}")
 
@@ -1150,7 +1449,7 @@ class DuelingNet(ExtendedModule):
     def _showInfo(self, type):
         if type == 'gradient':
             for part in ['value', 'advantage']:
-                print(f"{part} sub network:")
+                print(f"{part} network:")
                 counter = 1
                 for layer in self.network_map[part]:
                     if not isinstance(layer, nn.Linear):
@@ -1158,6 +1457,11 @@ class DuelingNet(ExtendedModule):
 
                     print(f"linear layer {counter}: weight = {layer.weight.grad.norm().item():.3f}, bias = {layer.bias.grad.norm().item():.3f}")
                     counter += 1
+
+        elif type == 'parameters':
+            for part in ['value', 'advantage']:
+                num_params = sum(p.numel() for p in self.network_map[part].parameters())
+                print(f"{part} network parameters: {num_params}")
 
         else:
             raise NotImplementedError(f"Not supported type: {type}")
