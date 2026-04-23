@@ -61,13 +61,17 @@ class Vissim(Common):
         return
 
     def _activate(self):
+        # update config if needed
+        if self.config.get('update_flg'):
+            self.config.update()
+
         # set com object
         while True:
             try:
                 self.com = win32com.client.Dispatch('Vissim.Vissim')
                 break
             except Exception as e:
-                print('failed to connect to Vissim COM server. Retrying...')
+                self._showInfo('fail_com_connection')
                 time.sleep(1)
         
         # load network and layout
@@ -88,6 +92,13 @@ class Vissim(Common):
             self.config_change_handler.stop()
         return
     
+    def _showInfo(self, type):
+        if type == 'fail_com_connection':
+            print('status: fail to connect to vissim com interface. retrying...')
+        else:
+            raise NotImplementedError(f"Not supported info type: {type}")
+        return
+    
     def run(self):
         while True:
             self._activate()
@@ -99,6 +110,7 @@ class Vissim(Common):
 
             self.simulation_id += 1
         
+        self.config.stopObserver()
         self.executor.shutdown()
         return
 

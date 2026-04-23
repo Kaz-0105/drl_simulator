@@ -182,13 +182,13 @@ class LocalAgent(Object):
         return len(future_phase_ids) <= 1
     
     def _initProps(self, epsilon):
-        # set num_roads and num_phases
+        # set num_roads and num_max_phases
         self.num_roads = self.master_agent.get('num_roads')
-        self.num_phases = self.master_agent.get('num_phases')
+        self.num_max_phases = self.master_agent.get('num_max_phases')
 
         self.num_lanes_map = self.master_agent.get('num_lanes_map') 
         self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
-        self.random_phase_prob_map = self.master_agent.get('random_phase_prob_map')
+        self.active_phase_list = self.master_agent.get('active_phase_list')
         self.phase_map = self.signal_controller.get('phase_map')
 
         # set epsilon
@@ -299,14 +299,12 @@ class LocalAgent(Object):
         self.model.to(self.device)
         return
     
-    # master_agentのQネットワークと同期するメソッド
     def _syncModel(self):
         master_agent_model = self.master_agent.get('model')
         self.model.load_state_dict(master_agent_model.state_dict())
         return
-
-    # 車両情報を更新するメソッド
-    def _updateVehiclesDf(self):
+    
+    def _getVehiclesDf(self):
         self.vehicles_df_map = {}
         for road_id in range(1, self.num_roads + 1):
             road = self.roads[road_id]
@@ -326,7 +324,7 @@ class LocalAgent(Object):
                 vehicles_df = vehicles_df.sort_values(by='position', ascending=False)
                 vehicles_df = vehicles_df.reset_index(drop=True)
 
-                # positionの定義
+                # reshape position (def: the distance from the intersection to the vehicle)
                 length_info = lane.get('length_info')
                 vehicles_df['position'] = length_info['length'] - vehicles_df['position']
 
@@ -391,94 +389,84 @@ class LocalAgent(Object):
         return
 
     def _getState(self):
-        if not self.infer_flg:
-            return
+        state = {}
+
+        # intersection
+        intersection_feature_list = [0] * self.num_max_phases   
         
-        self._updateVehiclesDf()
+        phase_id = self.intersection.get('current_phase_id')
+        if phase_id == 0:
+            intersection_feature_list[0] = 1
+        else:
+            intersection_feature_list[phase_id - 1] = 1
+        
+        state['intersection'] = torch.tensor(intersection_feature_list, dtype=torch.float32)
+        
+        # roads
+        state['roads'] = {f"road_{road_id}": {} for road_id in range(1, self.num_roads + 1)}
+        for road_id in range(1, self.num_roads + 1):
+            road = self.roads[road_id]
+            road_features = [
+                road.get('max_queue_length') / road.get('length'),
+                road.get('average_delay') / LocalAgent.MAX_DELAY,
+            ]
+            turn_ratio_list = list(road.get('turn_ratios').values())
+            road_features.extend([turn_ratio / sum(turn_ratio_list) for turn_ratio in turn_ratio_list])
+            state['roads'][f"road_{road_id}"]['road'] = torch.tensor(road_features, dtype=torch.float32)
 
-        if self.architecture == 'proto':
-            state = {}
-
-            # intersection
-            intersection_feature_list = [0] * self.num_phases
+        # lanes
+        for road_id in range(1, self.num_roads + 1):
+            lanes = self.road_lanes_map[road_id]
+            state['roads'][f"road_{road_id}"]['lanes'] = {f"lane_{lane_id}": {} for lane_id in range(1, self.num_lanes_map[road_id] + 1 )}
             
-            phase_id = self.intersection.get('current_phase_id')
-            if phase_id == 0:
-                intersection_feature_list[0] = 1
-            else:
-                intersection_feature_list[phase_id - 1] = 1
-            
-            state['intersection'] = torch.tensor(intersection_feature_list, dtype=torch.float32)
-            
-            # roads
-            state['roads'] = {f"road_{road_id}": {} for road_id in range(1, self.num_roads + 1)}
-            for road_id in range(1, self.num_roads + 1):
-                road = self.roads[road_id]
-                road_features = [
-                    road.get('max_queue_length') / road.get('length'),
-                    road.get('average_delay') / LocalAgent.MAX_DELAY,
+            for lane_id in range(1, lanes.count() + 1):
+                lane = lanes[lane_id]
+                lane_features = [
+                    lane.get('num_vehicles') / (lane.get('length') / LocalAgent.AVG_SPACING),
+                    lane.get('length') / self.roads.get('max_length'),
                 ]
-                turn_ratio_list = list(road.get('turn_ratios').values())
-                road_features.extend([turn_ratio / sum(turn_ratio_list) for turn_ratio in turn_ratio_list])
-                state['roads'][f"road_{road_id}"]['road'] = torch.tensor(road_features, dtype=torch.float32)
 
-            # lanes
-            for road_id in range(1, self.num_roads + 1):
-                lanes = self.road_lanes_map[road_id]
-                state['roads'][f"road_{road_id}"]['lanes'] = {f"lane_{lane_id}": {} for lane_id in range(1, self.num_lanes_map[road_id] + 1 )}
+                if lane.link.get('type') == 'left':
+                    lane_features.extend([1, 0, 0])       
+                elif lane.link.get('type') == 'main':
+                    lane_features.extend([0, 1, 0])
+                elif lane.link.get('type') == 'right':   
+                    lane_features.extend([0, 0, 1])
+                else:
+                    raise NotImplementedError(f"Not supported lane type: {lane.link.get('type')}")
                 
-                for lane_id in range(1, lanes.count() + 1):
-                    lane = lanes[lane_id]
-                    lane_features = [
-                        lane.get('num_vehicles') / (lane.get('length') / LocalAgent.AVG_SPACING),
-                        lane.get('length') / self.roads.get('max_length'),
-                    ]
+                state['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane'] = torch.tensor(lane_features, dtype=torch.float32)
+                
+        # vehicles 
+        for road_id in range(1, self.num_roads + 1):
+            lanes = self.road_lanes_map[road_id]
+            for lane_id in range(1, lanes.count() + 1):
+                vehicles_df = self.vehicles_df_map[road_id, lane_id]
 
-                    if lane.link.get('type') == 'left':
-                        lane_features.extend([1, 0, 0])       
-                    elif lane.link.get('type') == 'main':
-                        lane_features.extend([0, 1, 0])
-                    elif lane.link.get('type') == 'right':   
-                        lane_features.extend([0, 0, 1])
-                    else:
-                        raise NotImplementedError(f"Not supported lane type: {lane.link.get('type')}")
-                    
-                    state['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane'] = torch.tensor(lane_features, dtype=torch.float32)
-                    
-            # vehicles 
-            for road_id in range(1, self.num_roads + 1):
-                lanes = self.road_lanes_map[road_id]
-                for lane_id in range(1, lanes.count() + 1):
-                    vehicles_df = self.vehicles_df_map[road_id, lane_id]
+                vehicle_features_list = []
+                for vehicle_id, vehicle_row in vehicles_df.iterrows():
+                    if vehicle_id >= self.num_vehicles:
+                        break
 
-                    vehicle_features_list = []
-                    for vehicle_id, vehicle_row in vehicles_df.iterrows():
-                        if vehicle_id >= self.num_vehicles:
-                            break
-
-                        vehicle_features = [0] * self.num_roads
-                        vehicle_features[int(vehicle_row['route_id'])] = 1
-                        vehicle_features.extend([
-                            vehicle_row['position'] / road.get('length'),
-                            vehicle_row['speed'] / road.get('max_speed'),
-                            1,
-                        ])
-                        vehicle_features_list.append(vehicle_features)
-                    
-                    if len(vehicle_features_list) < self.num_vehicles:
-                        vehicle_features_list.extend([[0] * (self.num_roads + 3)] * (self.num_vehicles - len(vehicle_features_list)))
-                    
-                    state['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'] = torch.tensor(vehicle_features_list, dtype=torch.float32)
+                    vehicle_features = [0] * self.num_roads
+                    vehicle_features[int(vehicle_row['route_id'])] = 1
+                    vehicle_features.extend([
+                        vehicle_row['position'] / road.get('length'),
+                        vehicle_row['speed'] / road.get('max_speed'),
+                        1,
+                    ])
+                    vehicle_features_list.append(vehicle_features)
+                
+                if len(vehicle_features_list) < self.num_vehicles:
+                    vehicle_features_list.extend([[0] * (self.num_roads + 3)] * (self.num_vehicles - len(vehicle_features_list)))
+                
+                state['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'] = torch.tensor(vehicle_features_list, dtype=torch.float32)
      
         state = self._unsqueeze(state)
         self.state_record.append(state)
         return
 
     def _getAction(self):
-        if not self.infer_flg:
-            return
-        
-        # ε-greedy法
         if random.random() < self.epsilon:
             action = self._getRandomAction()
             
@@ -502,8 +490,7 @@ class LocalAgent(Object):
     def _getRandomAction(self):
         if self.random_action_type == LocalAgent.TOTALLY_RANDOM:
             action = random.choices(
-                list(self.random_phase_prob_map.keys()),
-                weights=list(self.random_phase_prob_map.values()),
+                self.active_phase_list,
                 k=1
             )[0]
         
@@ -529,8 +516,7 @@ class LocalAgent(Object):
 
             if sum(phase_num_vehs_map.values()) == 0:
                 action = random.choices(
-                    list(self.random_phase_prob_map.keys()),
-                    weights=list(self.random_phase_prob_map.values()),
+                    self.active_phase_list,
                     k=1
                 )[0]
             else:
@@ -540,14 +526,11 @@ class LocalAgent(Object):
                     k=1
                 )[0]
         else: 
-            raise ValueError('not defined random_action_type.')
+            raise NotImplementedError(f"Not supported random_action_type: {self.random_action_type}")
         
         return action
 
     def _getReward(self):
-        if not self.infer_flg:
-            return
-
         if self.reward_type == 'waiting_vehicles':
             reward = self._getWaitingVehiclesReward()
                                                 
@@ -747,7 +730,7 @@ class LocalAgent(Object):
         symmetry_phase_id = self.symmetry_phase_map[phase_id][symmetry_type]
 
         # set rotated intersection features
-        intersection_state = [0] * (self.intersection.get('num_phases'))
+        intersection_state = [0] * (self.num_max_phases)
         intersection_state[symmetry_phase_id - 1] = 1
         rotated_state['intersection'] = torch.tensor(intersection_state, dtype=torch.float32)
 
@@ -789,12 +772,14 @@ class LocalAgent(Object):
             return
         
         if type == 'initial_state':
+            self._getVehiclesDf()
             self._getState()
 
         elif type == 'action':
             self._getAction()
 
         elif type == 'state':
+            self._getVehiclesDf()
             self._getState()
             self._getReward()
             self._updateLearningDataList()

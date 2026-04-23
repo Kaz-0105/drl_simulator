@@ -21,9 +21,6 @@ class ProtoQNet(ExtendedModule):
         self._initProps()
         self._makeNetwork()
 
-        if agent.__class__.__name__ == 'MasterAgent':
-            self._showInfo('parameters')
-        
         if self.init_weights_flg:
             self.apply(self._initWeights)
             self._initOptimisticWeights()
@@ -35,7 +32,7 @@ class ProtoQNet(ExtendedModule):
     def _initProps(self):
         # set information from master_agent
         self.num_roads = self.master_agent.get('num_roads')
-        self.num_phases = self.master_agent.get('num_phases')
+        self.num_max_phases = self.master_agent.get('num_max_phases')
         self.num_lanes_map = self.master_agent.get('num_lanes_map')
         
         # set network initialization information

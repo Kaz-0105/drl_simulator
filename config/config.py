@@ -4,7 +4,9 @@ import yaml
 import pandas as pd
 import re
 import copy
-import random
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from pathlib import Path
 
 class Config(Common):
     def __init__(self, vissim):
@@ -20,6 +22,15 @@ class Config(Common):
         # initialize num_features_map if control method is drl  
         if self.simulator_info['control_method'] == 'drl':
             self._initNumFeaturesMap()
+
+        # initialize event handler and observer
+        if self.config_change_flg:
+            self.event_handler = ConfigFileEventHandler(self)
+            self.observer = Observer()
+            self.observer.schedule(self.event_handler, self.root_dir_path / 'config', recursive=False)
+            self.observer.start()
+            self._showInfo('observer_start')
+
         return
     
     def _initProps(self):
@@ -42,6 +53,9 @@ class Config(Common):
                 raise NotImplementedError(f"Not supported control method: {self.simulator_info['control_method']}")
 
             self.save_info = config_yaml['save']
+        
+        # set config_change_flg
+        self.config_change_flg = self.simulator_info['config_change']['flg']
 
         # set layout dir path
         self.layout_dir_path = self.root_dir_path / 'layout' / self.simulator_info['layout_name']
@@ -95,6 +109,9 @@ class Config(Common):
         for tmp_file_path in phases_dir_path.glob('symmetry_phases_*.csv'):
             num_roads = int(re.match(rf"symmetry_phases_(\d+).csv", tmp_file_path.name)[1])
             self.symmetry_phases_df_map[num_roads] = pd.read_csv(tmp_file_path, index_col=False)
+
+        # set update_flg
+        self.update_flg = False
         return
         
     def _initSaveDirPathMap(self):
@@ -301,4 +318,46 @@ class Config(Common):
     
         # intersection features
         self.num_features_map['intersection'] = {num_roads: len(phases) for num_roads, phases in self.phases_df_map.items()}
+        return
+    
+    def _showInfo(self, type):
+        print("==============================================")
+        if type == 'observer_start':
+            print(f"status: start observer for config change")
+        elif type == 'observer_stop':
+            print(f"status: stop observer for config change")
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+        return
+    
+    def update(self):
+        self._initProps()
+        self.update_flg = False
+        return
+    
+    def stopObserver(self):
+        if self.config_change_flg:
+            self.observer.stop()
+            self.observer.join()
+            self._showInfo('observer_stop')
+        return
+    
+class ConfigFileEventHandler(FileSystemEventHandler):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self._initProps()
+        return
+    
+    def _initProps(self):
+        root_dir_path = self.config.get('root_dir_path')
+        self.config_file_path = root_dir_path / 'config' / 'config.yaml'
+        return
+    
+    def on_modified(self, event):
+        if Path(event.src_path) != self.config_file_path:
+            return
+        
+        self.config.set('update_flg', True)
         return

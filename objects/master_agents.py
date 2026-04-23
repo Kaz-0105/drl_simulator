@@ -145,19 +145,16 @@ class MasterAgent(Object):
         # set id and num_roads
         self.id = self.master_agents.count() + 1
         self.num_roads = num_roads
-
-        # set phases_df and num_phases
+        
+        # get phases_df_map
         phases_df_map = self.config.get('phases_df_map')
-        self.phases_df = phases_df_map[self.num_roads]  
-        self.num_phases = self.phases_df.shape[0]
 
-        # set random_phase_prob_map
-        self.random_phase_prob_map = {}
-        for _, row in self.phases_df.iterrows():
-            self.random_phase_prob_map[int(row['id'])] = float(row['random_prob'])
-        total_prob = sum(self.random_phase_prob_map.values())
-        for phase_id in self.random_phase_prob_map:
-            self.random_phase_prob_map[phase_id] /= total_prob
+        # set active_phase_list and num_max_phases
+        self.active_phase_list = []
+        for _, phase_row in phases_df_map[self.num_roads].iterrows():
+            if phase_row['active_flg'] == 1:
+                self.active_phase_list.append(int(phase_row['id']))
+        self.num_max_phases = len(phases_df_map[self.num_roads])
 
         # set num_lanes_map
         self.num_lanes_map = {}
@@ -204,7 +201,7 @@ class MasterAgent(Object):
         self.update_count = 0
         self.episode = 1
         self.session_df = None
-        self.phase_probs_df = None
+        self.active_phases_df = None
         self.epsilon_record_df = None
         return
     
@@ -352,6 +349,7 @@ class MasterAgent(Object):
         # initialize model and target_model
         if self.architecture == 'proto':
             self.model = ProtoQNet(self, requires_grad=True)
+            self.model.showInfo('parameters')
         else:
             raise NotImplementedError(f"Not supported architecture: {self.architecture}")
         self.model.train()
@@ -384,7 +382,7 @@ class MasterAgent(Object):
         if self.simulation_id > 1:
             self.update_count = self.shared_resources.get('update_count')
             self.session_df = self.shared_resources.get('session_df')
-            self.phase_probs_df = self.shared_resources.get('phase_probs_df')
+            self.active_phases_df = self.shared_resources.get('active_phases_df')
             self.epsilon_record_df = self.shared_resources.get('epsilon_record_df')
             self.episode = len(self.session_df) + 1
 
@@ -403,10 +401,10 @@ class MasterAgent(Object):
                 
                 self.episode = len(self.session_df) + 1
             
-            phase_probs_df_file_path = self.save_dir_path_map['session'] / 'phase_probs.csv'
-            if phase_probs_df_file_path.exists():
-                with open(phase_probs_df_file_path, 'r', encoding='utf-8', newline='') as f:
-                    self.phase_probs_df = pd.read_csv(f)
+            active_phases_df_file_path = self.save_dir_path_map['session'] / 'active_phases.csv'
+            if active_phases_df_file_path.exists():
+                with open(active_phases_df_file_path, 'r', encoding='utf-8', newline='') as f:
+                    self.active_phases_df = pd.read_csv(f)
 
             epsilon_record_df_file_path = self.save_dir_path_map['session'] / 'epsilon_record.csv'
             if epsilon_record_df_file_path.exists():
@@ -509,16 +507,19 @@ class MasterAgent(Object):
         else:
             self.session_df = pd.concat([self.session_df, session_row], ignore_index=True)
 
-        # update phase_probs_df
-        phase_probs_info = {'episode': self.episode}
-        for phase_id, prob in self.random_phase_prob_map.items():
-            phase_probs_info[f"phase_{phase_id}"] = prob
-        phase_probs_row = pd.DataFrame(phase_probs_info, index=[0])
+        # update active_phases_df
+        active_phases_info = {'episode': self.episode}
+        for phase_id in range(1, self.num_max_phases + 1):
+            if phase_id in self.active_phase_list:
+                active_phases_info[f"phase_{phase_id}"] = 1
+            else:
+                active_phases_info[f"phase_{phase_id}"] = 0
+        active_phases_row = pd.DataFrame(active_phases_info, index=[0])
 
-        if self.phase_probs_df is None:
-            self.phase_probs_df = phase_probs_row.copy()
+        if self.active_phases_df is None:
+            self.active_phases_df = active_phases_row.copy()
         else:
-            self.phase_probs_df = pd.concat([self.phase_probs_df, phase_probs_row], ignore_index=True)
+            self.active_phases_df = pd.concat([self.active_phases_df, active_phases_row], ignore_index=True)
 
         # update epsilons_df
         epsilon_info = {'episode': self.episode}
@@ -659,8 +660,8 @@ class MasterAgent(Object):
         with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8', newline='') as f:
             self.session_df.to_csv(f, index=False)
         
-        with open(self.save_dir_path_map['session'] / 'phase_probs.csv', 'w', encoding='utf-8', newline='') as f:
-            self.phase_probs_df.to_csv(f, index=False)
+        with open(self.save_dir_path_map['session'] / 'active_phases.csv', 'w', encoding='utf-8', newline='') as f:
+            self.active_phases_df.to_csv(f, index=False)
         
         with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8', newline='') as f:
             self.epsilon_record_df.to_csv(f, index=False)
@@ -675,7 +676,7 @@ class MasterAgent(Object):
         self.shared_resources.set('optimizer', self.optimizer)
         self.shared_resources.set('update_count', self.update_count)
         self.shared_resources.set('session_df', self.session_df)
-        self.shared_resources.set('phase_probs_df', self.phase_probs_df)  
+        self.shared_resources.set('active_phases_df', self.active_phases_df)  
         self.shared_resources.set('epsilon_record_df', self.epsilon_record_df)
         self.shared_resources.set('buffer', self.buffer)
         return
