@@ -286,17 +286,19 @@ class Config(Common):
         self.num_features_map['lane'] = tmp_num_features
 
         # road features
-        tmp_num_features = 0
+        tmp_num_features_map = {num_roads: 0 for num_roads in [3, 4, 5]}
         for feature_name, feature_flg in self.drl_info['state']['road'].items():
             if not feature_flg:
                 continue
 
             if feature_name in ['queue', 'delay']:
-                tmp_num_features += 1
+                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()}
+            elif feature_name in ['route']:
+                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + (num_roads - 1) for num_roads in tmp_num_features_map.keys()}
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        self.num_features_map['road'] = tmp_num_features
-
+        self.num_features_map['road'] = tmp_num_features_map
+    
         # intersection features
         self.num_features_map['intersection'] = {num_roads: len(phases) for num_roads, phases in self.phases_df_map.items()}
         return

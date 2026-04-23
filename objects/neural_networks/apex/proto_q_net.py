@@ -87,6 +87,7 @@ class ProtoQNet(ExtendedModule):
         
         self.network_map['road_encoder'] = RoadEncoderNet(
             config=self.config,
+            num_roads=self.num_roads,
         )
         
         self.network_map['road'] = nn.ModuleDict()
@@ -809,16 +810,16 @@ class LanesNet(ExtendedModule):
         return
     
 class RoadEncoderNet(ExtendedModule):
-    def __init__(self, config):
+    def __init__(self, config, num_roads):
         super().__init__()
 
         self.config = config
 
-        self._initProps()
+        self._initProps(num_roads)
         self._makeNetwork()
         return
     
-    def _initProps(self):
+    def _initProps(self, num_roads):
         # set network parameters
         drl_info = self.config.get('drl_info')
 
@@ -832,7 +833,7 @@ class RoadEncoderNet(ExtendedModule):
         self.compression_rate = drl_info['architecture']['proto']['compression']['rate']['road_encoder']
 
         # get num_features
-        num_features = self.config.get('num_features_map')['road']
+        num_features = self.config.get('num_features_map')['road'][num_roads]
 
         # set num_input, num_output
         self.num_inputs = num_features

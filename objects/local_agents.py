@@ -6,7 +6,6 @@ from objects.neural_networks.apex.proto_q_net import ProtoQNet
 
 
 import torch
-import torch.nn.functional as F
 import random
 from collections import deque
 import pandas as pd
@@ -82,6 +81,21 @@ class LocalAgents(Container):
             agent.set('sync_flg', False)    
 
         return
+    
+    def showInfo(self, type):
+        if type == 'action_result':
+            if not any(agent.get('infer_flg') for agent in self.getAll()):
+                return
+
+            print('==============================================')
+            print(f"status: action and reward results")
+            for agent in self.getAll():
+                if not agent.get('infer_flg'):
+                    continue
+
+                print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')}, reward = {agent.get('current_reward'):.1f}")
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
     
     @property
     def done_flg(self):
@@ -199,7 +213,7 @@ class LocalAgent(Object):
         
         if self.reward_type == 'waiting_vehicles':
             waiting_vehicles_info = drl_info['reward']['waiting_vehicles']
-            self.reward_scaling_flg = (waiting_vehicles_info['scaling']['type'] is not None)
+            self.reward_scaling_flg = (waiting_vehicles_info['scaler']['type'] is not None)
             if self.reward_scaling_flg:
                 self.reward_scaling_function = WaitingVehiclesRewardScaler(self)
         
@@ -207,6 +221,9 @@ class LocalAgent(Object):
             speedy_vehicles_info = drl_info['reward']['speedy_vehicles']
             self.speed_threshold = speedy_vehicles_info['threshold']
         
+        elif self.reward_type == 'throughput':
+            throughput_info = drl_info['reward']['throughput']
+            self.baseline = (throughput_info['baseline'] * (1 / 3600) * self.network.simulation.get('time_step')) / 2 # the unit is veh/step
         else: 
             raise NotImplementedError(f"Not supported reward_type: {self.reward_type}")
         
@@ -382,25 +399,28 @@ class LocalAgent(Object):
         if self.architecture == 'proto':
             state = {}
 
-            # phase
-            phase_feature_list = [0] * self.num_phases
+            # intersection
+            intersection_feature_list = [0] * self.num_phases
             
             phase_id = self.intersection.get('current_phase_id')
             if phase_id == 0:
-                phase_feature_list[0] = 1
+                intersection_feature_list[0] = 1
             else:
-                phase_feature_list[phase_id - 1] = 1
+                intersection_feature_list[phase_id - 1] = 1
             
-            state['intersection'] = torch.tensor(phase_feature_list, dtype=torch.float32)
+            state['intersection'] = torch.tensor(intersection_feature_list, dtype=torch.float32)
             
             # roads
             state['roads'] = {f"road_{road_id}": {} for road_id in range(1, self.num_roads + 1)}
             for road_id in range(1, self.num_roads + 1):
                 road = self.roads[road_id]
-                state['roads'][f"road_{road_id}"]['road'] = torch.tensor([
+                road_features = [
                     road.get('max_queue_length') / road.get('length'),
                     road.get('average_delay') / LocalAgent.MAX_DELAY,
-                ], dtype=torch.float32)
+                ]
+                turn_ratio_list = list(road.get('turn_ratios').values())
+                road_features.extend([turn_ratio / sum(turn_ratio_list) for turn_ratio in turn_ratio_list])
+                state['roads'][f"road_{road_id}"]['road'] = torch.tensor(road_features, dtype=torch.float32)
 
             # lanes
             for road_id in range(1, self.num_roads + 1):
@@ -536,6 +556,9 @@ class LocalAgent(Object):
 
         elif self.reward_type == 'space':
             reward = self._getSpaceReward()
+        
+        elif self.reward_type == 'throughput':
+            reward = self._getThroughputReward()
 
         self.reward_record.append(reward)
         self.total_reward += reward
@@ -621,6 +644,29 @@ class LocalAgent(Object):
             road = self.roads[road_order_id]
             space = ((road.get('length') - self.road_max_queue_map[road_order_id]) / road.get('length')) * 10 - 5  # -5〜5に正規化
             reward += space
+
+        return reward
+    
+    def _getThroughputReward(self):
+        reward = 0
+        for road in self.roads.getAll():
+            for data_collection_point in road.data_collection_points.getAll():
+                if data_collection_point.get('type') != 'intersection':
+                    continue
+
+                for data_collection_measurement in data_collection_point.data_collection_measurements.getAll():
+                    if data_collection_measurement.get('type') == 'multiple':
+                        continue
+                    
+                    num_vehs_record = data_collection_measurement.get('num_vehs_record')
+                    num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
+                    reward += num_pass_vehs
+
+        # change the unit to veh/step
+        reward = reward / self.duration_steps
+
+        # # normalize the reward by baseline and shift to around -1 to 1
+        # reward = reward / self.baseline - 1
 
         return reward
     
@@ -801,8 +847,8 @@ class WaitingVehiclesRewardScaler(ExtendedModule):
             self.alpha = waiting_vehicles_info['scaler']['tanh']['alpha']
             self.center = (3 - self.num_roads) / (self.num_roads - 1)
 
-        elif self.scale_type == 'tanh-linear':
-            self.alpha = waiting_vehicles_info['scaler']['tanh_linear']['tanh']['alpha']
+        elif self.scale_type == 'tanh_linear':
+            self.alpha = waiting_vehicles_info['scaler']['tanh_linear']['alpha']
             self.center = (3 - self.num_roads) / (self.num_roads - 1)
     
         else:
@@ -812,10 +858,10 @@ class WaitingVehiclesRewardScaler(ExtendedModule):
 
     def forward(self, reward):
         if self.scale_type == 'tanh':
-            reward = F.tanh(self.alpha * (reward - self.center))
-        elif self.scale_type == 'tanh-linear':
+            reward = torch.tanh(torch.tensor(self.alpha * (reward - self.center), dtype=torch.float32))
+        elif self.scale_type == 'tanh_linear':
             if reward < self.center:
-                reward = F.tanh(self.alpha * (reward - self.center))
+                reward = torch.tanh(torch.tensor(self.alpha * (reward - self.center), dtype=torch.float32))
             else:
                 reward = self.alpha * (reward - self.center)
                 reward = torch.tensor(reward, dtype=torch.float32)

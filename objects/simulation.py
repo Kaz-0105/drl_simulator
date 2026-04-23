@@ -127,6 +127,9 @@ class Simulation(Common):
             self.network.update()
             local_agents.update('state')
 
+            # show action and reward
+            local_agents.showInfo('action_result')
+
             # update buffer and train network
             master_agents.update('buffer')
             master_agents.train()

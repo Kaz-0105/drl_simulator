@@ -133,6 +133,14 @@ class MasterAgent(Object):
             sum_total_reward += total_reward
         return sum_total_reward / self.local_agents.count()
     
+    @property
+    def simulation_id(self):
+        return self.network.simulation.get('id')
+        
+    @property
+    def simulation_time(self):
+        return self.network.simulation.get('current_time')
+    
     def _initProps(self, num_roads, num_lanes_tuple):
         # set id and num_roads
         self.id = self.master_agents.count() + 1
@@ -159,7 +167,8 @@ class MasterAgent(Object):
         # set drl information
         drl_info = self.config.get('drl_info')
         self.simulation_type = drl_info['simulation_type']
-            
+        
+        # set training information
         self.num_batches = drl_info['training']['batch']['number']
         self.batch_size = drl_info['training']['batch']['size']
         self.num_epochs = drl_info['training']['epoch']
@@ -167,6 +176,7 @@ class MasterAgent(Object):
         self.weight_decay = float(drl_info['training']['weight_decay'])
         self.norm_clip = float(drl_info['training']['norm_clip'])
 
+        # set stop information
         self.stop_type = drl_info['stop']['type']
         if self.stop_type == 'episode':
             self.stop_episode = drl_info['stop']['episode']
@@ -175,12 +185,19 @@ class MasterAgent(Object):
         else:
             raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
 
+        # set framework information
         self.td_steps = drl_info['framework']['apex']['td_steps']
         self.update_interval = drl_info['framework']['apex']['target_network']['update_interval']
         self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['type'] is not None and drl_info['framework']['apex']['buffer']['priority']['reset']['type'] == 'target'
 
+        # set architecture information
         self.architecture = drl_info['architecture']['type']
+
+        # set state information
+        self.state_info = copy.deepcopy(drl_info['state'])
+        del self.state_info['vehicle']['number']
         
+        # set reward information
         self.gamma = float(drl_info['reward']['common']['gamma'])
 
         # set update_count, episode, and session_df
@@ -515,6 +532,7 @@ class MasterAgent(Object):
             self.epsilon_record_df = pd.concat([self.epsilon_record_df, epsilon_record_row], ignore_index=True)
         return
     
+    
     def update(self, type):
         if type == 'buffer':
             self.buffer.update(learning_data_list=self.learning_data_list)
@@ -665,14 +683,6 @@ class MasterAgent(Object):
     def showInfo(self, type):
         self._showInfo(type)
         return
-    
-    @property
-    def simulation_id(self):
-        return self.network.simulation.get('id')
-        
-    @property
-    def simulation_time(self):
-        return self.network.simulation.get('current_time')
         
 
 

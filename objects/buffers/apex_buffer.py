@@ -47,14 +47,16 @@ class ApexBuffer (Common):
         return self.sum_tree.get('total_priority')
     
     def _initProps(self):
-        # set size, file_size
         drl_info = self.config.get('drl_info')
+
+        # set apex buffer information
         self.size = drl_info['framework']['apex']['buffer']['size']
         self.file_capacity = drl_info['framework']['apex']['buffer']['file_capacity']
         self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['type'] is not None and drl_info['framework']['apex']['buffer']['priority']['reset']['type'] == 'episode'
         if self.reset_flg:
             self.reset_interval = drl_info['framework']['apex']['buffer']['priority']['reset']['episode']['interval']
         
+        # set training information
         self.threshold = drl_info['training']['threshold']
         self.batch_size = drl_info['training']['batch']['size']
         self.num_batches = drl_info['training']['batch']['number']
@@ -407,7 +409,7 @@ class Dataset(ExtendedDataset):
                         road_group = roads_group.create_group(f"road_{road_id}")
                         road_group.create_dataset(
                             'road',
-                            shape=(capacity, self.num_features_map['road']),
+                            shape=(capacity, self.num_features_map['road'][self.num_roads]),
                             dtype=np.float32
                         )
 

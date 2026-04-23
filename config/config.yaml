@@ -16,15 +16,15 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 10
+    episode: 20
     interval: 100
   training:
-    learning_rate: 1e-5        # learning rate for drl
-    threshold: 25              # the number of new data for each learning update
+    learning_rate: 1e-4        # learning rate for drl
+    threshold: 50              # the number of new data for each learning update
     batch:
-      number: 10                 # batch number for learning
+      number: 20                 # batch number for learning
       size: 128                  # batch size for learning
-    epoch: 2                     # epoch for learning
+    epoch: 1                     # epoch for learning
     weight_decay: 0.0            # weight decay for learning
     norm_clip: 1.0              # max norm for gradient clipping
   framework: 
@@ -58,23 +58,26 @@ drl:
     road:
       queue: true
       delay: true
+      route: true
     intersection:
       phase: true
   action:
-    random_type: 2 # 1: completely random, 2: random based on the number of vehicles
+    random_type: 1 # 1: completely random, 2: random based on the number of vehicles
   reward: 
-    type: waiting_vehicles # waiting_vehicles, speedy_vehicles
+    type: throughput # waiting_vehicles, speedy_vehicles, throughput
     common:
       gamma: 0.80
     waiting_vehicles:
       scaler:
-        type: tanh-linear # tanh, tanh-linear or none
+        type: tanh_linear # tanh, tanh_linear or none
         tanh:
           alpha: 5
-        tanh-linear:
+        tanh_linear:
           alpha: 5
     speedy_vehicles:
       threshold: 0.5
+    throughput:
+      baseline: 2800 # veh/h
   architecture:
     type: proto # proto only
     proto:
