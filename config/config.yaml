@@ -64,7 +64,7 @@ drl:
   action:
     random_type: 1 # 1: completely random, 2: random based on the number of vehicles
   reward: 
-    type: throughput # waiting_vehicles, speedy_vehicles, throughput
+    type: waiting_vehicles # waiting_vehicles, speedy_vehicles, throughput
     common:
       gamma: 0.80
     waiting_vehicles:

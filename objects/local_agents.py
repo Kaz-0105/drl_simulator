@@ -715,7 +715,7 @@ class LocalAgent(Object):
             for symmetry_type in symmetry_types:
                 rotated_learning_data = {
                     'state': self._rotateState(learning_data['state'], symmetry_type),
-                    'action': learning_data['action'],
+                    'action': self.symmetry_phase_map[learning_data['action']][symmetry_type],
                     'cumulative_reward': learning_data['cumulative_reward'],
                     'next_state': self._rotateState(learning_data['next_state'], symmetry_type),
                     'done_flg': learning_data['done_flg'],
