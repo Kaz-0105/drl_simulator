@@ -285,10 +285,6 @@ class Lanes(Container):
             # initialize lane objects
             self._initElements()
         
-        elif upper_object.__class__.__name__ == 'LocalAgent':
-            # set local_agent
-            self.local_agent = upper_object
-        
         elif upper_object.__class__.__name__ == 'MpcController':
             # set mpc_controller
             self.mpc_controller = upper_object

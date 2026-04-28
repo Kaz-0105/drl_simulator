@@ -16,7 +16,7 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 20
+    episode: 200
     interval: 100
   training:
     learning_rate: 1e-4        # learning rate for drl
@@ -66,14 +66,19 @@ drl:
   reward: 
     type: waiting_vehicles # waiting_vehicles, speedy_vehicles, throughput
     common:
-      gamma: 0.80
+      gamma: 0.90
     waiting_vehicles:
+      bonus: 1.0 # bonus for passing through the intersection
+      weight:
+        type: exponential # exponential or none
+        exponential:
+          half: 50 # the unit is meters
       scaler:
         type: tanh_linear # tanh, tanh_linear or none
         tanh:
-          alpha: 5
+          alpha: 3
         tanh_linear:
-          alpha: 5
+          alpha: 3
     speedy_vehicles:
       threshold: 0.5
     throughput:

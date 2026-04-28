@@ -43,7 +43,6 @@ class ProtoQNet(ExtendedModule):
             self.activation_function = drl_info['architecture']['common']['activation_function']['type']
             if self.activation_function == 'leaky_relu':
                 self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
-
         return
     
     def _makeNetwork(self):
