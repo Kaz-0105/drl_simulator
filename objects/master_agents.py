@@ -1,80 +1,65 @@
 from libs.container import Container
 from libs.object import Object
-from objects.replay_buffer import ReplayBuffer
+from objects.buffers.apex_buffer import ApexBuffer
 from objects.intersections import Intersections
 from objects.local_agents import LocalAgents
-from neural_networks.q_net_1 import QNet1
+from objects.neural_networks.apex.proto_q_net import ProtoQNet
 
-from pathlib import Path
 import torch
 import torch.optim as optim
 import torch.nn as nn
-import pickle
-import math
 import numpy as np
 import pandas as pd
+import yaml
+import json
+import random
+from torch.utils.data.dataloader import default_collate
+import copy
 
 class MasterAgents(Container):
     def __init__(self, network, device):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = network.config
         self.executor = network.executor
-
-        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = network.shared_resources
-
-        # デバイスを設定
         self.device = device
-
-        # 上位の紐づくオブジェクトを取得
         self.network = network
 
-        # 要素オブジェクトを初期化
         self._initElements()
+        return
+    
+    @property
+    def finish_flg(self):
+        return any(agent.get('finish_flg') for agent in self.getAll())
     
     def _initElements(self):
-        # intersectionsオブジェクトを取得
-        intersections = self.network.intersections
-        self.intersections_map = {}
-        for intersection in intersections.getAll():
-            # 車線数のリストを取得
+        # make master agent objects
+        for intersection in self.network.intersections.getAll():
+            num_roads = intersection.get('num_roads')
             num_lanes_tuple = intersection.get('num_lanes_tuple')
 
-            if num_lanes_tuple not in self.intersections_map:
-                # 車線数のリストをキーにしてMasterAgentオブジェクトを初期化
-                self.intersections_map[num_lanes_tuple] = []
-            
-            self.intersections_map[num_lanes_tuple].append(intersection)
-        
-        for num_lanes_tuple in self.intersections_map.keys():
-            # master_agentオブジェクトを初期化
-            self.add(MasterAgent(self, num_lanes_tuple))
+            if intersection.has('master_agent'):
+                continue
 
-    def saveLearningData(self):
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.saveLearningData)
+            self.add(MasterAgent(
+                master_agents=self, 
+                num_roads=num_roads,
+                num_lanes_tuple=num_lanes_tuple,
+            ))
         
+        return
+    
+    def update(self, type):
+        for agent in self.getAll():
+            self.executor.submit(agent.update, type)
         self.executor.wait()
+        return
     
     def train(self):
         for master_agent in self.getAll():
             self.executor.submit(master_agent.train)
-        
         self.executor.wait()
-    
-    def updateSessionData(self):
-        # トータルの報酬のレコードを更新
-        for master_agent in self.getAll():
-            self.executor.submit(master_agent.updateSessionData)
-        self.executor.wait()
-
-        # 結果を表示
-        for master_agent_id in self.getKeys(container_flg=True, sorted_flg=True):
-            master_agent = self[master_agent_id]
-            master_agent.showTotalReward()
         return
     
     def save(self):
@@ -83,94 +68,156 @@ class MasterAgents(Container):
         self.executor.wait()
         return
 
+    def showInfo(self, type):
+        for master_agent in self.getAll():
+            self.executor.submit(master_agent.showInfo, type)
+        self.executor.wait()
+        return
+
 class MasterAgent(Object):
-    def __init__(self, master_agents, num_lanes_tuple):
-        # 継承
+    def __init__(self, master_agents, num_roads,num_lanes_tuple):
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = master_agents.config
         self.executor = master_agents.executor
-
-        # 引継ぎデータ格納用のオブジェクトを取得
         self.shared_resources = master_agents.shared_resources
-
-        # デバイスを設定
         self.device = master_agents.device
-
-        # 上位オブジェクトを取得
         self.master_agents = master_agents
         self.network = master_agents.network
 
-        # IDを設定
-        self.id = self.master_agents.count() + 1
-
-        # num_roadsを設定
-        self.num_roads = len(num_lanes_tuple)
-
-        # intersectionsオブジェクトと紐づける
-        self._makeIntersectionConnections(num_lanes_tuple)
-
-        # 車線数の情報を取得
-        self._makeNumLanesMap(num_lanes_tuple)
+        self._initProps(num_roads, num_lanes_tuple)
+        self._initIntersections()
         
-        # symmetry_phase_map, random_phase_probsを作成
+        # set symmetry_phase_map, save_dir_path_map
         self._makeSymmetryPhaseMap()
-        self._makeRandomPhaseProbs()
+        self._makeSaveDirPathMap()
 
-        # パラメータを取得
-        self._getParams()
-
-        # 保存先のパスを定義
-        self._makePaths()
-
-        # モデルを初期化
-        self._initSession()
-        self._initModel()
-        self.replay_buffer = ReplayBuffer(self)
+        # initialize drl objects
+        self._initDrlObjects()
         
-        # model, session, replay_bufferのデータをロード
+        # load model, session, and buffer
         self._load()
-
-        # epsilonの初期化
-        self._makeEpsilon()
         
-        # LocalAgentオブジェクトを初期化
+        # set local_agents
         self.local_agents = LocalAgents(self)
-
-        # 最適化手法と評価関数を定義
-        self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-
-        return
-
-    def _makeIntersectionConnections(self, num_lanes_tuple):
-        # intersection_listを取得
-        intersection_list = self.master_agents.intersections_map[num_lanes_tuple]
-
-        # intersectionsオブジェクトを初期化
-        self.intersections = Intersections(self)
-
-        # intersectionオブジェクトと紐づける
-        for intersection in intersection_list:
-            self.intersections.add(intersection)
-            intersection.set('master_agent', self)
-
-    def _makeNumLanesMap(self, num_lanes_tuple):
-        # 車線数のリストを少し整形
-        num_lanes_map = {}
-        for num_lanes in num_lanes_tuple:
-            num_lanes_map[len(num_lanes_map) + 1] = num_lanes
-
-        self.num_lanes_map = num_lanes_map
         return
     
-    # 対称性のあるフェーズの組み合わせをマッピングするメソッド
+    @property
+    def learning_data_list(self):
+        learning_data_list = []
+        for local_agent in self.local_agents.getAll():
+            learning_data_list.extend(local_agent.get('learning_data_list'))
+        return learning_data_list
+    
+    @property
+    def finish_flg(self):
+        if self.simulation_type == 'test':
+            return True
+        
+        elif self.simulation_type == 'train':
+            if self.stop_type == 'interval':
+                return self.episode % self.stop_interval == 0
+            elif self.stop_type == 'episode':
+                return self.episode == self.stop_episode
+            else:
+                raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
+        
+        else:
+            raise NotImplementedError(f"Not supported DRL type: {self.simulation_type}")
+        
+    @property
+    def avg_total_reward(self):
+        sum_total_reward = 0
+        for local_agent in self.local_agents.getAll():
+            total_reward = local_agent.get('total_reward')
+            sum_total_reward += total_reward
+        return sum_total_reward / self.local_agents.count()
+    
+    @property
+    def simulation_id(self):
+        return self.network.simulation.get('id')
+        
+    @property
+    def simulation_time(self):
+        return self.network.simulation.get('current_time')
+    
+    def _initProps(self, num_roads, num_lanes_tuple):
+        # set id and num_roads
+        self.id = self.master_agents.count() + 1
+        self.num_roads = num_roads
+        
+        # get phases_df_map
+        phases_df_map = self.config.get('phases_df_map')
+
+        # set active_phase_list and num_max_phases
+        self.active_phase_list = []
+        for _, phase_row in phases_df_map[self.num_roads].iterrows():
+            if phase_row['active_flg'] == 1:
+                self.active_phase_list.append(int(phase_row['id']))
+        self.num_max_phases = len(phases_df_map[self.num_roads])
+
+        # set num_lanes_map
+        self.num_lanes_map = {}
+        for road_id in range(1, self.num_roads + 1):
+            self.num_lanes_map[road_id] = num_lanes_tuple[road_id - 1]
+        
+        # set drl information
+        drl_info = self.config.get('drl_info')
+        self.simulation_type = drl_info['simulation_type']
+        
+        # set training information
+        self.num_batches = drl_info['training']['batch']['number']
+        self.batch_size = drl_info['training']['batch']['size']
+        self.num_epochs = drl_info['training']['epoch']
+        self.learning_rate = float(drl_info['training']['learning_rate'])
+        self.weight_decay = float(drl_info['training']['weight_decay'])
+        self.norm_clip = float(drl_info['training']['norm_clip'])
+
+        # set stop information
+        self.stop_type = drl_info['stop']['type']
+        if self.stop_type == 'episode':
+            self.stop_episode = drl_info['stop']['episode']
+        elif self.stop_type == 'interval':
+            self.stop_interval = drl_info['stop']['interval']
+        else:
+            raise NotImplementedError(f"Not supported stop type: {self.stop_type}")
+
+        # set framework information
+        self.td_steps = drl_info['framework']['apex']['td_steps']
+        self.update_interval = drl_info['framework']['apex']['target_network']['update_interval']
+        self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['type'] is not None and drl_info['framework']['apex']['buffer']['priority']['reset']['type'] == 'target'
+
+        # set architecture information
+        self.architecture = drl_info['architecture']['type']
+
+        # set state information
+        self.state_info = copy.deepcopy(drl_info['state'])
+        del self.state_info['vehicle']['number']
+        
+        # set reward information
+        self.gamma = float(drl_info['reward']['common']['gamma'])
+
+        # set update_count, episode, and session_df
+        self.update_count = 0
+        self.episode = 1
+        self.session_df = None
+        self.active_phases_df = None
+        self.epsilon_record_df = None
+        return
+    
+    def _initIntersections(self):
+        self.intersections = Intersections(self)
+        for intersection in self.network.intersections.getAll():
+            if intersection.get('num_lanes_tuple') == tuple((self.num_lanes_map[road_id] for road_id in range(1, self.num_roads + 1))):
+                self.intersections.add(intersection)
+                intersection.set('master_agent', self)
+        return
+    
     def _makeSymmetryPhaseMap(self):
         self.symmetry_phase_map = {}
-        symmetry_phase_tags = self.config.get('symmetry_phase_tags')
+        symmetry_phases_df_map = self.config.get('symmetry_phases_df_map')
         if self.num_roads == 4:
-            tmp_tags = symmetry_phase_tags[self.num_roads]
+            tmp_tags = symmetry_phases_df_map[self.num_roads]
             for _, tmp_tag in tmp_tags.iterrows():
                 phase_id = tmp_tag['phase_id']
                 symmetry_phase_id = tmp_tag['symmetry_phase_id']
@@ -181,227 +228,216 @@ class MasterAgent(Object):
 
                 self.symmetry_phase_map[phase_id][symmetry_type] = symmetry_phase_id
         else:
-            # 後々定義
-            raise ValueError(f"Symmetry phase map is not defined for {self.num_roads} roads.")
+            raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
         
         return
-
-    # ランダム行動時の行動の確率分布を作成するメソッド
-    def _makeRandomPhaseProbs(self):
-        num_roads_phases_map = self.config.get('num_roads_phases_map')
-        phases = num_roads_phases_map[self.num_roads]
-        self.random_phase_probs = {}
-    
-        for _, row in phases.iterrows():
-            self.random_phase_probs[int(row['id'])] = float(row['random_prob'])
         
-        # 確率の合計が1になるように正規化
-        total_prob = sum(self.random_phase_probs.values())
-        for phase_id in self.random_phase_probs:
-            self.random_phase_probs[phase_id] /= total_prob
-        return
+    def _makeSaveDirPathMap(self):
+        self.save_dir_path_map = {}
 
-    def _getParams(self):
-        simulator_info = self.config.get('simulator_info')
-        self.num_simulations = simulator_info['num_simulations']
+        # get drl_dir_path
+        root_dir_path = self.network.get('root_dir_path')
+        drl_dir_path = root_dir_path / 'data' / 'drl'
+        drl_dir_path.mkdir(parents=True, exist_ok=True)
+        
+        # make saved_drl_info
+        saved_drl_info = copy.deepcopy(self.config.get('drl_info'))
 
-        drl_info = self.config.get('drl_info')
-        self.drl_method = drl_info['method']
-        self.duration_steps = drl_info['duration_steps']
-        self.network_id = drl_info['network_id']
-        self.reward_id = drl_info['reward_id']
-        self.done_reward = drl_info['done_reward']
-        self.data_augmentation_flg = drl_info['data_augmentation_flg']
-        self.num_vehicles = drl_info['num_vehicles']
-        self.bc_flg = drl_info['bc_flg']
-        self.learning_flg = drl_info['learning_flg']
-        self.state_id = drl_info['state_id']
-        self.save_interval = drl_info['save_interval']
-        self.stop_flg = drl_info['stop']['flg']
-        self.stop_type = drl_info['stop']['type']
+        saved_drl_info.pop('simulation_type')
+        saved_drl_info.pop('stop')
+        saved_drl_info.pop('training')
+        saved_drl_info.pop('data_augmentation')
 
-        if self.stop_type == 'episode':
-            self.stop_episode = drl_info['stop']['episode']
-        elif self.stop_type == 'interval':
-            self.stop_interval = drl_info['stop']['interval']
+        # framework
+        saved_framework_info = saved_drl_info['framework']
+
+        for key in copy.deepcopy(saved_framework_info):
+            if key == 'type':
+                continue
+            if key == saved_framework_info['type']:
+                continue
+            saved_framework_info.pop(key)
+
+        if saved_framework_info['type'] == 'apex':
+            saved_apex_info = saved_framework_info['apex']
+
+            saved_apex_info.pop('local_agent')
+            saved_apex_info.pop('target_network')
+            
+            saved_buffer_info = saved_apex_info['buffer']
+            saved_buffer_info.pop('priority')
+
         else:
-            raise ValueError(f"Invalid stop type: {self.stop_type}")
+            raise NotImplementedError(f"Not supported framework type: {saved_framework_info['type']}")
         
-        apex_info = self.config.get('apex_info')
-        self.td_steps = apex_info['td_steps']
-        self.update_interval = apex_info['update_interval']
-        self.buffer_size = apex_info['buffer']['size']
-        self.weight_decay = apex_info['weight_decay']
-        self.gamma = apex_info['gamma']
-        self.learning_rate = apex_info['learning_rate']
-        self.num_epochs = apex_info['num_epochs']
-        return
+        # action
+        saved_drl_info.pop('action')
 
-    def _makePaths(self):
-        self.path_map = {}
-
-        num_lanes_str = ''
-        for num_lanes in self.num_lanes_map.values():
-            num_lanes_str += str(num_lanes)
-
-        # modelについて
-        model_dir = Path("models") / self.drl_method
-        if not model_dir.exists():
-            model_dir.mkdir(parents=True, exist_ok=False)
-
-        csv_path = model_dir / "model.csv"
-        if not csv_path.exists():
-            model_df = pd.DataFrame(columns=['id', 'network_id', 'reward_id', 'num_lanes', 'num_vehicles', 'duration_steps', 'buffer_size', 'state_id', 'data_augmentation_flg', 'gamma', 'done_reward'])
-        else:
-            model_df = pd.read_csv(csv_path, dtype={'num_lanes': int}, index_col=False)
-
-        filtered_model_df = model_df[
-            (model_df['network_id'] == self.network_id) & 
-            (model_df['reward_id'] == self.reward_id) & 
-            (model_df['num_lanes'] == int(num_lanes_str)) & 
-            (model_df['num_vehicles'] == self.num_vehicles) & 
-            (model_df['duration_steps'] == self.duration_steps) & 
-            (model_df['buffer_size'] == self.buffer_size) & 
-            (model_df['state_id'] == self.state_id) &
-            (model_df['data_augmentation_flg'] == int(self.data_augmentation_flg)) &
-            (model_df['gamma'] == self.gamma) &
-            (model_df['done_reward'] == self.done_reward)
-        ]
-        exist_flg = not filtered_model_df.empty
-
-        if exist_flg:
-            self.model_id = filtered_model_df['id'].values[0]
-        else:
-            new_row = {
-                'id' : model_df['id'].max() + 1 if not model_df['id'].empty else 1,
-                'network_id' : self.network_id,
-                'reward_id' : self.reward_id,
-                'num_lanes' : int(num_lanes_str),
-                'num_vehicles' : self.num_vehicles,
-                'duration_steps' : self.duration_steps,
-                'buffer_size' : self.buffer_size,
-                'state_id' : self.state_id,
-                'data_augmentation_flg' : int(self.data_augmentation_flg),
-                'gamma': self.gamma,
-                'done_reward': self.done_reward,
-            }
-            model_df = pd.concat([model_df, pd.DataFrame([new_row])], ignore_index=True)
-            self.model_id = new_row['id']
+        # reward
+        reward_info = saved_drl_info['reward']
+        for key in copy.deepcopy(reward_info):
+            if key == 'type':
+                continue
+            if key == 'common':
+                continue
+            if key == reward_info['type']:
+                continue
+            reward_info.pop(key)
         
-        model_df.to_csv(csv_path, index=False)
+        # architecture
+        saved_architecture_info = saved_drl_info['architecture']
 
-        tmp_model_dir = model_dir / f"model_{self.model_id}"
-        if not tmp_model_dir.exists():
-            tmp_model_dir.mkdir(parents=True, exist_ok=False)
+        for key in copy.deepcopy(saved_architecture_info):
+            if key == 'type':
+                continue
+            if key == 'common':
+                continue
+            if key == saved_architecture_info['type']:
+                continue
 
-        self.path_map['model'] = tmp_model_dir / 'q_net.pth'
-        self.path_map['target_model'] = tmp_model_dir / 'target_q_net.pth'
+            saved_architecture_info.pop(key)
 
-        # sessionについて
-        session_dir = Path("results") / 'session' / 'drl' / self.drl_method
-        if not session_dir.exists():
-            session_dir.mkdir(parents=True, exist_ok=False)
+        common_info = saved_architecture_info['common']
+        activation_info = common_info['activation_function']
+        for key in copy.deepcopy(activation_info):
+            if key == 'type':
+                continue
+            if key == activation_info['type']:
+                continue
+
+            activation_info.pop(key)
         
-        tmp_session_dir = session_dir / f"session_{self.model_id}"
-        if not tmp_session_dir.exists():
-            tmp_session_dir.mkdir(parents=True, exist_ok=False)
-        self.path_map['session'] = tmp_session_dir / 'session.pkl'
+        # get target config_dir_path
+        found_flg = False
+        for config_dir_path in drl_dir_path.glob('config_*'):
+            config_file_path = config_dir_path / 'config.yaml'
+            if not config_file_path.exists():
+                continue
 
-        # replay_bufferについて
-        buffer_dir = Path("buffers") / self.drl_method
-        if not buffer_dir.exists():
-            buffer_dir.mkdir(parents=True, exist_ok=False)
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                config_yaml = yaml.safe_load(f)
+
+            if config_yaml == saved_drl_info:
+                found_flg = True
+                break
         
-        tmp_buffer_dir = buffer_dir / f"buffer_{self.model_id}"
-        if not tmp_buffer_dir.exists():
-            tmp_buffer_dir.mkdir(parents=True, exist_ok=False)
-
-        self.path_map['replay_buffer'] = {
-            'tree': tmp_buffer_dir / f"replay_buffer_tree.pkl",
-            'data': [tmp_buffer_dir / f"replay_buffer_data_{idx + 1}.pkl" for idx in range(math.ceil(self.buffer_size / 1000))]
+        if not found_flg:
+            config_id = 1
+            while True:
+                config_dir_path = drl_dir_path / f"config_{config_id}"
+                if not config_dir_path.exists():
+                    config_dir_path.mkdir(parents=True, exist_ok=False)
+                    config_file_path = config_dir_path / 'config.yaml'
+                    with config_file_path.open('w', encoding='utf-8') as f:
+                        yaml.dump(saved_drl_info, f)
+                    break
+                config_id += 1
+        
+        # set save_dir_path_map
+        self.save_dir_path_map = {
+            'model': config_dir_path / 'model',
+            'optimizer': config_dir_path / 'optimizer',
+            'buffer': config_dir_path / 'buffer',
+            'session': config_dir_path / 'session',
         }
+        for path in self.save_dir_path_map.values():
+            path.mkdir(parents=True, exist_ok=True)
 
-        if self.bc_flg:
-            # 直す必要あり
-            self.path_map['bc_model'] = Path(f"models/bc_q_net_{self.network_id}_{num_lanes_str}_{self.num_vehicles}.pth")
-        return
-    
-    def _initSession(self):
-        # sessionを初期化
-        self.update_count = 0
-        self.total_reward_record = []
-        self.update_interval_record = []
-        self.num_new_data_record = []
-        self.batch_record = {
-            'number': [],
-            'size': [],
-        }
-        self.num_epochs_record = []
-        self.learning_rate_record = []
-        self.weight_decay_record = []
-        self.epsilon_record = []
-        self.simulation_time_record = []
-        self.random_phase_probs_record = {phase_id: [] for phase_id in self.random_phase_probs.keys()}
-
-        self.episode = 1
         return
         
-    def _initModel(self):
-        # modelを初期化
-        if self.network_id == 1:
-            self.model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
+    def _initDrlObjects(self):
+        # initialize model and target_model
+        if self.architecture == 'proto':
+            self.model = ProtoQNet(self, requires_grad=True)
+            self.model.showInfo('parameters')
+        else:
+            raise NotImplementedError(f"Not supported architecture: {self.architecture}")
         self.model.train()
         self.model.to(self.device)
 
-        if self.network_id == 1:
-            self.target_model = QNet1(self.config, self.device, self.num_vehicles, self.num_lanes_map)
+        if self.architecture == 'proto':
+            self.target_model = ProtoQNet(self, requires_grad=False)
+        else:
+            raise NotImplementedError(f"Not supported architecture: {self.architecture}")
+        
         self.target_model.eval()
         self.target_model.to(self.device)
+
+        # initialize buffer
+        self.buffer = ApexBuffer(self)
+
+        # initialize optimizer and criterion
+        self.criterion = nn.MSELoss()
+
+        self.optimizer = optim.Adam(
+            self.model.parameters(), 
+            lr=self.learning_rate, 
+            weight_decay=self.weight_decay
+        )
+        
         return
 
     def _load(self):
-        # sessionを読み込む
-        session_data = None
-        if self.simulation_count == 1 and self.path_map['session'].exists():
-            with self.path_map['session'].open('rb') as f:
-                session_data = pickle.load(f)
-        elif self.shared_resources.has('session_data'):
-            session_data = self.shared_resources.get('session_data')
+        # load session_info, session_df
+        if self.simulation_id > 1:
+            self.update_count = self.shared_resources.get('update_count')
+            self.session_df = self.shared_resources.get('session_df')
+            self.active_phases_df = self.shared_resources.get('active_phases_df')
+            self.epsilon_record_df = self.shared_resources.get('epsilon_record_df')
+            self.episode = len(self.session_df) + 1
 
-        if session_data is not None:
-            self.update_count = session_data['update_count']
-            self.total_reward_record = session_data['total_reward_record']
-            self.update_interval_record = session_data['update_interval_record']
-            self.num_new_data_record = session_data['num_new_data_record']
-            self.batch_record = session_data['batch_record']
-            self.num_epochs_record = session_data['num_epochs_record']
-            self.learning_rate_record = session_data['learning_rate_record']
-            self.weight_decay_record = session_data['weight_decay_record']
-            self.epsilon_record = session_data['epsilon_record']
-            self.simulation_time_record = session_data['simulation_time_record']
-            self.random_phase_probs_record = session_data['random_phase_probs_record']
+        else:
+            session_info_file_path = self.save_dir_path_map['session'] / 'session.json'
+            if session_info_file_path.exists():
+                with session_info_file_path.open('r', encoding='utf-8') as f:
+                    session_info = json.load(f)
+                
+                self.update_count = session_info['target_network']['update_count']
 
-        self.episode = len(self.total_reward_record) + 1
+            session_df_file_path = self.save_dir_path_map['session'] / 'session.csv'
+            if session_df_file_path.exists():
+                with open(session_df_file_path, 'r', encoding='utf-8', newline='') as f:
+                    self.session_df = pd.read_csv(f)
+                
+                self.episode = len(self.session_df) + 1
+            
+            active_phases_df_file_path = self.save_dir_path_map['session'] / 'active_phases.csv'
+            if active_phases_df_file_path.exists():
+                with open(active_phases_df_file_path, 'r', encoding='utf-8', newline='') as f:
+                    self.active_phases_df = pd.read_csv(f)
 
-        # modelを読み込む
-        if self.simulation_count > 1:
+            epsilon_record_df_file_path = self.save_dir_path_map['session'] / 'epsilon_record.csv'
+            if epsilon_record_df_file_path.exists():
+                with open(epsilon_record_df_file_path, 'r', encoding='utf-8', newline='') as f:
+                    self.epsilon_record_df = pd.read_csv(f)
+                    
+        # load model
+        if self.simulation_id > 1:
             self.model = self.shared_resources.get('model')
-        elif self.path_map['model'].exists():
-            self.model.load_state_dict(torch.load(self.path_map['model']))
-        elif self.bc_flg and self.path_map['bc_model'].exists():
-            self.model.load_state_dict(torch.load(self.path_map['bc_model']))
+        
+        else:
+            model_file_path = self.save_dir_path_map['model'] / 'q_net.pth'
+            if model_file_path.exists():
+                self.model.load_state_dict(torch.load(model_file_path))
         
         if self.update_count == 0:
             self.target_model.load_state_dict(self.model.state_dict())
-        elif self.simulation_count > 1:
+        elif self.simulation_id > 1:
             self.target_model = self.shared_resources.get('target_model')
-        elif self.path_map['target_model'].exists():
-            self.target_model.load_state_dict(torch.load(self.path_map['target_model']))
         else:
-            self.target_model.load_state_dict(self.model.state_dict())
-        
-        # replay_bufferを読み込む
-        self.replay_buffer.load()
+            target_model_file_path = self.save_dir_path_map['model'] / 'target_q_net.pth'
+            if target_model_file_path.exists():
+                self.target_model.load_state_dict(torch.load(target_model_file_path))
+            else:
+                self.target_model.load_state_dict(self.model.state_dict())
+
+        # load optimizer
+        if self.simulation_id > 1:
+            self.optimizer = self.shared_resources.get('optimizer')
+        else:
+            optimizer_file_path = self.save_dir_path_map['optimizer'] / 'optimizer.pth'
+            if optimizer_file_path.exists():
+                self.optimizer.load_state_dict(torch.load(optimizer_file_path))
         return
     
     def _makeEpsilon(self):
@@ -419,256 +455,235 @@ class MasterAgent(Object):
         self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode - 1) % schedule_interval]
         return
     
-    def saveLearningData(self):
-        # バッファーのサイズが変化したかどうかをフラグで管理
-        self.replay_buffer.set('change_flg', False)
+    def _toDevice(self, data):
+        if isinstance(data, dict):
+            return {key: self._toDevice(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._toDevice(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.to(self.device)
+        else:
+            return data
         
-        # ローカルエージェントを走査
-        for local_agent in self.local_agents.getAll():
-            # 学習データを取得
-            learning_data = local_agent.get('learning_data')
-            
-            # 学習データがない場合はスキップ
-            if not learning_data:
-                continue
+    def _showInfo(self, type, loss_list_map = None):
+        print('==============================================')
+        if type == 'training':
+            print('status: training results')
+            print(f"master agent id: {self.id}")
+            print(f"update count: {self.update_count}/{self.update_interval}")
 
-            # バッファーにデータを保存
-            self.replay_buffer.push(learning_data)
+            for epoch, avg_loss in enumerate(loss_list_map['avg'], start=1):
+                print(f"epoch [{epoch}/{self.num_epochs}]: average loss = {avg_loss:.3f}")
 
-            # データをクリア
-            local_agent.set('learning_data', [])
+        elif type == 'result':
+            print('status: total rewards')
+            print(f"master agent id: {self.id}")
+            print(f"average total reward: {self.avg_total_reward:.1f}")
 
-            # バッファーのサイズが変化したことをフラグで管理
-            self.replay_buffer.set('change_flg', True)
+        else:
+            raise NotImplementedError(f"Not supported info type: {type}")
+        
+        return
+    
+    def _updateSession(self):
+        if self.simulation_type == 'test':
+            return
+        
+        # update session_df
+        session_row = pd.DataFrame({
+            'episode': self.episode,
+            'total_reward': self.avg_total_reward,
+            'update_interval': self.update_interval,
+            'new_data_count': self.buffer.get('new_data_count'),
+            'num_batches': self.buffer.get('num_batches'),
+            'batch_size': self.buffer.get('batch_size'),
+            'num_epochs': self.num_epochs,
+            'learning_rate': self.learning_rate,
+            'weight_decay': self.weight_decay,
+            'simulation_time': self.simulation_time,
+        }, index=[0])
+        if self.session_df is None:
+            self.session_df = session_row.copy()
+        else:
+            self.session_df = pd.concat([self.session_df, session_row], ignore_index=True)
+
+        # update active_phases_df
+        active_phases_info = {'episode': self.episode}
+        for phase_id in range(1, self.num_max_phases + 1):
+            if phase_id in self.active_phase_list:
+                active_phases_info[f"phase_{phase_id}"] = 1
+            else:
+                active_phases_info[f"phase_{phase_id}"] = 0
+        active_phases_row = pd.DataFrame(active_phases_info, index=[0])
+
+        if self.active_phases_df is None:
+            self.active_phases_df = active_phases_row.copy()
+        else:
+            self.active_phases_df = pd.concat([self.active_phases_df, active_phases_row], ignore_index=True)
+
+        # update epsilons_df
+        epsilon_info = {'episode': self.episode}
+        for agent in self.local_agents.getAll():
+            epsilon_info[f"intersection_{agent.intersection.get('id')}"] = agent.get('epsilon')
+        epsilon_record_row = pd.DataFrame(epsilon_info, index=[0])
+
+        if self.epsilon_record_df is None:
+            self.epsilon_record_df = epsilon_record_row.copy()
+        else:
+            self.epsilon_record_df = pd.concat([self.epsilon_record_df, epsilon_record_row], ignore_index=True)
+        return
+    
+    
+    def update(self, type):
+        if type == 'buffer':
+            self.buffer.update(learning_data_list=self.learning_data_list)
+
+        elif type == 'session':
+            self._updateSession()
+
+        else:
+            raise NotImplementedError(f"Not supported update type: {type}")
+        
         return
     
     def train(self):
-        # バッファーのサイズが変化していない場合は学習しない
-        if not self.learning_flg:
+        if self.simulation_type == 'test':
+            return
+        if not self.buffer.get('change_flg'):
+            return
+
+        # sample data from buffer
+        data_id_list, learning_data_list = self.buffer.sample(self.num_batches * self.batch_size)
+
+        # if the number of data is smaller than batch size, do not train and return
+        if len(data_id_list) < self.batch_size:
             return
         
-        if not self.replay_buffer.get('should_learn_flg'):
-            return
+        loss_list_map = {key: [] for key in ['avg', 'max', 'min']}
+        for epoch in range(1, self.num_epochs + 1):
+            # shuffle data_id_list
+            id_list = list(range(len(data_id_list)))
+            random.shuffle(id_list)
+            shuffled_data_id_list = [data_id_list[i] for i in id_list]
+            shuffled_learning_data_list = [learning_data_list[i] for i in id_list]
+            shuffled_priority_list = []
+            loss_list = []
+            for batch in range(1, self.num_batches + 1):
+                # when the number of data is smaller than batch size, break the loop
+                if batch * self.batch_size > len(shuffled_data_id_list):
+                    break
 
-        # バッファーからデータを取得
-        batch_data = self.replay_buffer.sample()
-        for epoch in range(self.num_epochs):
-            losses = []
-            for data, data_indices in batch_data:
-                # 勾配を初期化
+                # get mini batch data
+                batch_learning_data_list = shuffled_learning_data_list[(batch - 1) * self.batch_size : batch * self.batch_size]
+                batch_learning_data = default_collate(batch_learning_data_list)
+                batch_learning_data = self._toDevice(batch_learning_data)
+
                 self.optimizer.zero_grad()
                 
-                if self.network_id == 1:
-                    # とった行動をテンソルに変換
-                    actions = torch.tensor([tmp_data[1] - 1 for tmp_data in data], dtype=torch.int64).unsqueeze(1).to(self.device)
-
-                    # 状態を配列にする
-                    states = [tmp_data[0] for tmp_data in data]
-
-                    # 勾配をトラッキングするように設定
-                    self.model.set('requires_grad', True)
-
-                    # Q値を計算し，選ばれた行動のQ値を取得
-                    q_values = self.model(states).gather(1, actions)
-
-                    # メインモデルを評価モードに設定
-                    self.model.eval()
-
-                    # TDターゲットを計算するアルゴリズムここから
-                    with torch.no_grad():
-                        # 次の状態を配列にする
-                        states_next = [tmp_data[3] for tmp_data in data]
-
-                        # 勾配をトラッキングしないように設定
-                        self.model.set('requires_grad', False)
-
-                        # 次の状態のメインモデルのQ値の最大値を与える行動を取得
-                        max_actions = torch.argmax(self.model(states_next), dim=1).unsqueeze(1)
-
-                        # ターゲットモデルのQ値を取得
-                        target_q_values = self.target_model(states_next).gather(1, max_actions)
-
-                        # 累積報酬をテンソルに変換（multi step bootstrap を実装している）
-                        cumurative_rewards = torch.tensor([tmp_data[2] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
-
-                        # 終了フラグをテンソルに変換
-                        done_flgs = torch.tensor([tmp_data[4] for tmp_data in data], dtype=torch.float32).unsqueeze(1).to(self.device)
-
-                        # TDターゲットを計算
-                        td_targets = cumurative_rewards + (1 - done_flgs) * (self.gamma ** self.td_steps) * target_q_values
-
-                    # メインモデルを学習モードに戻す
-                    self.model.train()
-
-                # 損失を計算
-                loss = self.criterion(q_values, td_targets)
-                losses.append(loss.item())
-
-                # 勾配を計算
-                loss.backward()
-
-                # 勾配爆発を防ぐために勾配をクリッピング
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
-
-                # パラメータを更新
-                self.optimizer.step()
+                self.model.train()
+                q_values = self.model(batch_learning_data['state']).gather(dim=1, index=(batch_learning_data['action'].long() - 1))
                 
-                # 優先度を計算しバッファーを更新
-                if epoch == self.num_epochs - 1:
-                    priorities = torch.abs(q_values - td_targets).detach().cpu().numpy()
-                    self.replay_buffer.update(data_indices, priorities)
+                self.model.eval()
+                with torch.no_grad():
+                    max_actions = self.model(batch_learning_data['next_state']).argmax(dim=1, keepdim=True)
+                    target_q_values = self.target_model(batch_learning_data['next_state']).gather(dim=1, index=max_actions)
+                    td_targets = batch_learning_data['cumulative_reward'] + (1 - batch_learning_data['done_flg']) * (self.gamma ** self.td_steps) * target_q_values
+                self.model.train()
 
-                # 更新カウントを増やす（更新のインターバルを超えたらターゲットモデルを更新，10回ごとに更新回数を表示）
+                loss = self.criterion(q_values, td_targets)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.norm_clip)
+                self.optimizer.step()
+                loss_list.append(loss.item())
+
+                # synchronize target model if update interval is reached
                 self.update_count += 1
                 if self.update_count >= self.update_interval:
                     self.target_model.load_state_dict(self.model.state_dict())
                     self.update_count = 0
 
-            # 更新情報を表示
-            self._showUpdateInfo(epoch, losses)
+                    if self.reset_flg:
+                        self.buffer.reset('priority')
+
+                if self.update_count % 100 == 0:
+                    self.model.showInfo('gradient')
+                
+                if epoch == self.num_epochs:
+                    shuffled_priority_list.extend(torch.abs(q_values - td_targets).squeeze().detach().cpu().numpy().tolist())
+
+            # update avg_loss_list
+            loss_list_map['avg'].append(np.mean(loss_list).item())
+            loss_list_map['max'].append(np.max(loss_list).item())
+            loss_list_map['min'].append(np.min(loss_list).item())
+        
+        # update priorities and initial_priority
+        zipped_priority_data = sorted(zip(shuffled_data_id_list, shuffled_priority_list))
+        _, priority_tuple = zip(*zipped_priority_data)
+        self.buffer.update(data_id_list=data_id_list, priority_list=list(priority_tuple))
+        self.buffer.set('initial_priority', max(loss_list_map['max']))
+        
+        # show training results and gradients
+        self._showInfo('training', loss_list_map)
+
+        # reset new_data_count
+        self.buffer.reset('new_data_count')
         return
     
-    def _showUpdateInfo(self, epoch, losses):
-        # 更新情報を表示
-        losses = np.array(losses)
-        mean_loss = np.mean(losses)
-        min_loss = np.min(losses)
-        max_loss = np.max(losses)
-        std_loss = np.std(losses)
-        print(f"Epoch [{epoch + 1}/{self.num_epochs}] - Update count[{self.update_count}/ {self.update_interval}]")
-        print(f"Average Loss: {mean_loss:.3f}, Min Loss: {min_loss:.3f}, Max Loss: {max_loss:.3f}, Std Loss: {std_loss:.3f}")
-
-        if epoch == 0:
-            self.replay_buffer.set('initial_priority', max_loss)
-            
-
-        # 10回ごとに更新情報を表示（それ以外はスキップ）
-        if self.update_count % 1000 != 0:
-            return 
-
-        # 勾配消失・爆発の確認
-        for name, param in self.model.named_parameters():
-            if param.grad is not None:
-                print(f"{name}: {param.grad.norm().item():.3f}")
+    def clearLearningData(self):
+        for local_agent in self.local_agents.getAll():
+            learning_data_list = local_agent.get('learning_data_list')
+            learning_data_list.clear()
+        
         return
             
     def save(self):
-        if not self.learning_flg:
-            print(f"Master Agent {self.id}: This simulation is for evaluation only.")
+        if self.simulation_type == 'test':
             return
         
-        if self.finish_flg or self.simulation_count % self.save_interval == 0:   
-            # session情報を保存
-            with self.path_map['session'].open('wb') as f:
-                session_data = {
+        # save session information and tree data
+        with open(self.save_dir_path_map['session'] / 'session.json', 'w', encoding='utf-8') as f:
+            json.dump({
+                'episode': self.episode,
+                'target_network': {
                     'update_count': self.update_count,
-                    'total_reward_record': self.total_reward_record,
-                    'update_interval_record': self.update_interval_record,
-                    'num_new_data_record': self.num_new_data_record,
-                    'batch_record': self.batch_record,
-                    'num_epochs_record': self.num_epochs_record,
-                    'learning_rate_record': self.learning_rate_record,
-                    'weight_decay_record': self.weight_decay_record,
-                    'epsilon_record': self.epsilon_record,
-                    'simulation_time_record': self.simulation_time_record,
-                    'random_phase_probs_record': self.random_phase_probs_record,
+                },
+                'buffer': {
+                    'new_data_count': self.buffer.get('new_data_count'),
+                    'next_data_id': self.buffer.get('next_data_id'),
+                    'current_size': self.buffer.get('current_size'),
                 }
-                pickle.dump(session_data, f)
-            
-            # modelを保存
-            torch.save(self.model.state_dict(), self.path_map['model'])
-            torch.save(self.target_model.state_dict(), self.path_map['target_model']) 
+            }, f)
         
-        # bufferを保存
-        self.replay_buffer.save()
+        self.buffer.save()
         
-        # shared_resourcesオブジェクトに保存
+        # save session_df, phase_probs_df, and epsilon_record_df
+        with open(self.save_dir_path_map['session'] / 'session.csv', 'w', encoding='utf-8', newline='') as f:
+            self.session_df.to_csv(f, index=False)
+        
+        with open(self.save_dir_path_map['session'] / 'active_phases.csv', 'w', encoding='utf-8', newline='') as f:
+            self.active_phases_df.to_csv(f, index=False)
+        
+        with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8', newline='') as f:
+            self.epsilon_record_df.to_csv(f, index=False)
+
+        torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')
+        torch.save(self.target_model.state_dict(), self.save_dir_path_map['model'] / 'target_q_net.pth')
+        torch.save(self.optimizer.state_dict(), self.save_dir_path_map['optimizer'] / 'optimizer.pth')
+
+        # set properties to shared resources
         self.shared_resources.set('model', self.model)
         self.shared_resources.set('target_model', self.target_model)
-        self.shared_resources.set('session_data', {
-            'update_count': self.update_count,
-            'total_reward_record': self.total_reward_record,
-            'update_interval_record': self.update_interval_record,
-            'num_new_data_record': self.num_new_data_record,
-            'batch_record': self.batch_record,
-            'num_epochs_record': self.num_epochs_record,
-            'learning_rate_record': self.learning_rate_record,
-            'weight_decay_record': self.weight_decay_record,
-            'epsilon_record': self.epsilon_record,
-            'simulation_time_record': self.simulation_time_record,
-            'random_phase_probs_record': self.random_phase_probs_record,
-        })
-
-        print(f"Master Agent {self.id}: Total Number of Episodes = {len(self.total_reward_record)}")    
-        return
-
-    def updateSessionData(self):
-        # トータルの報酬を計算
-        self._updateAverageTotalReward()
-
-        # 学習フラグが立っていないときはスキップ
-        if not self.learning_flg:
-            return
-        
-        # データを記録
-        self.total_reward_record.append(self.avg_total_reward) 
-        self.update_interval_record.append(self.update_interval)
-        self.num_new_data_record.append(self.replay_buffer.get('num_new_data')) 
-        self.batch_record['number'].append(self.replay_buffer.get('num_batches')) 
-        self.batch_record['size'].append(self.replay_buffer.get('batch_size'))
-        self.num_epochs_record.append(self.num_epochs)
-        self.learning_rate_record.append(self.learning_rate) 
-        self.weight_decay_record.append(self.weight_decay) 
-        self.epsilon_record.append(self.epsilon) 
-        self.simulation_time_record.append(self.simulation_time)
-        for phase_id, prob in self.random_phase_probs.items():
-            self.random_phase_probs_record[phase_id].append(prob)
+        self.shared_resources.set('optimizer', self.optimizer)
+        self.shared_resources.set('update_count', self.update_count)
+        self.shared_resources.set('session_df', self.session_df)
+        self.shared_resources.set('active_phases_df', self.active_phases_df)  
+        self.shared_resources.set('epsilon_record_df', self.epsilon_record_df)
+        self.shared_resources.set('buffer', self.buffer)
         return
     
-    def _updateAverageTotalReward(self):
-        sum_total_reward = 0
-        for local_agent in self.local_agents.getAll():
-            total_reward = local_agent.get('total_reward')
-            sum_total_reward += total_reward
-        self.avg_total_reward = sum_total_reward / self.local_agents.count()
+    def showInfo(self, type):
+        self._showInfo(type)
         return
-    
-    def showTotalReward(self):
-        for local_agent_id in self.local_agents.getKeys(container_flg=True, sorted_flg=True):
-            local_agent = self.local_agents[local_agent_id]
-            print(f"Local Agent {local_agent_id}: Total Reward = {local_agent.get('total_reward'):.1f}")
-        
-        print(f"Master Agent {self.id}: Average Total Reward = {self.avg_total_reward:.1f}")
-        return
-    
-    @property
-    def replay_buffer_path_map(self):
-        return self.path_map['replay_buffer']
-    
-    @property
-    def simulation_count(self):
-        vissim = self.network.vissim
-        return vissim.get('simulation_count')
-    
-    @property
-    def finish_flg(self):
-        if self.simulation_count == self.num_simulations:
-            return True
-        
-        if not self.stop_flg:
-            return False
-        
-        if self.stop_type == 'episode' and self.episode == self.stop_episode:
-            return True
-
-        if self.stop_type == 'interval' and (self.episode % self.stop_interval == 0):
-            return True
-    
-        return False
-        
-    @property
-    def simulation_time(self):
-        return self.network.simulation.get('current_time')
         
 
 

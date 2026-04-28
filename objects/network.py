@@ -24,23 +24,26 @@ import re
 
 class Network(Common):
     def __init__(self, vissim):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = vissim.config
         self.executor = vissim.executor
         self.shared_resources = vissim.shared_resources
-
         self.vissim = vissim
-        self.simulation = self.vissim.simulation
-        self.com = self.vissim.com.Net
 
-        self._initProps()
-        self._initVissimObjects()
-        
-        self._setParametersToVissim()
+        # connect to simulation
+        self.simulation = self.vissim.simulation
+        self.simulation.set('network', self)
+
         return
+    
+    @property
+    def current_time(self):
+        return self.simulation.get('current_time')
+    
+    @property
+    def simulation_count(self):
+        return self.vissim.get('simulation_count')
 
     def _initProps(self):
         self.root_dir_path = self.vissim.get('root_dir_path')
@@ -49,7 +52,6 @@ class Network(Common):
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
         self.inflow_name = simulator_info['inflow_name']
-        self.num_simulations = simulator_info['num_simulations']
 
         save_info = self.config.get('save_info')
         self.save_flg_map = save_info['common']['performance_metrics']
@@ -57,6 +59,12 @@ class Network(Common):
 
         save_dir_path_map = self.config.get('save_dir_path_map')
         self.save_dir_path = save_dir_path_map['metrics']
+
+        if self.control_method == 'drl':
+            drl_info = self.config.get('drl_info')
+            self.drl_framework = drl_info['framework']['type']
+            self.drl_simulation_type = drl_info['simulation_type']
+
         return
     
     def _initVissimObjects(self):
@@ -76,9 +84,11 @@ class Network(Common):
 
         if self.control_method == 'drl':
             # set master_agents and local_agents objects
-            device = self.simulation.get('device')
-            self.master_agents = MasterAgents(self, device)
-            self.local_agents = LocalAgents(self, device)
+            if self.drl_framework == 'apex':
+                self.master_agents = MasterAgents(self, self.vissim.device)
+                self.local_agents = LocalAgents(self, self.vissim.device)
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
             
         elif self.control_method == 'mpc':
             # set mpc_controllers object
@@ -118,13 +128,22 @@ class Network(Common):
         
         return
     
-    def update(self, last_flg=False):
+    def activate(self):
+        self.com = self.vissim.com.Net
+
+        self._initProps()
+        self._initVissimObjects()
+        
+        self._setParametersToVissim()
+        return
+    
+    def update(self, type='normal'):
         self.roads.update()
         self.queue_counters.update()
         self.delay_measurements.update()
         self.data_collection_measurements.update()
-        if last_flg:
-            self.signal_controllers.lastUpdate()
+        if type != 'normal':
+            self.signal_controllers.updateRecord(type=type)
         self.executor.wait()
         return
 
@@ -133,12 +152,21 @@ class Network(Common):
         if not any(flg for flg in self.save_flg_map.values()):
             return
         
+        if self.control_method == 'drl':
+            if self.drl_framework == 'apex':
+                self.master_agents.save()
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
+        
         # make time series data as dataframe
         self._makeQueueRecordsMap()
         self._makeDelayRecordsMap()
         self._makeSpeedRecordsMap()
         self._makeCalcTimeRecordsMap()
         self._makePhaseRecordsMap()
+
+        if self.control_method == 'drl' and self.drl_simulation_type == 'train':
+            return
 
         # save csv files
         self._saveCSV()
@@ -154,7 +182,7 @@ class Network(Common):
             'intersections': {},
         }
 
-        self.queue_counters.syncDataFrame()
+        self.queue_counters.sync('dataframe')
         for road in self.roads.getAll():
             if road.queue_counters.count() == 0:
                 continue
@@ -200,7 +228,7 @@ class Network(Common):
             'intersections': {},
         }
 
-        self.delay_measurements.syncDataFrame()
+        self.delay_measurements.sync('dataframe')
 
         for road in self.roads.getAll():
             if road.delay_measurements.count() == 0:
@@ -212,14 +240,14 @@ class Network(Common):
 
             data_map = {}
             for delay_measurement in road.delay_measurements.getAll():
-                direction_id = delay_measurement.get('direction_id')
+                route_id = delay_measurement.get('route_id')
                 tmp_record_df = delay_measurement.get('record_df')
                 if data_map == {}:
                     data_map['time'] = tmp_record_df['time'].values
                 
-                if f"direction_{direction_id}" not in data_map:
-                    data_map[f"direction_{direction_id}"] = []
-                data_map[f"direction_{direction_id}"].append(tmp_record_df['value'].values)
+                if f"route_{route_id}" not in data_map:
+                    data_map[f"route_{route_id}"] = []
+                data_map[f"route_{route_id}"].append(tmp_record_df['value'].values)
             
             # average delay for each direction (NaN is ignored in mean calculation)
             for key in data_map.keys():
@@ -261,10 +289,10 @@ class Network(Common):
             weighted_sum = pd.Series(0.0, index=record_df.index)
             total_weight = pd.Series(0.0, index=record_df.index)
             valid_mask = pd.Series(True, index=record_df.index)
-            for direction_id in range(1, intersection.get('num_roads')):
-                turn_ratio = turn_ratios[direction_id]
-                mask = record_df[f"direction_{direction_id}"].notna()
-                weighted_sum.loc[mask] += record_df.loc[mask, f"direction_{direction_id}"] * turn_ratio
+            for route_id in range(1, intersection.get('num_roads')):
+                turn_ratio = turn_ratios[route_id]
+                mask = record_df[f"route_{route_id}"].notna()
+                weighted_sum.loc[mask] += record_df.loc[mask, f"route_{route_id}"] * turn_ratio
                 total_weight.loc[mask] += turn_ratio
                 valid_mask &= mask
 
@@ -274,9 +302,9 @@ class Network(Common):
             # calculate max delay (if there is NaN, it is ignored in calculation)
             max_delay = pd.Series(0.0, index=record_df.index)
             valid_mask = pd.Series(True, index=record_df.index)
-            for direction_id in range(1, intersection.get('num_roads')):
-                mask = record_df[f"direction_{direction_id}"].notna()
-                max_delay.loc[mask] = np.maximum(max_delay.loc[mask], record_df.loc[mask, f"direction_{direction_id}"])
+            for route_id in range(1, intersection.get('num_roads')):
+                mask = record_df[f"route_{route_id}"].notna()
+                max_delay.loc[mask] = np.maximum(max_delay.loc[mask], record_df.loc[mask, f"route_{route_id}"])
                 valid_mask &= mask
             
             record_df['max'] = np.nan
@@ -367,7 +395,7 @@ class Network(Common):
             'intersections': {},
         }
 
-        self.roads.syncDataFrame()
+        self.roads.sync('dataframe')
 
         for road in self.roads.getAll():
             if not road.has('output_intersection'):
@@ -413,9 +441,9 @@ class Network(Common):
         self.calc_time_records_map = {}
 
         if self.control_method == 'mpc':
-            self.mpc_controllers.syncDataFrame()
+            self.mpc_controllers.sync('dataframe')
         elif self.control_method == 'drl':
-            self.local_agents.syncDataFrame()
+            self.local_agents.sync(type='dataframe')
         else:
             raise NotImplementedError(f"Not supported control method: {self.control_method}")
         
@@ -423,7 +451,7 @@ class Network(Common):
             if self.control_method == 'mpc':
                 self.calc_time_records_map[intersection.get('id')] = intersection.mpc_controller.get('record_df')
             elif self.control_method == 'drl':
-                self.calc_time_records_map[intersection.get('id')] = intersection.local_agent.get('record_df')
+                self.calc_time_records_map[intersection.get('id')] = intersection.local_agent.get('calc_time_record_df')
             else:
                 raise NotImplementedError(f"Not supported control method: {self.control_method}")
         
@@ -433,7 +461,7 @@ class Network(Common):
         if not self.save_flg_map['phase']:
             return
 
-        self.signal_controllers.syncDataFrame()
+        self.signal_controllers.sync('dataframe')
         self.phase_records_map = {}
         for intersection in self.intersections.getAll():
             self.phase_records_map[intersection.get('id')] = intersection.signal_controller.get('record_df')
@@ -530,14 +558,14 @@ class Network(Common):
                     if data_map == {}:
                         data_map['time'] = tmp_record_df['time'].values
                     
-                    direction_list = []
+                    route_list = []
                     for column in tmp_record_df.columns:
-                        match_obj = re.match(rf"direction_(\d+)", column)
+                        match_obj = re.match(rf"route_(\d+)", column)
                         if match_obj:
-                            direction_list.append(int(match_obj.group(1)))
+                            route_list.append(int(match_obj.group(1)))
                     
-                    for direction_id in direction_list:
-                        data_map[f"delay_direction_{direction_id}"] = tmp_record_df[f"direction_{direction_id}"].values
+                    for route_id in route_list:
+                        data_map[f"delay_route_{route_id}"] = tmp_record_df[f"route_{route_id}"].values
                     
                     data_map['delay_avg_1'] = tmp_record_df['avg_1'].values
                     data_map['delay_avg_2'] = tmp_record_df['avg_2'].values
@@ -558,9 +586,7 @@ class Network(Common):
                 )
         return
     
-    @property
-    def current_time(self):
-        return self.simulation.get('current_time')
+    
 
 
 

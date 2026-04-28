@@ -8,203 +8,190 @@ from objects.delay_measurements import DelayMeasurements
 
 class VehicleRoutingDecisions(Container):
     def __init__(self, network):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = network.config
         self.executor = network.executor
         self.network = network
 
-        # 対応するComオブジェクトを取得
+        # set com object
         self.com = self.network.com.VehicleRoutingDecisionsStatic
 
-        # 要素オブジェクトを初期化
+        # set elements
         self._initElements()
-
-        # linkクラスに紐づける
-        self.makeLinkConnections()
-
-        # vehicle_routeオブジェクトに方向（左折，直進，右折など）を設定
-        self.setDirectionsForVehicleRoutes()
-
-        # パラメータを設定
-        self.setTurnRatio()
-
-        # Scoot用：effective_storage_lengthを設定
-        for road in self.network.roads.getAll():
-            road.initEffectiveStorageLengths()
             
         return
     
     def _initElements(self):
         for vehicle_routing_decision_com in self.com.GetAll():
             self.add(VehicleRoutingDecision(vehicle_routing_decision_com, self))
-    
-    def makeLinkConnections(self):
-        for vehicle_routing_decision in self.getAll():
-            # linkオブジェクトを取得
-            link_com = vehicle_routing_decision.com.Link
-            link = self.network.links[int(link_com.AttValue('No'))]
-
-            # それぞれに対して紐づける
-            vehicle_routing_decision.set('link', link)
-            link.set('vehicle_routing_decision', vehicle_routing_decision)
-
-            for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
-                # linkオブジェクト(connector）を取得
-                connector_com = vehicle_route.com.DestLink
-                connector = self.network.links[int(connector_com.AttValue('No'))]
-
-                # それぞれに対して紐づける
-                vehicle_route.set('connector', connector)
-                connector.set('vehicle_route', vehicle_route)
-    
-    def setDirectionsForVehicleRoutes(self):
-        for vehicle_routing_decision in self.getAll():
-            # 紐づくroadオブジェクトを取得
-            road = vehicle_routing_decision.getRoad()
-            
-            # road_order_mapを取得
-            intersection = road.output_intersection
-            road_order_map = intersection.get('road_order_map')
-            num_roads = intersection.get('num_roads')
-
-            # road_direction_mapを作成
-            road_direction_map = {}
-            current_road_id = road.get('id')
-            current_order_id = road_order_map[current_road_id]
-
-            for road_id, order_id in road_order_map.items():
-                direction_id = (order_id - current_order_id) % num_roads
-                road_direction_map[road_id] = direction_id                    
-
-            # vehicle_routeオブジェクトに方向を設定
-            for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
-                connector = vehicle_route.get('connector')
-                to_link = connector.to_links.getAll()[0]
-                vehicle_route.set('direction_id', road_direction_map[to_link.road.get('id')])       
-
-    def setTurnRatio(self):
-        # 設定ファイルから旋回率に関する情報を取得
-        tags = self.config.get('intersection_turn_ratio_tags')
-        templates_map = self.config.get('num_roads_turn_ratio_map')
-
-        for vehicle_routing_decision in self.getAll():
-            # 紐づくroadオブジェクトとintersectionオブジェクトを取得
-            road = vehicle_routing_decision.getRoad()
-            intersection = vehicle_routing_decision.getIntersection()
-
-            # 紐づく交差点の道路数を取得（十字路，三差路，五差路など）
-            num_roads = intersection.get('num_roads')
-            
-            # 交差点のIDと道路の順番を示すIDを取得
-            intersection_id = intersection.get('id')
-            road_order_map = intersection.get('road_order_map')
-            road_order_id = road_order_map[road.get('id')]
-
-            # 該当する設定ファイル内のレコードを取得
-            target_tag = tags[
-                (tags['intersection_id'] == intersection_id) &
-                (tags['road_order_id'] == road_order_id)
-            ]
-            target_tag = target_tag.iloc[0]
-
-            # テンプレートIDに対応するレコードを取得
-            templates = templates_map[num_roads]
-            target_template = templates[templates['id'] == target_tag['turn_ratio_template_id']]
-            target_template = target_template.iloc[0]
-
-            # 進路方向ごとのvehicle_routeオブジェクトの数を取得
-            direction_num_veh_routes_map = vehicle_routing_decision.getDirectionNumVehRoutesMap()
-
-            # 最小公倍数を計算
-            lcm_number = reduce(math.lcm, list(direction_num_veh_routes_map.values()))
-
-            # 各vehicle_routeオブジェクトに旋回率をセット
-            for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
-                direction_id = vehicle_route.get('direction_id')
-                vehicle_route.set('turn_ratio', int(target_template['ratio' + str(direction_id)] / direction_num_veh_routes_map[direction_id] * lcm_number))
-
+        
+        return
+        
 class VehicleRoutingDecision(Object):
     def __init__(self, com, vehicle_routing_decisions):
-        # 継承
         super().__init__()
 
         # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routing_decisions.config
         self.executor = vehicle_routing_decisions.executor
         self.vehicle_routing_decisions = vehicle_routing_decisions
+        self.network = vehicle_routing_decisions.network
 
-        # 対応するComオブジェクトを取得
+        # set com object
         self.com = com
 
-        # IDを取得
-        self.id = self.com.AttValue('No')
+        # connect to link and road
+        self.link = self.network.links[int(self.com.Link.AttValue('No'))]
+        self.link.set('vehicle_routing_decision', self)
+        self.road = self.link.road
+        self.road.set('vehicle_routing_decision', self) 
 
-        # 下位の紐づくオブジェクトを初期化
+        # set vehicle_routes, travel_time_measurements, and delay_measurements objects
         self.vehicle_routes = VehicleRoutes(self)
-
-        # travel_time_measurementオブジェクトを紐づけるためのコンテナを初期化
         self.travel_time_measurements = TravelTimeMeasurements(self)
-
-        # delay_measurementオブジェクトを紐づけるためのコンテナを初期化
         self.delay_measurements = DelayMeasurements(self)
+
+        self._initProps()
+
+        if self.network.get('control_method') == 'scoot' and self.road.has('output_intersection'): 
+            self._initEffectiveStorageLengthMap()
+        return
     
-    def getRoad(self):
-        return self.link.road
-    
-    def getIntersection(self):
-        return self.link.road.output_intersection
-    
-    def getDirectionNumVehRoutesMap(self):
-        direction_num_veh_routes = {}
+    def _initProps(self):
+        # set id and turn_ratios
+        self.id = int(self.com.AttValue('No'))
+        self.turn_ratios = self.road.get('turn_ratios')
+
+        # set num_routes_map
+        num_roads = self.road.output_intersection.get('num_roads')
+
+        self.num_routes_map = {route_id: 0 for route_id in range(1, num_roads + 1)}
         for vehicle_route in self.vehicle_routes.getAll():
-            direction_id = vehicle_route.get('direction_id')
+            route_id = vehicle_route.get('route_id')
+            self.num_routes_map[route_id] += 1
 
-            if direction_id not in direction_num_veh_routes:
-                direction_num_veh_routes[direction_id] = 1
-            else:
-                direction_num_veh_routes[direction_id] += 1
+        # set turn_ratio for each vehicle_route
+        lcm = reduce(math.lcm, list(num_routes for num_routes in self.num_routes_map.values() if num_routes > 0))
+        for vehicle_route in self.vehicle_routes.getAll():
+            route_id = vehicle_route.get('route_id')
+            vehicle_route.set('turn_ratio', self.turn_ratios[route_id] / self.num_routes_map[route_id] * lcm)
+        
+        return
+    
+    def _initEffectiveStorageLengthMap(self):
+        effective_storage_length_map = {'left': 0.0, 'straight': 0.0, 'right': 0.0}
 
-        return direction_num_veh_routes
+        # 道路タイプで分岐
+        if self.road.get('type') == 1:
+            # 車線数：分岐前1車線，分岐後2車線
+            # 進路：左車線は左折と直進，右車線は右折
+            
+            #　左車線について
+            before_branch_length = self.road.right_connector.get('from_pos')
+            after_branch_length = self.road.main_link.get('length') - before_branch_length
+
+            effective_storage_length_map['left'] += self.turn_ratios['left'] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios['left'] / (self.turn_ratios['left'] + self.turn_ratios['straight']) * after_branch_length
+            effective_storage_length_map['straight'] += self.turn_ratios['straight'] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios['straight'] / (self.turn_ratios['left'] + self.turn_ratios['straight']) * after_branch_length
+            effective_storage_length_map['right'] += self.turn_ratios['right'] / (sum(self.turn_ratios.values())) * before_branch_length
+
+            # 右車線について
+            branch_length = 0.0
+            branch_length += self.road.right_link.get('length')
+            branch_length += self.road.right_connector.get('length') 
+            branch_length -= self.road.right_connector.get('to_pos')
+            effective_storage_length_map['right'] += branch_length
+
+        elif self.road.get('type') == 2:
+            # 車線数：分岐前2車線，分岐後3車線
+            # 進路：左車線は左折と直進，真ん中の車線は直進，右車線は右折
+
+            # 左車線について
+            main_link_length = self.road.main_link.get('length')
+            effective_storage_length_map['left'] += (self.turn_ratios[1] / (self.turn_ratios[1] + (self.turn_ratios[2] / 2))) *  main_link_length
+            effective_storage_length_map['straight'] += ((self.turn_ratios[2] / 2) / (self.turn_ratios[1] + (self.turn_ratios[2] / 2))) *  main_link_length
+
+            # 真ん中の車線について
+            before_branch_length = self.road.right_connector.get('from_pos')
+            after_branch_length = self.road.main_link.get('length') - before_branch_length
+            effective_storage_length_map['straight'] += ((self.turn_ratios[2] / 2) / (self.turn_ratios[3] + (self.turn_ratios[2] / 2))) * before_branch_length + after_branch_length
+            effective_storage_length_map['right'] += (self.turn_ratios[3] / (self.turn_ratios[3] + (self.turn_ratios[2] / 2))) * before_branch_length
+
+            # 右車線について
+            branch_length = 0.0
+            branch_length += self.road.right_link.get('length')
+            branch_length += self.road.right_connector.get('length') 
+            branch_length -= self.road.right_connector.get('to_pos')
+            effective_storage_length_map['right'] += branch_length
+        else:
+            raise NotImplementedError(f"Not supported road type: {self.road.get('type')}")  
+
+        self.road.set('effective_storage_length_map', effective_storage_length_map)
+        return
 
 class VehicleRoutes(Container):
     def __init__(self, vehicle_routing_decision):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routing_decision.config
         self.executor = vehicle_routing_decision.executor
         self.vehicle_routing_decision = vehicle_routing_decision
-    
-        # 対応するComオブジェクトを取得
         self.com = self.vehicle_routing_decision.com.VehRoutSta
 
-        # 要素オブジェクトを初期化
         self._initElements()
+        return
 
     def _initElements(self):
-        for vehicle_route_com in self.com.GetAll():
-            self.add(VehicleRoute(vehicle_route_com, self))
+        # get road and intersection
+        road = self.vehicle_routing_decision.road
+        intersection = road.output_intersection
+        
+        # make road_direction_map
+        road_order_map = intersection.get('road_order_map')
+        target_order_id = road_order_map[road.get('id')]
+        num_roads = intersection.get('num_roads')
 
+        road_route_map = {}
+        for road_id, order_id in road_order_map.items():
+            route_id = (order_id - target_order_id) % num_roads
+            road_route_map[road_id] = route_id
+
+        for vehicle_route_com in self.com.GetAll():
+            self.add(VehicleRoute(
+                com=vehicle_route_com,
+                vehicle_routes=self,
+                road_route_map=road_route_map
+            ))
+
+        return           
 
 class VehicleRoute(Object):
-    def __init__(self, com, vehicle_routes):
-        # 継承
+    def __init__(self, com, vehicle_routes, road_route_map):
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routes.config
         self.executor = vehicle_routes.executor
         self.vehicle_routes = vehicle_routes
+        self.vehicle_routing_decision = vehicle_routes.vehicle_routing_decision
 
-        # 対応するComオブジェクトを取得
         self.com = com
 
-        # IDを取得
-        self.id = self.com.AttValue('No')
-
-        # signal_headオブジェクトを格納するコンテナを初期化
+        # set signal_heads object and connector
         self.signal_heads = SignalHeads(self)
+        self.connector = self.vehicle_routing_decision.network.links[int(self.com.DestLink.AttValue('No'))]
+        self.connector.set('vehicle_route', self)   
+
+        self._initProps(road_route_map)
+        return
+    
+    def _initProps(self, road_route_map):
+        # set id
+        self.id = int(self.com.AttValue('No'))
+
+        # set route_id
+        target_road = self.connector.to_link.road
+        self.route_id = road_route_map[target_road.get('id')]
+
+        # set turn_ratio
+        self.turn_ratio = None
+        return

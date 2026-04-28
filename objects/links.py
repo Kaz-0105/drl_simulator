@@ -62,8 +62,8 @@ class Links(Container):
     def _initInputs(self):
         # get inflows_df
         inflow_name = self.network.simulation.get('inflow_name')
-        link_input_tags_map = self.config.get('link_input_tags_map')
-        inflows_df = link_input_tags_map[inflow_name]
+        link_input_tags_df_map = self.config.get('link_input_tags_df_map')
+        inflows_df = link_input_tags_df_map[inflow_name]
 
         # set input_volume to each link object
         for _, inflow_row in inflows_df.iterrows():
@@ -93,7 +93,8 @@ class Links(Container):
         return
         
     def _makeRoadConnections(self):
-        for _, tag_row in self.config.get('road_link_tags').iterrows():
+        tags_df = self.config.get('road_link_tags_df')
+        for _, tag_row in tags_df.iterrows():
             road = self.network.roads[tag_row['road_id']]
             link = self[tag_row['link_id']]
             
@@ -105,6 +106,7 @@ class Links(Container):
             road.links.add(link)
             if tag_row['type'] == 'main':
                 road.set('main_link', link)
+                road.set('length', link.get('length'))
             elif tag_row['type'] == 'right':
                 road.set('right_link', link)
             elif tag_row['type'] == 'left':
@@ -200,9 +202,16 @@ class Link(Object):
         return
     
     def _getVehicleDataFromVissim(self):
-        # get data from vissim
         self.vehicles_df = {}
+
+        # get vehicle id list
         self.vehicles_df['id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('No')]
+
+        # if there is no vehicle, stop early and return
+        if len(self.vehicles_df['id']) == 0:
+            return
+        
+        # get position, in_queue, speed, lane_id, vehicle_route, and next_link_id list
         self.vehicles_df['position'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Pos')]
         self.vehicles_df['in_queue'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('InQueue')]
         self.vehicles_df['speed'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Speed')]
@@ -216,39 +225,32 @@ class Link(Object):
         if len(self.vehicles_df['id']) == 0:
             self.vehicles_df = DataFrame(columns=[
                 'id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 
-                'next_link_id', 'road_id', 'direction_id'
+                'next_link_id', 'road_id', 'route_id',
             ])
             return
         
-        # add link_id
+        # get link_id list
         self.vehicles_df['link_id'] = [self.id] * len(self.vehicles_df['id'])
 
-        # add road_id
+        # get road_id list
         road_id = None if not self.has('road') else self.road.get('id')
         self.vehicles_df['road_id'] = [road_id] * len(self.vehicles_df['id'])
 
-        # round position and speed to 1 decimal place
-        self.vehicles_df['position'] = [round(position, 1) for position in self.vehicles_df['position']]
-        self.vehicles_df['speed'] = [round(speed, 1) for speed in self.vehicles_df['speed']]
-
-        # in_queue to bool
-        self.vehicles_df['in_queue'] = [bool(in_queue) for in_queue in self.vehicles_df['in_queue']]
-
-        # lane to int
+        # reshape lane_id to only lane number
         self.vehicles_df['lane_id'] = [int(re.match(rf"{self.id}-(\d+)", lane_str).group(1)) for lane_str in self.vehicles_df['lane_id']]
         
-        # add direction_id
+        # get route_id_list
         vehicle_routing_decisions = self.links.network.vehicle_routing_decisions
-        direction_ids = []
+        route_id_list = []
         for vehicle_route_str in self.vehicles_df['vehicle_route']:
             if vehicle_route_str is None:
-                direction_ids.append(0)
+                route_id_list.append(0)
                 continue
             match_obj = re.match(rf"(\d+)-(\d+)", vehicle_route_str)
             vehicle_route = vehicle_routing_decisions[int(match_obj.group(1))].vehicle_routes[int(match_obj.group(2))]
-            direction_ids.append(vehicle_route.get('direction_id'))
+            route_id_list.append(vehicle_route.get('route_id'))
         
-        self.vehicles_df['direction_id'] = direction_ids
+        self.vehicles_df['route_id'] = route_id_list
 
         # remove vehicle_route column
         self.vehicles_df.pop('vehicle_route')
@@ -257,6 +259,7 @@ class Link(Object):
         self.vehicles_df = DataFrame(self.vehicles_df)
         self.vehicles_df = self.vehicles_df.sort_values(by='position', ascending=False)
         self.vehicles_df = self.vehicles_df.reset_index(drop=True)
+    
         return
 
     @property
@@ -281,10 +284,6 @@ class Lanes(Container):
 
             # initialize lane objects
             self._initElements()
-        
-        elif upper_object.__class__.__name__ == 'LocalAgent':
-            # set local_agent
-            self.local_agent = upper_object
         
         elif upper_object.__class__.__name__ == 'MpcController':
             # set mpc_controller
@@ -322,10 +321,9 @@ class Lane(Object):
         # set com objects
         self.com = com
 
-        # set id, length_info
-        self.id = int(self.com.AttValue('Index'))
-        self.length_info = self.link.get('length_info')
-    
+        self._initProps()
+        return
+
     @property
     def num_vehicles(self):
         return self.vehicles_df.shape[0]
@@ -333,13 +331,21 @@ class Lane(Object):
     @property
     def num_vehs_in_queue(self):
         return self.vehicles_df[self.vehicles_df['in_queue']].shape[0]
+    
+    def _initProps(self):
+        # set id, length_info
+        self.id = int(self.com.AttValue('Index'))
+        self.length_info = self.link.get('length_info')
+
+        self.length = self.length_info['length']
+        return
 
     def update(self):
         # get vehicles_df from link
         vehicles_df = self.link.get('vehicles_df')
 
         if vehicles_df.empty:
-            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'direction_id'])
+            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
             return
 
         # set vehicles_df for each lane

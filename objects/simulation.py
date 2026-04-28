@@ -1,43 +1,80 @@
 from libs.common import Common
 
 import random
-import torch
 
 class Simulation(Common):
+    RED = 1
+    GREEN = 3
+    
     def __init__(self, vissim):
-        # 継承
         super().__init__()
 
         # set config and vissim object
         self.config = vissim.config
         self.vissim = vissim
-
-        # set com object
-        self.com = self.vissim.com.Simulation
+        self.network = None # set in network object initialization
 
         self._initProps()
-        self._setParametersToVissim()
         return
     
-    def _initProps(self):
-        # set current_time
-        self.current_time = self.com.AttValue('SimSec')
+    @property
+    def finish_flg(self):
+        if self.control_method == 'drl':
+            if self.current_time < self.end_time:
+                return False
+            
+            if self.network.get('drl_framework') == 'apex':
+                return self.network.master_agents.get('finish_flg')
+            
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.network.get('drl_framework')}")
 
-        # set other parameters
+        elif self.control_method in ['mpc', 'scoot']:
+            return self.current_time >= self.end_time
+
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
+    
+    def _initProps(self):
+        # set simulator information
         simulator_info = self.config.get('simulator_info')
         self.control_method = simulator_info['control_method']
         self.layout_name = simulator_info['layout_name']
         self.inflow_name = simulator_info['inflow_name']
 
-        if self.control_method in ['drl', 'bc']:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         self.end_time = simulator_info['simulation_time']
         self.time_step = simulator_info['time_step']
         
         self.debug_flg = simulator_info['debug']['flg']
+
+        if self.control_method == 'drl':
+            drl_info = self.config.get('drl_info')
+            self.drl_simulation_type = drl_info['simulation_type']
+            self.drl_framework = drl_info['framework']['type']
+        return
+    
+    def _updateProps(self, simulation_id):
+        self.id = simulation_id
+
+        # set current_time
+        self.current_time = self.com.AttValue('SimSec')
+
+        # set seed
+        simulator_info = self.config.get('simulator_info')
+        if self.control_method == 'drl':
+            if self.drl_simulation_type == 'train':
+                self.seed = random.randint(100 + 1, 10000)
+            elif self.drl_simulation_type == 'test':
+                self.seed = simulator_info['seed']
+            else:
+                raise NotImplementedError(f"Not supported DRL simulation type: {self.drl_simulation_type}")
+
+        elif self.control_method in ['mpc', 'scoot']:
+            self.seed = simulator_info['seed']
+
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
         
-        self.seed = simulator_info['seed']
         return
         
     def _setParametersToVissim(self):
@@ -66,116 +103,134 @@ class Simulation(Common):
         evaluation_com.SetAttValue('DataCollToTime', self.end_time + 2)
         evaluation_com.SetAttValue('DataCollInterval', self.time_step)
         return
+    
+    def _runApex(self):
+        # get local agents and master agents
+        local_agents = self.network.local_agents
+        master_agents = self.network.master_agents
 
-    def run(self):
-        # デバックフラグが立っているとき30秒進める
-        if self.debug_flg:
-            self._runForDebug()
+        # update network and make state for each agent
+        self.network.update('initial')
+        local_agents.update('initial_state')
         
-        # 信号機の操作権限をこちら側に移す
-        self._getSignalControlAuth()
+        while self.current_time < self.end_time:
+            # sync local agents
+            local_agents.sync(type='model')
 
-        if self.control_method == 'drl':
-            # 必要なオブジェクトを取得
-            local_agents = self.network.local_agents
-            master_agents = self.network.master_agents
+            # get action
+            local_agents.update('action')
 
-            # 最初のネットワーク更新と状態の取得
+            # run single step
+            self._runSingleStep()
+
+            # update network and get state and reward
             self.network.update()
-            local_agents.getState()
-            
-            while self.current_time < self.end_time:
-                # 行動を取得
-                local_agents.getAction()
+            local_agents.update('state')
 
-                # Vissimを1ステップ進める
-                self._runSingleStep()
+            # show action and reward
+            local_agents.showInfo('action_result')
 
-                # ネットワークの更新，状態・報酬の取得，学習データの作成
-                self.network.update()
-                local_agents.getState()
-                local_agents.getReward()
-                local_agents.makeLearningData()
+            # update buffer and train network
+            master_agents.update('buffer')
+            master_agents.train()
 
-                # データを保存し学習
-                master_agents.saveLearningData()
-                master_agents.train()
-
-                # 終了フラグが立っていた場合終了
-                if local_agents.get('done_flg'):
-                    break
-            
-            # 最後のネットワーク更新
-            self.network.update(last_flg=True)
-
-            # トータルの報酬を更新し，データを保存
-            master_agents.updateSessionData()
-            master_agents.save()
-            
-        elif self.control_method == 'mpc':
-            # 必要なオブジェクトを取得
-            mpc_controllers = self.network.mpc_controllers
-            if self.network.get('bc_flg'):
-                bc_buffers = self.network.bc_buffers
-
-            while self.current_time < self.end_time:
-                # ネットワークの更新
-                self.network.update()
-
-                # MPCで最適な行動を計算
-                mpc_controllers.optimize()
-
-                # 行動クローン用のデータを作成
-                if self.network.get('bc_flg'):
-                    mpc_controllers.updateBcData()
-                    bc_buffers.saveBcData()
-
-                # Vissimを1ステップ進める
-                self._runSingleStep()
-            
-            # bcバッファのデータをファイルに保存
-            if self.network.get('bc_flg'):
-                bc_buffers.writeToFile()
-            
-            # 最後のネットワーク更新
-            self.network.update(last_flg=True)
+            # if done flg is True, break loop
+            if local_agents.get('done_flg'):
+                break
         
-        elif self.control_method == 'bc':
-            # 行動クローンを行う
-            bc_agent = self.network.bc_agent
-            bc_agent.cloneExpert()
+        # final network update
+        self.network.update('final')
 
-            while self.current_time < self.end_time:
-                # 最初のネットワークの更新
-                self.network.update()
+        # show the results of this episode
+        master_agents.showInfo('result')
 
-                # 状態・報酬・行動を計算
-                bc_agent.updateState()
-                bc_agent.updateReward()
-                bc_agent.updateAction()
-
-                # Vissimを1ステップ進める
-                self._runSingleStep()
-            
-            # 最後のネットワーク更新
-            self.network.update(last_flg=True)
-
-            # トータルの報酬を表示し、モデルを保存
-            bc_agent.showTotalReward()
-            bc_agent.saveModel()
-        
-        elif self.control_method == 'scoot':
-            scoot_controllers = self.network.scoot_controllers
-
-            while self.current_time < self.end_time:
-                self.network.update()
-                scoot_controllers.updateParameters()
-                self._runSingleStep()
-            
-            self.network.update(last_flg=True)
+        # update session information and save them
+        master_agents.update('session')
 
         # save performance metrics
         self.network.save()
+        return
+    
+    def _runMpc(self):
+        # get mpc_controllers and bc_buffers
+        mpc_controllers = self.network.mpc_controllers
+        if self.network.get('bc_flg'):
+            bc_buffers = self.network.bc_buffers
+
+        while self.current_time < self.end_time:
+            self.network.update()
+
+            mpc_controllers.optimize()
+
+            if self.network.get('bc_flg'):
+                mpc_controllers.update('bc')
+                bc_buffers.save()
+
+            self._runSingleStep()
+        
+        if self.network.get('bc_flg'):
+            bc_buffers.writeToFile()
+        
+        self.network.update(type='final')
+        self.network.save()
+        return
+    
+    def _runBc(self):
+        # 行動クローンを行う
+        bc_agent = self.network.bc_agent
+        bc_agent.cloneExpert()
+
+        while self.current_time < self.end_time:
+            # 最初のネットワークの更新
+            self.network.update(type='initial')
+
+            # 状態・報酬・行動を計算
+            bc_agent.updateState()
+            bc_agent.updateReward()
+            bc_agent.updateAction()
+
+            # Vissimを1ステップ進める
+            self._runSingleStep()
+        
+        # 最後のネットワーク更新
+        self.network.update(type='final')
+
+        # トータルの報酬を表示し、モデルを保存
+        bc_agent.showTotalReward()
+        bc_agent.saveModel()
+
+        self.network.save()
+        return
+    
+    def _runScoot(self):
+        scoot_controllers = self.network.scoot_controllers
+
+        while self.current_time < self.end_time:
+            self.network.update()
+            scoot_controllers.updateParameters()
+            self._runSingleStep()
+        
+        self.network.update(type='final')
+        self.network.save()
+
+        return
+    
+    def _showInfo(self, type):
+        print('==============================================')
+
+        if type == 'start':
+            print('status: start simulation')
+            if self.control_method == 'drl':
+                print(f"simulation id: {self.id}")
+            print(f"control method: {self.control_method}")
+
+        elif type == 'end':
+            print('status: end simulation')
+            print(f"simulation id: {self.id}")
+        
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
+
         return
 
     def _runSingleStep(self):
@@ -188,6 +243,7 @@ class Simulation(Common):
 
         # 現在時刻を更新
         self.current_time += self.time_step
+        return
 
     def _runForDebug(self):
         # 30秒進める
@@ -196,6 +252,7 @@ class Simulation(Common):
 
         # 現在時刻を更新
         self.current_time += 30
+        return
     
     def _getSignalControlAuth(self):
         # 1秒進める
@@ -208,8 +265,36 @@ class Simulation(Common):
         # 信号機の操作権限を取得
         for signal_controller in self.network.signal_controllers.getAll():
             for signal_group in signal_controller.signal_groups.getAll():
-                signal_group.com.SetAttValue('SigState', 1)
+                signal_group.com.SetAttValue('SigState', self.RED)
+        
+        return
+    
+    def activate(self, simulation_id):
+        # set com object
+        self.com = self.vissim.com.Simulation
 
-    @property
-    def network(self):
-        return self.vissim.network
+        self._updateProps(simulation_id)
+        self._setParametersToVissim()
+        return
+
+    def run(self):
+        self._showInfo('start')
+        
+        if self.debug_flg:
+            self._runForDebug()
+    
+        self._getSignalControlAuth()
+
+        if self.control_method == 'drl' and self.drl_framework == 'apex':
+            self._runApex()  
+        elif self.control_method == 'mpc':
+            self._runMpc()
+        elif self.control_method == 'bc':
+            self._runBc()
+        elif self.control_method == 'scoot':
+            self._runScoot()
+        else:
+            raise NotImplementedError(f"Not supported control method: {self.control_method}")
+
+        self._showInfo('end')
+        return

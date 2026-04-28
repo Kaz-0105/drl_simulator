@@ -123,13 +123,12 @@ class DelayMeasurements(Container):
         
         return
 
-    def syncDataFrame(self):
+    def sync(self, type):
         for delay_measurement in self.getAll():
-            self.executor.submit(delay_measurement.syncDataFrame)
-        
+            self.executor.submit(delay_measurement.sync, type)
+
         self.executor.wait()
         return
-    
 
 class DelayMeasurement(Object):
     def __init__(self, com, delay_measurements):
@@ -150,6 +149,26 @@ class DelayMeasurement(Object):
         # initialize properties
         self._initProps()
         return
+    
+    @property
+    def current_delay(self):
+        for record in reversed(self.record_list):
+            if not np.isnan(record['value']):
+                return record['value']
+        
+        return 0.0
+
+    @property
+    def start_link(self):
+        return self.links[self.type_link_map['start']]
+    
+    @property
+    def end_link(self):
+        return self.links[self.type_link_map['end']]
+    
+    @property
+    def route_id(self):
+        return self.travel_time_measurement.get('route_id')
 
     def _initProps(self):
         self.id = self.com.AttValue('No')
@@ -176,29 +195,9 @@ class DelayMeasurement(Object):
             
         return
 
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list)
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
-
-    @property
-    def current_delay(self):
-        if len(self.record_list) == 0:
-            return 0.0
-        
-        for record in reversed(self.record_list):
-            if record['value'] is not None:
-                return record['value']
-
-    @property
-    def start_link(self):
-        return self.links[self.type_link_map['start']]
-    
-    @property
-    def end_link(self):
-        return self.links[self.type_link_map['end']]
-    
-    @property
-    def direction_id(self):
-        return self.travel_time_measurement.get('direction_id')
-
-    

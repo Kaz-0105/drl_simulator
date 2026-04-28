@@ -141,13 +141,13 @@ class ScootController(Object):
         
         for road_order_id in range(1, self.roads.count() + 1):
             road = self.roads[road_order_id]
-            effective_storage_lengths = road.get('effective_storage_lengths')
+            effective_storage_length_map = road.get('effective_storage_length_map')
             if road_order_id == 1 or road_order_id == 3:
-                self.phase_effective_storage_length_map[1] += effective_storage_lengths['left'] + effective_storage_lengths['straight']
-                self.phase_effective_storage_length_map[3] += effective_storage_lengths['right']
+                self.phase_effective_storage_length_map[1] += effective_storage_length_map['left'] + effective_storage_length_map['straight']
+                self.phase_effective_storage_length_map[3] += effective_storage_length_map['right']
             elif road_order_id == 2 or road_order_id == 4:
-                self.phase_effective_storage_length_map[2] += effective_storage_lengths['left'] + effective_storage_lengths['straight']
-                self.phase_effective_storage_length_map[4] += effective_storage_lengths['right']
+                self.phase_effective_storage_length_map[2] += effective_storage_length_map['left'] + effective_storage_length_map['straight']
+                self.phase_effective_storage_length_map[4] += effective_storage_length_map['right']
             else:
                 raise ValueError('Invalid road order ID in SCOOT controller.')
         return

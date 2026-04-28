@@ -1,6 +1,6 @@
 from libs.common import Common
 from objects.links import Lanes
-from neural_networks.q_net_1 import QNet1
+from objects.neural_networks.apex.proto_q_net import ProtoQNet
 
 from pathlib import Path
 import pickle

@@ -26,17 +26,18 @@ class SignalControllers(Container):
     def setNextPhaseToVissim(self):
         for signal_controller in self.getAll():
             signal_controller.setNextPhaseToVissim()
-        
-    def syncDataFrame(self):
+    
+    def sync(self, type):
         for signal_controller in self.getAll():
-            self.executor.submit(signal_controller.syncDataFrame)
+            self.executor.submit(signal_controller.sync, type)
         self.executor.wait()
         return
 
-    def lastUpdate(self):
+    def updateRecord(self, type):
         for signal_controller in self.getAll():
-            self.executor.submit(signal_controller.lastUpdate)
+            self.executor.submit(signal_controller.updateRecord, type)
         return
+    
 class SignalController(Object):
     def __init__(self, com, signal_controllers):
         super().__init__()
@@ -53,14 +54,12 @@ class SignalController(Object):
         # set properties
         self._initProps()
 
-        # set signal_groups object
+        # set signal_groups and intersection
         self.signal_groups = SignalGroups(self)
-        
-        # set intersection object
-        self._initIntersection()
+        self._setIntersection()
 
         # set phases
-        self._initPhases()
+        self._setPhaseInfo()
         return
 
     def _initProps(self):
@@ -90,7 +89,7 @@ class SignalController(Object):
         self.record_df = None
         return
 
-    def _initIntersection(self):
+    def _setIntersection(self):
         # set intersection object
         input_road_list = []
         for signal_group in self.signal_groups.getAll():
@@ -111,30 +110,29 @@ class SignalController(Object):
         self.intersection.set('signal_controller', self)
         return
 
-    def _initPhases(self):
+    def _setPhaseInfo(self):
         # get phases_df
-        num_roads_phases_map = self.config.get('num_roads_phases_map')
-        num_roads = self.intersection.get('num_roads')
-        phases_df = num_roads_phases_map[num_roads]
+        phases_df_map = self.config.get('phases_df_map')
+        phases_df = phases_df_map[self.intersection.get('num_roads')]
 
-        # initialize phases
-        self.phases = {}
+        # set phase_map and num_phases
+        self.phase_map = {}
         for _, phase_row in phases_df.iterrows():
             tmp_signal_group_ids = []
-            for signal_group_order in range(1, num_roads + 1):
+            for signal_group_order in range(1, self.intersection.get('num_roads') + 1):
                 tmp_signal_group_ids.append(int(phase_row[f"signal_group{signal_group_order}"]))
             
-            self.phases[int(phase_row['id'])] = tmp_signal_group_ids
+            self.phase_map[int(phase_row['id'])] = tmp_signal_group_ids
         
-        self.num_phases = len(self.phases)
+        self.num_phases = len(self.phase_map)
         return
         
-    def setNextPhases(self, phase_ids):
+    def setPhases(self, phase_ids):
         # add to future_phase_ids
         self.future_phase_ids.extend(phase_ids)
 
         # add to signal_groups
-        self.signal_groups.setNextPhases(phase_ids)
+        self.signal_groups.setPhases(phase_ids)
         return
     
     def deletePhases(self, type, steps):
@@ -164,15 +162,26 @@ class SignalController(Object):
         self.future_phase_ids.popleft()
         return
 
-    def lastUpdate(self):
-        self.record_list.append({
-            'time': int(self.network.get('current_time')),
-            'value': int(self.next_phase_id) if self.next_phase_id is not None else self.record_list[-1]['value'],
-        })
+    def updateRecord(self, type):
+        if type == 'final':
+            self.record_list.append({
+                'time': int(self.network.get('current_time')),
+                'value': int(self.next_phase_id) if self.next_phase_id is not None else self.record_list[-1]['value'],
+            })
+        elif type == 'initial':
+            self.record_list.append({
+                'time': int(self.network.get('current_time')),
+                'value': 0,
+            })
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
 
-    def syncDataFrame(self):
-        self.record_df = pd.DataFrame(self.record_list)
+    def sync(self, type):
+        if type == 'dataframe':
+            self.record_df = pd.DataFrame(self.record_list)
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
         return
     
     @property
@@ -181,7 +190,10 @@ class SignalController(Object):
 
     @property
     def current_phase_id(self):
-        return self.record_list[-1]['value']
+        if len(self.record_list) > 0:
+            return self.record_list[-1]['value']
+        else:
+            return 0
 
     @property
     def signal_change_flg(self):
@@ -198,10 +210,11 @@ class SignalController(Object):
         return len(self.future_phase_ids)
 
 class SignalGroups(Container):
+    RED = 1
+    GREEN = 3
     def __init__(self, upper_object):
         super().__init__()
 
-        # set objects
         self.config = upper_object.config
         self.executor = upper_object.executor
 
@@ -215,10 +228,6 @@ class SignalGroups(Container):
 
             # initialize signal_group
             self._initElements()
-
-            # connect to signal_head and road objects
-            self._makeSignalHeadConnections()
-            self._makeRoadConnections()
         
         elif upper_object.__class__.__name__ == 'Road':
             # set road and network
@@ -230,59 +239,29 @@ class SignalGroups(Container):
         
         return
     
+    @property
+    def phase_map(self):
+        return self.signal_controller.get('phase_map')
+    
     def _initElements(self):
         for signal_group_com in self.com.GetAll():
             self.add(SignalGroup(signal_group_com, self))
         return
-    
-    def _makeSignalHeadConnections(self):
-        for signal_group in self.getAll():
-            signal_heads = signal_group.signal_heads
-            
-            for signal_head_com in signal_heads.com.GetAll():
-                signal_head_id = int(signal_head_com.AttValue('No'))
-                signal_heads.add(self.network.signal_heads[signal_head_id])
-        return
-    
-    def _makeRoadConnections(self):
-        for signal_group in self.getAll():
-            signal_heads = signal_group.signal_heads
 
-            possible_road_ids = []
-            for signal_head in signal_heads.getAll():
-                connector = signal_head.connector
-                from_link = connector.from_links.getAll()[0]
-                road = from_link.road
-                possible_road_ids.append(road.get('id'))
-
-            if len(set(possible_road_ids)) == 1:
-                signal_group.set('road', road)
-                road.signal_groups.add(signal_group)
-                
-                # direction_signal_groups_mapに保存
-                direction_signal_group_map = road.get('direction_signal_group_map')
-                direction_signal_group_map[signal_group.direction_id] = signal_group.get('id')
-            
-            else:
-                raise Exception(f"SignalGroup {signal_group.get('id')} has multiple possible roads: {possible_road_ids}. Please check the signal head connections.")       
-
-    def setNextPhases(self, phase_ids):
-        # フェーズのリストを取得
-        phases = self.signal_controller.get('phases')
-        
-        # 各フェーズに対応するSignalGroupの値を計算
+    def setPhases(self, phase_ids):
+        # create sig_color_list
         sig_color_list = []
         for phase_id in phase_ids:
-            signal_group_ids = phases[phase_id]
-            tmp_sig_color_list = [1] * self.count()  # 1は赤信号を示す
+            signal_group_ids = self.phase_map[phase_id]
+            tmp_sig_color_list = [self.RED] * self.count()
             for signal_group_id in signal_group_ids:
-                tmp_sig_color_list[signal_group_id - 1] = 3
+                tmp_sig_color_list[signal_group_id - 1] = self.GREEN
             sig_color_list.append(tmp_sig_color_list)
 
-        # 将来の信号現示を保存する（赤➡青の変化時は全赤の時間があるため，赤を１ステップ追加する）
+        # set signal color to signal groups
         for signal_group in self.getAll():
             tmp_sig_color_list = [tmp_row[signal_group.get('id') - 1] for tmp_row in sig_color_list]
-            signal_group.setNextPhases(tmp_sig_color_list)
+            signal_group.setSignalColors(tmp_sig_color_list)
     
     def deletePhases(self, type, steps):
         for signal_group in self.getAll():
@@ -317,6 +296,9 @@ class SignalGroup(Object):
 
         # set signal_heads object
         self.signal_heads = SignalHeads(self)
+
+        # set road
+        self._setRoad()
         return
 
     def _initProps(self):
@@ -342,8 +324,30 @@ class SignalGroup(Object):
             raise NotImplementedError(f"Not supported control method: {simulatior_info['control_method']}")
         
         return
+    
+    def _setRoad(self):
+        # get roads
+        roads = []
+        for signal_head in self.signal_heads.getAll():
+            connector = signal_head.connector
+            from_link = connector.from_links.getAll()[0]
+            road = from_link.road
+            if road not in roads:
+                roads.append(road)
+        
+        if len(roads) != 1:
+            raise Exception(f"SignalGroup {self.get('id')} has multiple possible roads: {[road.get('id') for road in roads]}. Please check the signal head connections.")
+        
+        # set road
+        self.road = roads[0]
+        self.road.signal_groups.add(self)
 
-    def setNextPhases(self, sig_color_list):
+        # update route_signal_group_map
+        route_signal_group_map = self.road.get('route_signal_group_map')
+        route_signal_group_map[self.route_id] = self.get('id')
+        return
+
+    def setSignalColors(self, sig_color_list):
         # get previous signal color
         if self.future_signal_colors:
             previous_signal_color = self.future_signal_colors[-1]
@@ -405,22 +409,25 @@ class SignalGroup(Object):
     
     @property
     def current_signal_color(self):
-        current_signal_color_str = self.record_list[-1]['value']
-        if current_signal_color_str == 'R':
-            return self.RED
-        elif current_signal_color_str == 'G':
-            return self.GREEN
+        if len(self.record_list) > 0:
+            current_signal_color_str = self.record_list[-1]['value']
+            if current_signal_color_str == 'R':
+                return self.RED
+            elif current_signal_color_str == 'G':
+                return self.GREEN
+            else:
+                raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
         else:
-            raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
+            return self.RED
 
     @property
-    def direction_id(self):
-        direction_ids = []
+    def route_id(self):
+        route_ids = []
         for signal_head in self.signal_heads.getAll():
-            direction_ids.append(signal_head.get('direction_id'))
+            route_ids.append(signal_head.get('route_id'))
         
-        if len(set(direction_ids)) != 1:
-            raise Exception(f"SignalGroup {self.get('id')} has multiple direction IDs: {direction_ids}. Please check the signal head connections.")
+        if len(set(route_ids)) != 1:
+            raise Exception(f"SignalGroup {self.get('id')} has multiple route IDs: {route_ids}. Please check the signal head connections.")
         
-        return direction_ids[0]
+        return route_ids[0]
         
