@@ -29,6 +29,10 @@ class ProtoQNet(ExtendedModule):
             param.requires_grad = requires_grad
         return
     
+    @property
+    def vehicle_flg(self):
+        return self.num_features_map['vehicle'][self.num_roads] != 0
+    
     def _initProps(self):
         # set information from master_agent
         self.num_roads = self.master_agent.get('num_roads')
@@ -43,28 +47,33 @@ class ProtoQNet(ExtendedModule):
             self.activation_function = drl_info['architecture']['common']['activation_function']['type']
             if self.activation_function == 'leaky_relu':
                 self.alpha = drl_info['architecture']['common']['activation_function']['leaky_relu']['alpha']
+
+        # set num_features_map
+        self.num_features_map = self.config.get('num_features_map')
         return
     
     def _makeNetwork(self):
         self.network_map = nn.ModuleDict()
 
-        self.network_map['vehicle_encoder'] = VehicleEncoderNet(
-            config=self.config, 
-            num_roads=self.num_roads,
-        )
+        if self.vehicle_flg:
+            self.network_map['vehicle_encoder'] = VehicleEncoderNet(
+                config=self.config, 
+                num_roads=self.num_roads,
+            )
 
-        self.network_map['vehicles'] = VehiclesNet(
-            config=self.config,
-            num_vehicle_outputs=self.network_map['vehicle_encoder'].get('num_outputs'),
-        )
+            self.network_map['vehicles'] = VehiclesNet(
+                config=self.config,
+                num_vehicle_outputs=self.network_map['vehicle_encoder'].get('num_outputs'),
+            )
 
+        
         self.network_map['lane_encoder'] = LaneEncoderNet(
             config=self.config,
         )
-
+        
         self.network_map['lane'] = LaneNet(
             config=self.config,
-            num_vehicles_outputs=self.network_map['vehicles'].get('num_outputs'),
+            num_vehicles_outputs=self.network_map['vehicles'].get('num_outputs') if 'vehicles' in self.network_map else 0,
             num_lane_encoder_outputs=self.network_map['lane_encoder'].get('num_outputs'),
         )
 
@@ -80,12 +89,12 @@ class ProtoQNet(ExtendedModule):
                 num_lane_outputs=self.network_map['lane'].get('num_outputs'),
                 num_lanes=num_lanes,
             )
-        
+
         self.network_map['road_encoder'] = RoadEncoderNet(
             config=self.config,
             num_roads=self.num_roads,
         )
-        
+
         self.network_map['road'] = nn.ModuleDict()
         for road_id in range(1, self.num_roads + 1):
             num_lanes = self.num_lanes_map[road_id]
@@ -185,21 +194,25 @@ class ProtoQNet(ExtendedModule):
         for road_id in range(1, self.num_roads + 1):
             lanes_inputs = []
             for lane_id in range(1, self.num_lanes_map[road_id] + 1):
-                # get vehicles_outputs (batch, vehicles features)
-                vehicle_outputs = self.network_map['vehicle_encoder'](states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'])
-                vehicle_outputs = vehicle_outputs.view(vehicle_outputs.size(0), -1)
-                vehicles_outputs = self.network_map['vehicles'](vehicle_outputs)
+                if self.vehicle_flg:
+                    # get vehicles_outputs (batch, vehicles features)
+                    vehicle_outputs = self.network_map['vehicle_encoder'](states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['vehicles'])
+                    vehicle_outputs = vehicle_outputs.view(vehicle_outputs.size(0), -1)
+                    vehicles_outputs = self.network_map['vehicles'](vehicle_outputs)
 
                 # get lane_encoder_outputs (batch, lane_encoder features)
                 lane_encoder_outputs = self.network_map['lane_encoder'](states['roads'][f"road_{road_id}"]['lanes'][f"lane_{lane_id}"]['lane'])
 
                 # get lane_outputs (batch, lane features)
-                lane_inputs = torch.cat([
-                    vehicles_outputs, 
-                    lane_encoder_outputs
-                ], dim=1)
-                lane_outputs = self.network_map['lane'](lane_inputs)
-
+                if self.vehicle_flg:
+                    lane_inputs = torch.cat([
+                        vehicles_outputs, 
+                        lane_encoder_outputs
+                    ], dim=1)
+                    lane_outputs = self.network_map['lane'](lane_inputs)
+                else:
+                    lane_outputs = self.network_map['lane'](lane_encoder_outputs)
+                
                 # append lane_outputs to lanes_inputs
                 lanes_inputs.append(lane_outputs)
 
@@ -324,7 +337,7 @@ class VehicleEncoderNet(ExtendedModule):
     
     def _showInfo(self, type):
         if type == 'gradient':
-            print(f"vehicle network:")
+            print(f"vehicle encoder network:")
 
             counter = 1
             for layer in self.net:
@@ -344,7 +357,6 @@ class VehicleEncoderNet(ExtendedModule):
         return
     
     def forward(self, x):
-        # xは（batch_size × num_vehicles × num_lanes × num_roads, num_features）のテンソル
         return self.net(x)
     
     def showInfo(self, type):

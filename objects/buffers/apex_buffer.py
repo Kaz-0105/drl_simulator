@@ -378,7 +378,7 @@ class Dataset(ExtendedDataset):
         drl_info = self.config.get('drl_info')
         self.num_vehicles = drl_info['state']['vehicle']['number']
 
-        self.num_features_map = self.config.get('num_features_map') 
+        self.num_features_map = self.config.get('max_num_features_map') 
 
         self.hdf5_obj_map = {}  
         return

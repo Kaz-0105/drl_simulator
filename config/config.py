@@ -269,55 +269,87 @@ class Config(Common):
     
     def _initNumFeaturesMap(self):
         self.num_features_map = {}
+        self.max_num_features_map = {}
 
         # vehicle features
-        tmp_num_features_map = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.num_features_map['vehicle'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.max_num_features_map['vehicle'] = {num_roads: 0 for num_roads in [3, 4, 5]}
         for feature_name, feature_flg in self.drl_info['state']['vehicle'].items():
             if feature_name in ['number']:
                 continue
 
-            if not feature_flg:
-                continue
-
             if feature_name in ['position', 'speed']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['vehicle'] = {num_roads: num_features + 1 for num_roads, num_features in self.max_num_features_map['vehicle'].items()}
+                if not feature_flg:
+                    continue        
+                self.num_features_map['vehicle'] = {num_roads: num_features + 1 for num_roads, num_features in self.num_features_map['vehicle'].items()}
+        
             elif feature_name in ['route']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + num_roads for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['vehicle'] = {num_roads: num_features + num_roads for num_roads, num_features in self.max_num_features_map['vehicle'].items()}
+                if not feature_flg:
+                    continue
+                self.num_features_map['vehicle'] = {num_roads: num_features + num_roads for num_roads, num_features in self.num_features_map['vehicle'].items()}
+            
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()} # for existence of vehicle
-        self.num_features_map['vehicle'] = tmp_num_features_map
+        
+        # add vehicle existence feature (if we use vehicle-scale information)
+        for num_roads, num_features in self.num_features_map['vehicle'].items():
+            self.max_num_features_map['vehicle'][num_roads] += 1
+            if num_features == 0:
+                continue
+            self.num_features_map['vehicle'][num_roads] += 1
 
         # lane features
-        tmp_num_features = 0
+        self.num_features_map['lane'] = 0
+        self.max_num_features_map['lane'] = 0
         for feature_name, feature_flg in self.drl_info['state']['lane'].items():
-            if not feature_flg:
-                continue
-
             if feature_name in ['length', 'num_vehicles']:
-                tmp_num_features += 1
+                self.max_num_features_map['lane'] += 1
+                if not feature_flg:
+                    continue
+                self.num_features_map['lane'] += 1
+
             elif feature_name in ['type']:
-                tmp_num_features += 3
+                self.max_num_features_map['lane'] += 3
+                if not feature_flg:
+                    continue
+                self.num_features_map['lane'] += 3
+
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        self.num_features_map['lane'] = tmp_num_features
 
         # road features
-        tmp_num_features_map = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.num_features_map['road'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.max_num_features_map['road'] = {num_roads: 0 for num_roads in [3, 4, 5]}
         for feature_name, feature_flg in self.drl_info['state']['road'].items():
-            if not feature_flg:
-                continue
-
             if feature_name in ['queue', 'delay']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['road'] = {num_roads: num_features + 1 for num_roads, num_features in self.max_num_features_map['road'].items()}
+                if not feature_flg:
+                    continue
+                self.num_features_map['road'] = {num_roads: num_features + 1 for num_roads, num_features in self.num_features_map['road'].items()}
+             
             elif feature_name in ['route']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + (num_roads - 1) for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['road'] = {num_roads: num_features + (num_roads - 1) for num_roads, num_features in self.max_num_features_map['road'].items()}
+                if not feature_flg:
+                    continue
+                self.num_features_map['road'] = {num_roads: num_features + (num_roads - 1) for num_roads, num_features in self.num_features_map['road'].items()}
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        self.num_features_map['road'] = tmp_num_features_map
     
         # intersection features
-        self.num_features_map['intersection'] = {num_roads: len(phases) for num_roads, phases in self.phases_df_map.items()}
+        self.num_features_map['intersection'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.max_num_features_map['intersection'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        for feature_name, feature_flg in self.drl_info['state']['intersection'].items():
+            if feature_name in ['phase']:
+                for num_roads, phases in self.phases_df_map.items():
+                    self.max_num_features_map['intersection'][num_roads] += len(phases)
+                if not feature_flg:
+                    continue
+                for num_roads, phases in self.phases_df_map.items():
+                    self.num_features_map['intersection'][num_roads] += len(phases)
+            else:
+                raise NotImplementedError(f"Not supported feature: {feature_name}")  
         return
     
     def _showInfo(self, type):

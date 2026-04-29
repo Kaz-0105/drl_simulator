@@ -16,7 +16,7 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 200
+    episode: 20
     interval: 100
   training:
     learning_rate: 1e-4        # learning rate for drl
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: true
-      speed: true
-      route: true
+      position: false
+      speed: false
+      route: false
     lane:
       length: true
       type: true
