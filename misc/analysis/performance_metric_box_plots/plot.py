@@ -178,10 +178,11 @@ if config_yaml['target']['control_method']['scoot']:
 for num_phases in [4, 8, 17]:
     if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
         order_list.append(f"{num_phases}-phase MPC")
-if config_yaml['target']['control_method']['drl']['micro']:
-    order_list.append('Micro DRL')
 if config_yaml['target']['control_method']['drl']['macro']:
     order_list.append('Macro DRL')
+if config_yaml['target']['control_method']['drl']['micro']:
+    order_list.append('Micro DRL')
+
 
 # plot figure
 for performance_metric in config_yaml['target']['performance_metrics']:
