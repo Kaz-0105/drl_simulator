@@ -115,7 +115,8 @@ class Simulation(Common):
         
         while self.current_time < self.end_time:
             # sync local agents
-            local_agents.sync(type='model')
+            if self.drl_simulation_type == 'train':
+                local_agents.sync(type='model')
 
             # get action
             local_agents.update('action')

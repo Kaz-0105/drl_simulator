@@ -43,23 +43,33 @@ class LocalAgents(Container):
             raise NotImplementedError("Not supported case.")
     
     def _initProps(self):
+        # set simulation_type
+        drl_info = self.config.get('drl_info')
+        self.simulation_type = drl_info['simulation_type']
+
         # set epsilons_df
-        self.epsilons_df = self.config.get('epsilons_df').copy()
-        if (self.simulation_id - 1) % len(self.epsilons_df) != 0:
-            self.epsilons_df = pd.concat([
-                self.epsilons_df.iloc[(self.simulation_id - 1) % len(self.epsilons_df):],
-                self.epsilons_df.iloc[:(self.simulation_id - 1) % len(self.epsilons_df)]
-             ], ignore_index=True)  
+        if self.simulation_type == 'train':
+            self.epsilons_df = self.config.get('epsilons_df').copy()
+            if (self.simulation_id - 1) % len(self.epsilons_df) != 0:
+                self.epsilons_df = pd.concat([
+                    self.epsilons_df.iloc[(self.simulation_id - 1) % len(self.epsilons_df):],
+                    self.epsilons_df.iloc[:(self.simulation_id - 1) % len(self.epsilons_df)]
+                ], ignore_index=True)  
         return
     
     def _initElements(self):
-        
         for intersection in self.network.intersections.getAll(sorted_flg=True):
-
+            if self.simulation_type == 'train':
+                epsilon = float(self.epsilons_df.iloc[intersection.get('id') - 1]['epsilon'])
+            elif self.simulation_type == 'test':
+                epsilon = 0.0
+            else:
+                raise NotImplementedError(f"Not supported simulation_type: {self.simulation_type}")
+            
             self.add(LocalAgent(
                 local_agents=self, 
                 intersection=intersection, 
-                epsilon=float(self.epsilons_df.iloc[intersection.get('id') - 1]['epsilon'])
+                epsilon=epsilon
             ))
         return
     
@@ -447,7 +457,7 @@ class LocalAgent(Object):
                 for vehicle_id, vehicle_row in vehicles_df.iterrows():
                     last_vehs_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id']), int(vehicle_row['route_id'])] = {
                         'id': vehicle_id,
-                        'position_1': vehicle_row['position_1']
+                        'position_2': vehicle_row['position_2']
                     }
 
                     if not near_flg_list[vehicle_id]:
@@ -473,7 +483,7 @@ class LocalAgent(Object):
                             target_veh_info = vehicle_info
                             continue
 
-                        if vehicle_info['position_1'] < target_veh_info['position_1']:
+                        if vehicle_info['position_2'] > target_veh_info['position_2']:
                             target_veh_info = vehicle_info
                 
                     if target_veh_info is not None:
@@ -828,7 +838,6 @@ class LocalAgent(Object):
             raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
         return
     
-    # 状態を回転させるメソッド（symmetry_type = 1: 90度，2:180度，3:270度）
     def _rotateState(self, state, symmetry_type):
         rotated_state = {}
 

@@ -115,6 +115,52 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
             
             performance_metric_map_list.append(performance_metric_map)
             intersection_dir_path_map[performance_metric_map['id']] = intersection_dir_path
+
+    # regarding drl
+    drl_dir_path = simulator_dir_path / 'drl'
+    if not drl_dir_path.exists():
+        continue
+
+    for method_dir_path in drl_dir_path.glob('config_*'):
+        with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+            method_config = yaml.safe_load(f)
+
+        # vehicle state check
+        vehicle_state_info = method_config['state']['vehicle']
+        if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+            method_name = 'Micro DRL'
+        elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+            method_name = 'Macro DRL'
+        else:
+            continue
+
+        del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
+
+
+        if method_config != config_yaml['drl']:
+            continue
+        
+        for intersection_dir_path in method_dir_path.glob('intersection_*'):
+            # make performance_metric_map
+            performance_metric_map = {
+                'id': len(performance_metric_map_list) + 1,
+                'method': method_name,
+            }
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(f)
+            for performance_metric in config_yaml['target']['performance_metrics']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
+                    average_value = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    average_value = time_series_df[f"{performance_metric}_{config_yaml['target']['delay_type']}"].dropna().mean()
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")  
+                
+                performance_metric_map[performance_metric] = average_value
+            
+            performance_metric_map_list.append(performance_metric_map)
+            intersection_dir_path_map[performance_metric_map['id']] = intersection_dir_path
+
             
 performance_metric_df = pd.DataFrame(
     performance_metric_map_list, 
@@ -132,6 +178,10 @@ if config_yaml['target']['control_method']['scoot']:
 for num_phases in [4, 8, 17]:
     if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
         order_list.append(f"{num_phases}-phase MPC")
+if config_yaml['target']['control_method']['drl']['micro']:
+    order_list.append('Micro DRL')
+if config_yaml['target']['control_method']['drl']['macro']:
+    order_list.append('Macro DRL')
 
 # plot figure
 for performance_metric in config_yaml['target']['performance_metrics']:

@@ -128,7 +128,7 @@ class Config(Common):
 
         # if the setting of simulator_info is same as the existing one, use the existing save_dir_path
         simulator_info = copy.deepcopy(self.simulator_info)
-        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step']}
+        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step', 'seed']}
         
         simulation_dir_path = None
         for tmp_dir_path in common_save_dir_path.glob('simulator_*'):

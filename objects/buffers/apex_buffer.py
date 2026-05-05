@@ -47,9 +47,11 @@ class ApexBuffer (Common):
         return self.sum_tree.get('total_priority')
     
     def _initProps(self):
-        drl_info = self.config.get('drl_info')
+        # set simulation_type
+        self.simulation_type = self.master_agent.get('simulation_type')
 
         # set apex buffer information
+        drl_info = self.config.get('drl_info')
         self.size = drl_info['framework']['apex']['buffer']['size']
         self.file_capacity = drl_info['framework']['apex']['buffer']['file_capacity']
         self.reset_flg = drl_info['framework']['apex']['buffer']['priority']['reset']['type'] is not None and drl_info['framework']['apex']['buffer']['priority']['reset']['type'] == 'episode'
@@ -128,6 +130,10 @@ class ApexBuffer (Common):
         if update_type == 'add':
             # if there is no new data, return
             if len(learning_data_list) == 0:
+                return
+            
+            if self.simulation_type == 'test':
+                self.master_agent.clearLearningData()
                 return
 
             # get data_id_list
