@@ -2,8 +2,8 @@ target:
   layout: 7-4-1
   control_method:
     mpc:
-      4-phase: true
-      8-phase: true
+      4-phase: false
+      8-phase: false
       17-phase: false
     drl:
       micro: true

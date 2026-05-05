@@ -119,6 +119,49 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
             
             performance_metric_map_list.append(performance_metric_map)
+
+    # regarding drl
+    drl_dir_path = simulator_dir_path / 'drl'
+    if not drl_dir_path.exists():
+        continue
+
+    for method_dir_path in drl_dir_path.glob('config_*'):
+        with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+            method_config = yaml.safe_load(f)
+
+        vehicle_state_info = method_config['state']['vehicle']
+
+        if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+            method_name = 'Micro DRL'
+        elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+            method_name = 'Macro DRL'
+        else:
+            continue
+
+        del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
+
+        if method_config != config_yaml['drl']:
+            continue
+        
+        for intersection_dir_path in method_dir_path.glob('intersection_*'):
+            # make performance_metric_map
+            performance_metric_map = {
+                'id': len(performance_metric_map_list) + 1,
+                'method': method_name,
+                'inflow': inflow,
+                'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
+            }
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
+            for performance_metric in config_yaml['target']['performance_metrics']:
+                if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
+                    performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
+                elif performance_metric == 'delay_avg':
+                    performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+            
+            performance_metric_map_list.append(performance_metric_map)
             
 performance_metric_df = pd.DataFrame(
     performance_metric_map_list, 
@@ -141,7 +184,7 @@ for method in performance_metric_df['method'].unique().tolist():
             'performance_metric': performance_metric,
             'method': method,
             'mean': tmp_performance_metric_df[performance_metric].mean(),
-            'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric == 'speed' else tmp_performance_metric_df[performance_metric].max(),
+            'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric == 'speed_avg' else tmp_performance_metric_df[performance_metric].max(),
             'std': tmp_performance_metric_df[performance_metric].std(),
         })
 performance_metric_stat_df = pd.DataFrame(
@@ -165,6 +208,18 @@ for _, scoot_stat_row in scoot_stat_df.iterrows():
         target_id = target_stat_row['id'].values[0]
         target_value = target_stat_row['mean'].values[0]
         improve_rate_list[target_id - 1] = (target_value - reference_value) / reference_value * 100
+    
+    for method in ['Macro DRL', 'Micro DRL']:
+        target_stat_row = performance_metric_stat_df[
+            (performance_metric_stat_df['method'] == method) &
+            (performance_metric_stat_df['performance_metric'] == performance_metric)
+        ]
+        if target_stat_row.empty:
+            continue
+        target_id = target_stat_row['id'].values[0]
+        target_value = target_stat_row['mean'].values[0]
+        improve_rate_list[target_id - 1] = (target_value - reference_value) / reference_value * 100
+
 performance_metric_stat_df['improve_rate'] = improve_rate_list
 
 # add num_best column
