@@ -75,7 +75,7 @@ class MasterAgents(Container):
         return
 
 class MasterAgent(Object):
-    def __init__(self, master_agents, num_roads,num_lanes_tuple):
+    def __init__(self, master_agents, num_roads, num_lanes_tuple):
         super().__init__()
 
         self.config = master_agents.config
@@ -244,72 +244,60 @@ class MasterAgent(Object):
         drl_dir_path = root_dir_path / 'data' / 'drl'
         drl_dir_path.mkdir(parents=True, exist_ok=True)
         
-        # make saved_drl_info
-        saved_drl_info = copy.deepcopy(self.config.get('drl_info'))
+        # make drl_info
+        drl_info = copy.deepcopy(self.config.get('drl_info'))
 
-        saved_drl_info.pop('simulation_type')
-        saved_drl_info.pop('stop')
-        saved_drl_info.pop('training')
-        saved_drl_info.pop('data_augmentation')
+        # simulation_type, stop, training, and data_augmentation
+        drl_info.pop('simulation_type')
+        drl_info.pop('stop')
+        drl_info.pop('training')
+        drl_info.pop('data_augmentation')
 
         # framework
-        saved_framework_info = saved_drl_info['framework']
-
-        for key in copy.deepcopy(saved_framework_info):
+        saved_framework_info = drl_info['framework']
+        for key in copy.deepcopy(drl_info['framework']):
             if key == 'type':
                 continue
-            if key == saved_framework_info['type']:
+            if key == drl_info['framework']['type']:
                 continue
-            saved_framework_info.pop(key)
+            drl_info['framework'].pop(key)
 
-        if saved_framework_info['type'] == 'apex':
-            saved_apex_info = saved_framework_info['apex']
-
-            saved_apex_info.pop('local_agent')
-            saved_apex_info.pop('target_network')
-            
-            saved_buffer_info = saved_apex_info['buffer']
-            saved_buffer_info.pop('priority')
-
+        if drl_info['framework']['type'] == 'apex':
+            drl_info['framework']['apex'].pop('local_agent')
+            drl_info['framework']['apex'].pop('target_network')
+            drl_info['framework']['apex']['buffer'].pop('priority')
         else:
             raise NotImplementedError(f"Not supported framework type: {saved_framework_info['type']}")
         
         # action
-        saved_drl_info.pop('action')
+        drl_info.pop('action')
 
         # reward
-        reward_info = saved_drl_info['reward']
-        for key in copy.deepcopy(reward_info):
+        for key in copy.deepcopy(drl_info['reward']):
             if key == 'type':
                 continue
             if key == 'common':
                 continue
-            if key == reward_info['type']:
+            if key == drl_info['reward']['type']:
                 continue
-            reward_info.pop(key)
+            drl_info['reward'].pop(key)
         
         # architecture
-        saved_architecture_info = saved_drl_info['architecture']
-
-        for key in copy.deepcopy(saved_architecture_info):
+        for key in copy.deepcopy(drl_info['architecture']):
             if key == 'type':
                 continue
             if key == 'common':
                 continue
-            if key == saved_architecture_info['type']:
+            if key == drl_info['architecture']['type']:
                 continue
+            drl_info['architecture'].pop(key)
 
-            saved_architecture_info.pop(key)
-
-        common_info = saved_architecture_info['common']
-        activation_info = common_info['activation_function']
-        for key in copy.deepcopy(activation_info):
+        for key in copy.deepcopy(drl_info['architecture']['common']['activation_function']):
             if key == 'type':
                 continue
-            if key == activation_info['type']:
+            if key == drl_info['architecture']['common']['activation_function']['type']:
                 continue
-
-            activation_info.pop(key)
+            drl_info['architecture']['common']['activation_function'].pop(key)
         
         # get target config_dir_path
         found_flg = False
@@ -321,11 +309,18 @@ class MasterAgent(Object):
             with open(config_file_path, 'r', encoding='utf-8') as f:
                 config_yaml = yaml.safe_load(f)
 
-            if config_yaml == saved_drl_info:
-                found_flg = True
-                break
+            # check intersection shape
+            for start_road_id in range(1, self.num_roads + 1):
+                drl_info['shape'] = [self.num_lanes_map[((tmp_id - 1) // self.num_roads) + 1] for tmp_id in range(start_road_id, start_road_id + self.num_roads)]
+                if config_yaml == drl_info:
+                    found_flg = True
+                    break
         
         if not found_flg:
+            # reset shape information
+            drl_info['shape'] = [self.num_lanes_map[road_id] for road_id in range(1, self.num_roads + 1)]
+
+            # search empty config directory
             config_id = 1
             while True:
                 config_dir_path = drl_dir_path / f"config_{config_id}"
@@ -333,7 +328,7 @@ class MasterAgent(Object):
                     config_dir_path.mkdir(parents=True, exist_ok=False)
                     config_file_path = config_dir_path / 'config.yaml'
                     with config_file_path.open('w', encoding='utf-8') as f:
-                        yaml.dump(saved_drl_info, f)
+                        yaml.dump(drl_info, f)
                     break
                 config_id += 1
         
