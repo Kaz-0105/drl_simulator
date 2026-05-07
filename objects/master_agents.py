@@ -315,6 +315,10 @@ class MasterAgent(Object):
                 if config_yaml == drl_info:
                     found_flg = True
                     break
+            
+            # if found_flg is true, break the loop
+            if found_flg:
+                break
         
         if not found_flg:
             # reset shape information

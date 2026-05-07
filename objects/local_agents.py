@@ -117,10 +117,6 @@ class LocalAgents(Container):
         return False
     
 class LocalAgent(Object):
-    # random action type
-    TOTALLY_RANDOM = 1
-    NUM_VEHICLES_RANDOM = 2
-
     # signal color
     RED = 1
     GREEN = 3
@@ -212,8 +208,12 @@ class LocalAgent(Object):
         self.state_info = copy.deepcopy(drl_info['state'])
         del self.state_info['vehicle']['number']
 
+        # action information
+        self.random_action_type = drl_info['action']['random']['type']
+        if self.random_action_type == 'top_k':
+            self.num_top_k_actions = drl_info['action']['random']['top_k']['num_actions']
+
         # reward information
-        self.random_action_type = drl_info['action']['random_type']
         self.reward_type = drl_info['reward']['type']
         self.gamma = float(drl_info['reward']['common']['gamma'])
         
@@ -600,13 +600,18 @@ class LocalAgent(Object):
         return
     
     def _getRandomAction(self):
-        if self.random_action_type == LocalAgent.TOTALLY_RANDOM:
-            return random.choices(
-                self.active_phase_list,
-                k=1
-            )[0]
+        if self.random_action_type == 'normal':
+            return random.choice(self.active_phase_list)
+
+        elif self.random_action_type == 'top_k':
+            with torch.no_grad():
+                action_values = self.model(self.current_state)
+            top_k_phase_list = (torch.topk(action_values, self.num_top_k_actions).indices.flatten() + 1).tolist()
+            valid_top_k_phase_list = list(set(top_k_phase_list) & set(self.active_phase_list))
+
+            return random.choice(valid_top_k_phase_list) if len(valid_top_k_phase_list) > 0 else random.choice(self.active_phase_list)
         
-        elif self.random_action_type == LocalAgent.NUM_VEHICLES_RANDOM:
+        elif self.random_action_type == 'num_vehs':
             signal_num_vehs_map = {signal_id: 0 for signal_id in range(1, self.num_roads * (self.num_roads - 1) + 1)}
             for (road_id, _), vehicles_df in self.vehicles_df_map.items():
                 for _, vehicle_row in vehicles_df.iterrows():
@@ -624,18 +629,15 @@ class LocalAgent(Object):
                 for signal_id in phase_list:
                     tmp_num_vehs += signal_num_vehs_map[signal_id]
                 phase_num_vehs_map[phase_id] = tmp_num_vehs
-
+            
             if sum(phase_num_vehs_map.values()) == 0:
+                return random.choice(self.active_phase_list)
+            else:
                 return random.choices(
-                    self.active_phase_list,
+                    list(phase_num_vehs_map),
+                    weights=phase_num_vehs_map.values(),
                     k=1
                 )[0]
-
-            return random.choices(
-                list(phase_num_vehs_map),
-                weights=phase_num_vehs_map.values(),
-                k=1
-            )[0]
         
         else: 
             raise NotImplementedError(f"Not supported random_action_type: {self.random_action_type}")
