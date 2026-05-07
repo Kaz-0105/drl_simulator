@@ -234,6 +234,60 @@ class Config(Common):
         elif self.simulator_info['control_method'] == 'drl':
             drl_info = copy.deepcopy(self.drl_info)
 
+            drl_info.pop('simulation_type')
+            drl_info.pop('stop')
+            drl_info.pop('training')
+            drl_info.pop('data_augmentation')
+
+            # framework
+            for key in copy.deepcopy(drl_info['framework']):
+                if key == 'type':
+                    continue
+                if key == drl_info['framework']['type']:
+                    continue
+                drl_info['framework'].pop(key)
+
+            if drl_info['framework']['type'] == 'apex':
+                drl_info['framework']['apex'].pop('local_agent')
+                drl_info['framework']['apex'].pop('target_network')
+            
+                drl_info['framework']['apex']['buffer'].pop('priority')
+
+            else:
+                raise NotImplementedError(f"Not supported framework type: {drl_info['framework']['type']}")
+            
+            # action
+            drl_info.pop('action')
+
+            # reward
+            for key in copy.deepcopy(drl_info['reward']):
+                if key == 'type':
+                    continue
+                if key == 'common':
+                    continue
+                if key == drl_info['reward']['type']:
+                    continue
+                drl_info['reward'].pop(key)
+            
+            # architecture
+            for key in copy.deepcopy(drl_info['architecture']):
+                if key == 'type':
+                    continue
+                if key == 'common':
+                    continue
+                if key == drl_info['architecture']['type']:
+                    continue
+
+                drl_info['architecture'].pop(key)
+
+            for key in copy.deepcopy(drl_info['architecture']['common']['activation_function']):
+                if key == 'type':
+                    continue
+                if key == drl_info['architecture']['common']['activation_function']['type']:
+                    continue
+
+                drl_info['architecture']['common']['activation_function'].pop(key)
+
             save_dir_path = None
             for tmp_dir_path in control_method_dir_path.glob('config_*'):
                 config_file_path = tmp_dir_path / 'config.yaml'

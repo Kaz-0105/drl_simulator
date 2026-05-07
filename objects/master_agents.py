@@ -140,6 +140,10 @@ class MasterAgent(Object):
     @property
     def simulation_time(self):
         return self.network.simulation.get('current_time')
+
+    @property
+    def seed(self):
+        return self.network.simulation.get('seed')
     
     def _initProps(self, num_roads, num_lanes_tuple):
         # set id and num_roads
@@ -501,6 +505,7 @@ class MasterAgent(Object):
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'simulation_time': self.simulation_time,
+            'seed': self.seed,
         }, index=[0])
         if self.session_df is None:
             self.session_df = session_row.copy()

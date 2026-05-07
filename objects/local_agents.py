@@ -225,6 +225,8 @@ class LocalAgent(Object):
                 self.weight_type = waiting_vehicles_info['weight']['type']
                 if self.weight_type == 'exponential':
                     self.half_life = waiting_vehicles_info['weight'][self.weight_type]['half']
+                elif self.weight_type == 'queue_exponential':
+                    pass
                 else:
                     raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
 
@@ -662,11 +664,11 @@ class LocalAgent(Object):
 
         # the number of waiting and not-waiting vehicles
         if self.weight_flg:
-            for _, vehicles_df in self.vehicles_df_map.items():
+            for (road_id, _), vehicles_df in self.vehicles_df_map.items():
                 if vehicles_df.shape[0] == 0:
                     continue
 
-                weight_array = self._getWaitingVehicleWeights(vehicles_df)
+                weight_array = self._getWaitingVehicleWeights(vehicles_df, road_id)
 
                 num_vehs += weight_array.sum()
                 reward += np.dot(
@@ -707,9 +709,13 @@ class LocalAgent(Object):
         reward = self.reward_scaling_function(reward).item()
         return reward
     
-    def _getWaitingVehicleWeights(self, vehicles_df):
+    def _getWaitingVehicleWeights(self, vehicles_df, road_id):
         if self.weight_type == 'exponential':
             decay_constant = np.log(2) / self.half_life
+            return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
+        elif self.weight_type == 'queue_exponential':
+            close_threshold = self.intersection.get('max_queue_length') if self.intersection.get('max_queue_length') > self.roads[road_id].get('max_speed') else self.roads[road_id].get('max_speed')
+            decay_constant = np.log(2) / close_threshold
             return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
         else:
             raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
