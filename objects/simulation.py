@@ -145,9 +145,6 @@ class Simulation(Common):
         # show the results of this episode
         master_agents.showInfo('result')
 
-        # update session information and save them
-        master_agents.update('session')
-
         # save performance metrics
         self.network.save()
         return

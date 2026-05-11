@@ -2,7 +2,7 @@ from libs.container import Container
 from libs.object import Object
 from objects.data_collections import DataCollectionPoints
 
-from pandas import DataFrame
+import pandas as pd
 import re
 
 class Links(Container):
@@ -213,6 +213,7 @@ class Link(Object):
         
         # get position, in_queue, speed, lane_id, vehicle_route, and next_link_id list
         self.vehicles_df['position'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Pos')]
+        self.vehicles_df['length'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Length')]
         self.vehicles_df['in_queue'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('InQueue')]
         self.vehicles_df['speed'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Speed')]
         self.vehicles_df['lane_id'] = [tmp_data[1] for tmp_data in self.com.Vehs.GetMultiAttValues('Lane')]
@@ -223,8 +224,8 @@ class Link(Object):
     def _makeFormattedVehicleData(self):
         # if there is no vehicle, return empty DataFrame
         if len(self.vehicles_df['id']) == 0:
-            self.vehicles_df = DataFrame(columns=[
-                'id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 
+            self.vehicles_df = pd.DataFrame(columns=[
+                'id', 'position', 'length', 'in_queue', 'speed', 'lane_id', 'link_id', 
                 'next_link_id', 'road_id', 'route_id',
             ])
             return
@@ -256,7 +257,7 @@ class Link(Object):
         self.vehicles_df.pop('vehicle_route')
         
         # change to dataframe
-        self.vehicles_df = DataFrame(self.vehicles_df)
+        self.vehicles_df = pd.DataFrame(self.vehicles_df)
         self.vehicles_df = self.vehicles_df.sort_values(by='position', ascending=False)
         self.vehicles_df = self.vehicles_df.reset_index(drop=True)
     
@@ -345,7 +346,7 @@ class Lane(Object):
         vehicles_df = self.link.get('vehicles_df')
 
         if vehicles_df.empty:
-            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
+            self.vehicles_df = pd.DataFrame(columns=['id', 'position', 'length', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
             return
 
         # set vehicles_df for each lane

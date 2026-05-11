@@ -102,8 +102,11 @@ class LocalAgents(Container):
             for agent in self.getAll():
                 if not agent.get('infer_flg'):
                     continue
-
-                print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')}, reward = {agent.get('current_reward'):.1f}")
+                
+                if agent.get('current_random_action_flg'):
+                    print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')} (r), reward = {agent.get('current_reward'):.1f}")
+                else:
+                    print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')}, reward = {agent.get('current_reward'):.1f}")
         else:
             raise NotImplementedError(f"Not supported type: {type}")
 
@@ -122,7 +125,8 @@ class LocalAgent(Object):
     GREEN = 3
 
     # average spacing and max delay
-    AVG_SPACING = 7
+    INITIAL_SPACING = 6
+    VEHICLE_DISTANCE = 1
     MAX_DELAY = 120
 
 
@@ -169,6 +173,10 @@ class LocalAgent(Object):
     @property
     def current_action(self):
         return self.action_record[-1] if len(self.action_record) > 0 else None
+    
+    @property
+    def current_random_action_flg(self):
+        return self.random_action_flg_record[-1] if len(self.random_action_flg_record) > 0 else None
     
     @property
     def current_reward(self):
@@ -324,8 +332,11 @@ class LocalAgent(Object):
         # initialize other properties
         self.state_record = deque(maxlen=self.td_steps + 1)
         self.action_record = deque(maxlen=self.td_steps)
+        self.random_action_flg_record = deque(maxlen=self.td_steps)
         self.reward_record = deque(maxlen=self.td_steps)
         self.calc_time_record_list = []
+
+        self.spacing = LocalAgent.INITIAL_SPACING
         self.done_flg = False
         self.learning_data_list = []
         self.total_reward = 0
@@ -355,7 +366,7 @@ class LocalAgent(Object):
             vehicles_df = road.get('vehicles_df').copy()
 
             if vehicles_df.shape[0] == 0:
-                column_list = ['id', 'position_1', 'position_2', 'speed', 'lane_id', 'link_id', 'route_id', 'wait_link_id', 'wait_lane_id']
+                column_list = ['id', 'position_1', 'position_2', 'length', 'speed', 'lane_id', 'link_id', 'route_id', 'wait_link_id', 'wait_lane_id']
                 if self.reward_type == 'waiting_vehicles':
                     column_list.append('wait_flg')
 
@@ -422,7 +433,7 @@ class LocalAgent(Object):
             if self.reward_type == 'waiting_vehicles':
                 # get near_flg_list
                 near_flg_list = []
-                close_threshold = self.intersection.get('max_queue_length') if self.intersection.get('max_queue_length') > road.get('max_speed') else road.get('max_speed')
+                close_threshold = road.get('close_threshold')
                 for _, vehicle_row in vehicles_df.iterrows():
                     near_flg_list.append(vehicle_row['position_2'] <= close_threshold)
 
@@ -437,63 +448,99 @@ class LocalAgent(Object):
                     signal_color = route_signal_color_map[int(vehicle_row['route_id'])]
                     red_flg_list.append(signal_color == self.RED)
 
-                # get branch_flg_list
-                branch_flg_list = []
-                for _, vehicle_row in vehicles_df.iterrows():
-                    branch_flg_list.append(vehicle_row['position_1'] >= self.branch_pos_map[road_id])
+                if road_id in self.branch_pos_map:
+                    # get branch_flg_list
+                    branch_flg_list = []
+                    for _, vehicle_row in vehicles_df.iterrows():
+                        branch_flg_list.append(vehicle_row['position_1'] >= self.branch_pos_map[road_id])
 
-                # get saturation_map 
-                num_vehs_map = {(lane.link.get('id'), lane.get('id')): 0 for lane in self.lanes_map[road_id].values()}
-                for vehicle_id, vehicle_row in vehicles_df.iterrows():
-                    if not branch_flg_list[vehicle_id]:
-                        continue
-                    num_vehs_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id'])] += 1
-                
-                saturation_map = {}
-                for (link_id, lane_id), num_vehs in num_vehs_map.items():
-                    saturation_map[link_id, lane_id] = (num_vehs * LocalAgent.AVG_SPACING >= self.length_info_map[road.get('id'), link_id]['signal_pos'] - self.branch_pos_map[road_id])
-
-                # get wait_flg_list
-                wait_flg_list = []
-                last_vehs_map = {}
-                for vehicle_id, vehicle_row in vehicles_df.iterrows():
-                    last_vehs_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id']), int(vehicle_row['route_id'])] = {
-                        'id': vehicle_id,
-                        'position_2': vehicle_row['position_2']
-                    }
-
-                    if not near_flg_list[vehicle_id]:
-                        wait_flg_list.append(False)
-                        continue
-
-                    if red_flg_list[vehicle_id]:
-                        wait_flg_list.append(True)
-                        continue
+                    # initialize space_map and last_vehs_map
+                    last_vehs_map = {}
+                    space_map = {}
+                    for lane in self.lanes_map[road_id].values():
+                        link = lane.link
+                        space_map[link.get('id'), lane.get('id')] = self.length_info_map[road.get('id'), link.get('id')]['signal_pos'] - self.branch_pos_map[road_id]
                     
-                    target_veh_info = None
-                    for (wait_link_id, wait_lane_id, route_id), vehicle_info in last_vehs_map.items():
-                        if not (wait_link_id == int(vehicle_row['wait_link_id']) and wait_lane_id == int(vehicle_row['wait_lane_id'])):
-                            if branch_flg_list[vehicle_id]:
-                                continue
-                            if not saturation_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id'])]:
-                                continue
+                    
+                    # get wait_flg_list
+                    wait_flg_list = []
+                    for vehicle_id, vehicle_row in vehicles_df.iterrows():
+                        # update space_map and last_vehs_map
+                        space_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id'])] -= (vehicle_row['length'] + LocalAgent.VEHICLE_DISTANCE)
+                        last_vehs_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id']), int(vehicle_row['route_id'])] = {
+                            'id': vehicle_id,
+                            'position_2': vehicle_row['position_2']
+                        }
 
-                        if route_id == int(vehicle_row['route_id']):
+                        if not near_flg_list[vehicle_id]:
+                            wait_flg_list.append(False)
                             continue
 
-                        if target_veh_info is None:
-                            target_veh_info = vehicle_info
+                        if red_flg_list[vehicle_id]:
+                            wait_flg_list.append(True)
+                            continue
+                        
+                        target_veh_info = None
+                        for (wait_link_id, wait_lane_id, route_id), vehicle_info in last_vehs_map.items():
+                            if not (wait_link_id == int(vehicle_row['wait_link_id']) and wait_lane_id == int(vehicle_row['wait_lane_id'])):
+                                if branch_flg_list[vehicle_id]:
+                                    continue
+
+                                if space_map[int(vehicle_row['wait_link_id']), int(vehicle_row['wait_lane_id'])] >= 0:
+                                    continue
+
+                            if route_id == int(vehicle_row['route_id']):
+                                continue
+
+                            if target_veh_info is None:
+                                target_veh_info = vehicle_info
+                                continue
+
+                            if vehicle_info['position_2'] > target_veh_info['position_2']:
+                                target_veh_info = vehicle_info
+                    
+                        if target_veh_info is not None:
+                            wait_flg_list.append(wait_flg_list[target_veh_info['id']])
+                        else:
+                            wait_flg_list.append(False)
+
+                    vehicles_df['wait_flg'] = wait_flg_list
+                else:
+                    # get wait_flg_list
+                    wait_flg_list = []
+                    last_vehs_map = {}
+                    for vehicle_id, vehicle_row in vehicles_df.iterrows():
+                        last_vehs_map[int(vehicle_row['route_id'])] = {
+                            'id': vehicle_id,
+                            'position_2': vehicle_row['position_2']
+                        }
+
+                        if not near_flg_list[vehicle_id]:
+                            wait_flg_list.append(False)
                             continue
 
-                        if vehicle_info['position_2'] > target_veh_info['position_2']:
-                            target_veh_info = vehicle_info
-                
-                    if target_veh_info is not None:
-                        wait_flg_list.append(wait_flg_list[target_veh_info['id']])
-                    else:
-                        wait_flg_list.append(False)
+                        if red_flg_list[vehicle_id]:
+                            wait_flg_list.append(True)
+                            continue
 
-                vehicles_df['wait_flg'] = wait_flg_list
+                        target_veh_info = None
+                        for route_id, vehicle_info in last_vehs_map.items():
+                            if route_id == int(vehicle_row['route_id']):
+                                continue
+
+                            if target_veh_info is None:
+                                target_veh_info = vehicle_info
+                                continue
+
+                            if vehicle_info['position_2'] > target_veh_info['position_2']:
+                                target_veh_info = vehicle_info
+                    
+                        if target_veh_info is not None:
+                            wait_flg_list.append(wait_flg_list[target_veh_info['id']])
+                        else:
+                            wait_flg_list.append(False)
+                        
+                    vehicles_df['wait_flg'] = wait_flg_list
             else:
                 raise NotImplementedError(f"Not supported reward_type: {self.reward_type}")
 
@@ -504,6 +551,21 @@ class LocalAgent(Object):
                 ].copy().reset_index(drop=True)
         return
 
+    def _updateSpacing(self):
+        veh_length_list = []
+        for _, vehicles_df in self.vehicles_df_map.items():
+            if vehicles_df.shape[0] == 0:
+                continue
+
+            veh_length_list.extend(vehicles_df['length'].tolist())
+        
+        if len(veh_length_list) == 0:
+            return
+        
+        avg_veh_length = sum(veh_length_list) / len(veh_length_list)
+        self.spacing = avg_veh_length + LocalAgent.VEHICLE_DISTANCE
+        return 
+    
     def _getState(self):
         state = {}
 
@@ -535,7 +597,7 @@ class LocalAgent(Object):
             
             for lane_id, lane in self.lanes_map[road_id].items():
                 lane_features = [
-                    lane.get('num_vehicles') / (lane.get('length') / LocalAgent.AVG_SPACING),
+                    lane.get('num_vehicles') / (lane.get('length') / self.spacing),
                     lane.get('length') / self.roads.get('max_length'),
                 ]
 
@@ -581,8 +643,9 @@ class LocalAgent(Object):
     def _getAction(self):
         if random.random() < self.epsilon:
             action = self._getRandomAction()
-            
+            random_action_flg = True
         else:
+            # get action and calc_time
             start_time = time.time()
 
             with torch.no_grad():
@@ -594,8 +657,12 @@ class LocalAgent(Object):
 
             self.num_model_runs += 1
 
+            # get random_action_flg
+            random_action_flg = False
+
         # save action and set signal phase
         self.action_record.append(action)
+        self.random_action_flg_record.append(random_action_flg)
         self.signal_controller.setPhases([self.current_action] * self.duration_steps)
         return
     
@@ -700,7 +767,7 @@ class LocalAgent(Object):
                     num_vehs_record = data_collection_measurement.get('num_vehs_record')
                     num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
                     reward += num_pass_vehs * (1 + self.bonus)
-                    num_vehs += num_pass_vehs * (1 + self.bonus)
+                    num_vehs += num_pass_vehs
         
         # normalize the reward
         reward = reward / num_vehs if num_vehs > 0 else 0
@@ -716,8 +783,7 @@ class LocalAgent(Object):
             decay_constant = np.log(2) / self.half_life
             return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
         elif self.weight_type == 'queue_exponential':
-            close_threshold = self.intersection.get('max_queue_length') if self.intersection.get('max_queue_length') > self.roads[road_id].get('max_speed') else self.roads[road_id].get('max_speed')
-            decay_constant = np.log(2) / close_threshold
+            decay_constant = np.log(2) / self.roads[road_id].get('close_threshold')
             return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
         else:
             raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
@@ -909,6 +975,7 @@ class LocalAgent(Object):
         
         if type == 'initial_state':
             self._getVehiclesDf()
+            self._updateSpacing()
             self._getState()
 
         elif type == 'action':

@@ -29,6 +29,11 @@ class VehicleRoutingDecisions(Container):
         return
         
 class VehicleRoutingDecision(Object):
+    ROAD_TYPE_MAP = {
+        (1, 2): 1, # 1: 分岐前1車線，分岐後2車線
+        (2, 3): 2, # 2: 分岐前2車線，分岐後3車線
+        (1, 1): 3, # 3: 分岐前1車線，分岐後1車線
+    }
     def __init__(self, com, vehicle_routing_decisions):
         super().__init__()
 
@@ -83,7 +88,7 @@ class VehicleRoutingDecision(Object):
         effective_storage_length_map = {'left': 0.0, 'straight': 0.0, 'right': 0.0}
 
         # 道路タイプで分岐
-        if self.road.get('type') == 1:
+        if self.road.get('type') == VehicleRoutingDecision.ROAD_TYPE_MAP[(1, 2)]:
             # 車線数：分岐前1車線，分岐後2車線
             # 進路：左車線は左折と直進，右車線は右折
             
@@ -102,7 +107,7 @@ class VehicleRoutingDecision(Object):
             branch_length -= self.road.right_connector.get('to_pos')
             effective_storage_length_map['right'] += branch_length
 
-        elif self.road.get('type') == 2:
+        elif self.road.get('type') == VehicleRoutingDecision.ROAD_TYPE_MAP[(2, 3)]:
             # 車線数：分岐前2車線，分岐後3車線
             # 進路：左車線は左折と直進，真ん中の車線は直進，右車線は右折
 
@@ -123,6 +128,14 @@ class VehicleRoutingDecision(Object):
             branch_length += self.road.right_connector.get('length') 
             branch_length -= self.road.right_connector.get('to_pos')
             effective_storage_length_map['right'] += branch_length
+        elif self.road.get('type') == VehicleRoutingDecision.ROAD_TYPE_MAP[(1, 1)]:
+            # 車線数：分岐前1車線，分岐後1車線
+            # 進路：左車線は左折と直進と右折
+
+            main_link_length = self.road.main_link.get('length')
+            effective_storage_length_map['left'] += self.turn_ratios['left'] / (sum(self.turn_ratios.values())) * main_link_length
+            effective_storage_length_map['straight'] += self.turn_ratios['straight'] / (sum(self.turn_ratios.values())) * main_link_length
+            effective_storage_length_map['right'] += self.turn_ratios['right'] / (sum(self.turn_ratios.values())) * main_link_length
         else:
             raise NotImplementedError(f"Not supported road type: {self.road.get('type')}")  
 

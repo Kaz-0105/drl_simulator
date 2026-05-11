@@ -489,13 +489,19 @@ class MasterAgent(Object):
         return
     
     def _updateSession(self):
-        if self.simulation_type == 'test':
-            return
-        
+        # get queue_length (average of max queue length of all intersections and all time steps)
+        queue_records_map = self.network.get('queue_records_map')
+        max_queue_series = pd.concat(
+            [queue_record['max_queue_length'] for queue_record in queue_records_map['intersections'].values()], 
+            axis=1
+        ).mean(axis=1)
+        queue_length = max_queue_series.mean()
+
         # update session_df
         session_row = pd.DataFrame({
             'episode': self.episode,
             'total_reward': self.avg_total_reward,
+            'queue_length': queue_length,
             'update_interval': self.update_interval,
             'new_data_count': self.buffer.get('new_data_count'),
             'num_batches': self.buffer.get('num_batches'),
@@ -641,10 +647,7 @@ class MasterAgent(Object):
         return
             
     def save(self):
-        if self.simulation_type == 'test':
-            return
-        
-        # save session information and tree data
+        # save session information
         with open(self.save_dir_path_map['session'] / 'session.json', 'w', encoding='utf-8') as f:
             json.dump({
                 'episode': self.episode,
@@ -658,6 +661,7 @@ class MasterAgent(Object):
                 }
             }, f)
         
+        # save priority data for replay buffer
         self.buffer.save()
         
         # save session_df, phase_probs_df, and epsilon_record_df
@@ -670,6 +674,7 @@ class MasterAgent(Object):
         with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8', newline='') as f:
             self.epsilon_record_df.to_csv(f, index=False)
 
+        # save model and optimizer
         torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')
         torch.save(self.target_model.state_dict(), self.save_dir_path_map['model'] / 'target_q_net.pth')
         torch.save(self.optimizer.state_dict(), self.save_dir_path_map['optimizer'] / 'optimizer.pth')

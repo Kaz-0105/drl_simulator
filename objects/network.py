@@ -148,16 +148,6 @@ class Network(Common):
         return
 
     def save(self):
-        # skip if all save flags are false
-        if not any(flg for flg in self.save_flg_map.values()):
-            return
-        
-        if self.control_method == 'drl':
-            if self.drl_framework == 'apex':
-                self.master_agents.save()
-            else:
-                raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
-        
         # make time series data as dataframe
         self._makeQueueRecordsMap()
         self._makeDelayRecordsMap()
@@ -165,8 +155,14 @@ class Network(Common):
         self._makeCalcTimeRecordsMap()
         self._makePhaseRecordsMap()
 
+        # save drl information (only for train simulation, not for test simulation)
         if self.control_method == 'drl' and self.drl_simulation_type == 'train':
-            return
+            if self.drl_framework == 'apex':
+                self.master_agents.update('session')
+                self.master_agents.save()
+                return
+            else:
+                raise NotImplementedError(f"Not supported DRL framework: {self.drl_framework}")
 
         # save csv files
         self._saveCSV()

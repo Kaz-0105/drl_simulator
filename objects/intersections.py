@@ -84,6 +84,6 @@ class Intersection(Object):
     def max_queue_length(self):
         max_queue_length = 0
         for road in self.input_roads.getAll():
-            if road.queue_counters.get('max_queue_length') > max_queue_length:
-                max_queue_length = road.queue_counters.get('max_queue_length')
+            if road.get('max_queue_length') > max_queue_length:
+                max_queue_length = road.get('max_queue_length')
         return max_queue_length

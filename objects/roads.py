@@ -6,7 +6,6 @@ from objects.queue_counters import QueueCounters
 from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints
 
-from pandas import DataFrame
 import pandas as pd
 
 
@@ -130,7 +129,11 @@ class Road(Object):
     @property
     def max_queue_length(self):
         return self.queue_counters.get('max_queue_length')
-
+    
+    @property
+    def close_threshold(self):
+        return self.max_queue_length if self.max_queue_length > self.max_speed else self.max_speed
+    
     @property
     def average_delay(self):
         delays = []
@@ -201,7 +204,7 @@ class Road(Object):
 
         # initialize vehicles_df if it is None
         if self.vehicles_df is None:
-            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
+            self.vehicles_df = pd.DataFrame(columns=['id', 'position', 'length', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
 
         # if the road is not input road, skip the rest of the process    
         if not self.has('output_intersection'):
