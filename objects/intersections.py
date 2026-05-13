@@ -1,5 +1,6 @@
 from libs.container import Container
 from libs.object import Object
+from objects.links import Links
 from objects.roads import Roads
 
 class Intersections(Container):
@@ -11,18 +12,31 @@ class Intersections(Container):
 
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
-            self._initElements()
+            self._initElements(upper_object)
         elif upper_object.__class__.__name__ == 'MasterAgent':
             self.master_agent = upper_object
+            self.network = upper_object.network
+            self._initElements(upper_object)
         else:
             raise NotImplementedError(f"Not supported upper_object: {upper_object.__class__.__name__}")
         
         return
 
-    def _initElements(self):
-        intersections_df = self.config.get('intersections_df')
-        for _, intersection_row in intersections_df.iterrows():
-            self.add(Intersection(intersection_row, self))
+    def _initElements(self, upper_object):
+        if upper_object.__class__.__name__ == 'Network':
+            intersections_df = self.config.get('intersections_df')
+            for _, intersection_row in intersections_df.iterrows():
+                self.add(Intersection(intersection_row, self))
+                
+        elif upper_object.__class__.__name__ == 'MasterAgent':
+            num_lanes_tuple = tuple((upper_object.get('num_lanes_map')[road_id] for road_id in range(1, upper_object.get('num_roads') + 1)))
+            for intersection in self.network.intersections.getAll():
+                if intersection.get('num_lanes_tuple') == num_lanes_tuple:
+                    self.add(intersection)
+                    intersection.master_agent = self.master_agent
+
+        else:
+            raise NotImplementedError(f"Not supported upper_object: {upper_object.__class__.__name__}")
         return
     
 class Intersection(Object):
@@ -35,15 +49,41 @@ class Intersection(Object):
         self.network = intersections.network
         
         self._initProps(intersection_row)
+        self._connectObjects()
         return
     
     def _initProps(self, intersection_row):
         self.id = int(intersection_row['id'])
         self.num_roads = int(intersection_row['num_roads'])
+        return
+    
+    def _connectObjects(self):
+        # set roads
+        self.input_roads = Roads(self, 'input')
+        self.output_roads = Roads(self, 'output')
 
-        self.input_roads = Roads(self, type='input')
-        self.output_roads = Roads(self, type='output')
+        # set connectors (Links._connectObjects())
+        self.connectors = Links(self)
 
+        # set signal_controller (SignalController._connectObjects())
+        self.signal_controller = None
+
+        # set controller
+        if self.network.get('control_method') == 'drl':
+            if self.network.get('drl_framework') == 'apex':
+                self.master_agent = None
+                self.local_agent = None
+            else:
+                raise NotImplementedError(f"Not supported drl_framework: {self.network.get('drl_framework')}")
+        
+        elif self.network.get('control_method') == 'scoot':
+            self.scoot_controller = None
+
+        elif self.network.get('control_method') == 'mpc':
+            self.mpc_controller = None
+        
+        else:
+            raise NotImplementedError(f"Not supported control_method: {self.network.get('control_method')}")
         return
 
     @property

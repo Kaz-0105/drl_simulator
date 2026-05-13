@@ -42,24 +42,16 @@ class SignalController(Object):
     def __init__(self, com, signal_controllers):
         super().__init__()
 
-        # set objects
         self.config = signal_controllers.config
         self.signal_controllers = signal_controllers
         self.network = signal_controllers.network
         self.executor = signal_controllers.executor
 
-        # set com object
         self.com = com
 
         # set properties
         self._initProps()
-
-        # set signal_groups and intersection
-        self.signal_groups = SignalGroups(self)
-        self._setIntersection()
-
-        # set phases
-        self._setPhaseInfo()
+        self._connectObjects()
         return
 
     def _initProps(self):
@@ -89,33 +81,27 @@ class SignalController(Object):
         self.record_df = None
         return
 
-    def _setIntersection(self):
-        # set intersection object
+    def _connectObjects(self):
+        # set signal_groups
+        self.signal_groups = SignalGroups(self)
+
+        # set intersection
         input_road_list = []
         for signal_group in self.signal_groups.getAll():
             input_road_list.append(signal_group.road.get('id'))
         input_road_list = sorted(list(set(input_road_list)))
 
-        found_flg = False
-        for self.intersection in self.network.intersections.getAll():
-            tmp_input_roads = self.intersection.input_roads
+        self.intersection = None
+        for intersection in self.network.intersections.getAll():
+            tmp_input_roads = intersection.input_roads
             if input_road_list == sorted(tmp_input_roads.getMultiAttValues('id')):
-                found_flg = True
+                self.intersection = intersection
                 break
-        
-        if not found_flg:
-            raise Exception(f"SignalController {self.get('id')} could not find a matching intersection for input roads {input_road_list}.")
-        
-        # set signal_controller object to intersection object
-        self.intersection.set('signal_controller', self)
-        return
-
-    def _setPhaseInfo(self):
-        # get phases_df
-        phases_df_map = self.config.get('phases_df_map')
-        phases_df = phases_df_map[self.intersection.get('num_roads')]
+    
+        self.intersection.signal_controller = self
 
         # set phase_map and num_phases
+        phases_df = self.config.get('phases_df_map')[self.intersection.get('num_roads')]
         self.phase_map = {}
         for _, phase_row in phases_df.iterrows():
             tmp_signal_group_ids = []
@@ -123,8 +109,24 @@ class SignalController(Object):
                 tmp_signal_group_ids.append(int(phase_row[f"signal_group{signal_group_order}"]))
             
             self.phase_map[int(phase_row['id'])] = tmp_signal_group_ids
-        
         self.num_phases = len(self.phase_map)
+
+        # set controller
+        if self.network.get('control_method') == 'drl':
+            if self.network.get('drl_framework') == 'apex':
+                self.local_agent = None
+            else:
+                raise NotImplementedError(f"Not supported drl_framework: {self.network.get('drl_framework')}")
+        
+        elif self.network.get('control_method') == 'scoot':
+            self.scoot_controller = None
+
+        elif self.network.get('control_method') == 'mpc':
+            self.mpc_controller = None
+        
+        else:
+            raise NotImplementedError(f"Not supported control_method: {self.network.get('control_method')}")
+        
         return
         
     def setPhases(self, phase_ids):
@@ -281,29 +283,37 @@ class SignalGroup(Object):
     def __init__(self, com, signal_groups):
         super().__init__()
 
-        # set objects
         self.config = signal_groups.config
         self.executor = signal_groups.executor
         self.signal_groups = signal_groups
         self.signal_controller = signal_groups.signal_controller
         self.network = signal_groups.network
 
-        # set com object
         self.com = com
         
-        # set properties
         self._initProps()
-
-        # set signal_heads object
-        self.signal_heads = SignalHeads(self)
-
-        # set road
-        self._setRoad()
+        self._connectObjects()
         return
+    
+    @property
+    def current_signal_color(self):
+        if len(self.record_list) > 0:
+            current_signal_color_str = self.record_list[-1]['value']
+            if current_signal_color_str == 'R':
+                return SignalGroup.RED
+            elif current_signal_color_str == 'G':
+                return SignalGroup.GREEN
+            else:
+                raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
+        else:
+            return SignalGroup.RED
 
     def _initProps(self):
         # set id
         self.id = int(self.com.AttValue('No'))
+
+        # set route_id (SignalGroup._connectObjects())
+        self.route_id = None
 
         # set signal_colors_df
         self.record_list = []
@@ -325,26 +335,34 @@ class SignalGroup(Object):
         
         return
     
-    def _setRoad(self):
-        # get roads
-        roads = []
-        for signal_head in self.signal_heads.getAll():
-            connector = signal_head.connector
-            from_link = connector.from_links.getAll()[0]
-            road = from_link.road
-            if road not in roads:
-                roads.append(road)
-        
-        if len(roads) != 1:
-            raise Exception(f"SignalGroup {self.get('id')} has multiple possible roads: {[road.get('id') for road in roads]}. Please check the signal head connections.")
-        
+    def _connectObjects(self):
+        # set signal_heads
+        self.signal_heads = SignalHeads(self)
+
         # set road
-        self.road = roads[0]
+        road_list = []
+        for signal_head in self.signal_heads.getAll():
+            road = signal_head.connector.from_link.road
+            if road not in road_list:
+                road_list.append(road)
+        
+        if len(road_list) != 1:
+            raise Exception(f"SignalGroup {self.get('id')} has multiple possible roads: {[road.get('id') for road in road_list]}. Please check the signal head connections.")
+        
+        self.road = road_list[0]
         self.road.signal_groups.add(self)
 
-        # update route_signal_group_map
-        route_signal_group_map = self.road.get('route_signal_group_map')
-        route_signal_group_map[self.route_id] = self.get('id')
+        # set route_id and update route_signal_group_map
+        route_list = []
+        for signal_head in self.signal_heads.getAll():
+            if signal_head.get('route_id') not in route_list:
+                route_list.append(signal_head.get('route_id'))
+        
+        if len(route_list) != 1:
+            raise Exception(f"SignalGroup {self.get('id')} has multiple possible route IDs: {route_list}. Please check the signal head connections.")
+        
+        self.route_id = route_list[0]
+        self.road.get('route_signal_group_map')[self.route_id] = self.id
         return
 
     def setSignalColors(self, sig_color_list):
@@ -353,9 +371,9 @@ class SignalGroup(Object):
             previous_signal_color = self.future_signal_colors[-1]
         elif len(self.record_list) > 0:
             if self.record_list[-1]['value'] == 'R':
-                previous_signal_color = self.RED
+                previous_signal_color = SignalGroup.RED
             elif self.record_list[-1]['value'] == 'G':
-                previous_signal_color = self.GREEN
+                previous_signal_color = SignalGroup.GREEN
             else:
                 raise NotImplementedError(f"Not supported signal color string: {self.record_list[-1]['value']}")
         else:
@@ -367,8 +385,8 @@ class SignalGroup(Object):
                 continue
             
             # if red to green transition, insert a red phase before green
-            if previous_signal_color == self.RED and signal_color == self.GREEN:
-                sig_color_list[step] = self.RED
+            if previous_signal_color == SignalGroup.RED and signal_color == SignalGroup.GREEN:
+                sig_color_list[step] = SignalGroup.RED
             
             # update previous signal color
             previous_signal_color = signal_color
@@ -406,28 +424,4 @@ class SignalGroup(Object):
         
         self.com.SetAttValue('SigState', self.current_signal_color)
         return
-    
-    @property
-    def current_signal_color(self):
-        if len(self.record_list) > 0:
-            current_signal_color_str = self.record_list[-1]['value']
-            if current_signal_color_str == 'R':
-                return self.RED
-            elif current_signal_color_str == 'G':
-                return self.GREEN
-            else:
-                raise NotImplementedError(f"Not supported signal color string: {current_signal_color_str}")
-        else:
-            return self.RED
-
-    @property
-    def route_id(self):
-        route_ids = []
-        for signal_head in self.signal_heads.getAll():
-            route_ids.append(signal_head.get('route_id'))
-        
-        if len(set(route_ids)) != 1:
-            raise Exception(f"SignalGroup {self.get('id')} has multiple route IDs: {route_ids}. Please check the signal head connections.")
-        
-        return route_ids[0]
         

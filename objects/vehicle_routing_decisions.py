@@ -2,7 +2,6 @@ from libs.container import Container
 from libs.object import Object
 import math
 from functools import reduce
-from objects.signal_heads import SignalHeads
 from objects.travel_time_measurements import TravelTimeMeasurements
 from objects.delay_measurements import DelayMeasurements
 
@@ -37,41 +36,47 @@ class VehicleRoutingDecision(Object):
     def __init__(self, com, vehicle_routing_decisions):
         super().__init__()
 
-        # 設定オブジェクトと上位の紐づくオブジェクトを取得
         self.config = vehicle_routing_decisions.config
         self.executor = vehicle_routing_decisions.executor
         self.vehicle_routing_decisions = vehicle_routing_decisions
         self.network = vehicle_routing_decisions.network
 
-        # set com object
         self.com = com
 
-        # connect to link and road
-        self.link = self.network.links[int(self.com.Link.AttValue('No'))]
-        self.link.set('vehicle_routing_decision', self)
-        self.road = self.link.road
-        self.road.set('vehicle_routing_decision', self) 
-
-        # set vehicle_routes, travel_time_measurements, and delay_measurements objects
-        self.vehicle_routes = VehicleRoutes(self)
-        self.travel_time_measurements = TravelTimeMeasurements(self)
-        self.delay_measurements = DelayMeasurements(self)
-
         self._initProps()
-
-        if self.network.get('control_method') == 'scoot' and self.road.has('output_intersection'): 
-            self._initEffectiveStorageLengthMap()
+        self._connectObjects()
         return
     
     def _initProps(self):
-        # set id and turn_ratios
+        # set id
         self.id = int(self.com.AttValue('No'))
+
+        # set turn_ratios (VehicleRoutingDecision._connectObjects())
+        self.turn_ratios = None
+
+        # set num_routes_map (VehicleRoutingDecision._connectObjects())
+        self.num_routes_map = None
+
+        # set effective_storage_length_map (VehicleRoutingDecision._connectObjects())
+        if self.network.get('control_method') == 'scoot':
+            self.effective_storage_length_map = None
+        return
+    
+    def _connectObjects(self):
+        # set link
+        self.link = self.network.links[int(self.com.Link.AttValue('No'))]
+        self.link.vehicle_routing_decision = self
+
+        # set road
+        self.road = self.link.road
+        self.road.vehicle_routing_decision = self
+
+        # set vehicle_routes
+        self.vehicle_routes = VehicleRoutes(self)
+
+        # set turn_ratios and num_routes_map
         self.turn_ratios = self.road.get('turn_ratios')
-
-        # set num_routes_map
-        num_roads = self.road.output_intersection.get('num_roads')
-
-        self.num_routes_map = {route_id: 0 for route_id in range(1, num_roads + 1)}
+        self.num_routes_map = {route_id: 0 for route_id in range(self.road.output_intersection.get('num_roads'))}
         for vehicle_route in self.vehicle_routes.getAll():
             route_id = vehicle_route.get('route_id')
             self.num_routes_map[route_id] += 1
@@ -82,6 +87,16 @@ class VehicleRoutingDecision(Object):
             route_id = vehicle_route.get('route_id')
             vehicle_route.set('turn_ratio', self.turn_ratios[route_id] / self.num_routes_map[route_id] * lcm)
         
+        # set effective_storage_length_map
+        if self.network.get('control_method') == 'scoot':
+            self._initEffectiveStorageLengthMap()
+
+        # set travel_time_measurements (TravelTimeMeasurement._connectObjects())
+        self.travel_time_measurements = TravelTimeMeasurements(self)
+
+        # set delay_measurements (DelayMeasurement._connectObjects())
+        self.delay_measurements = DelayMeasurements(self)
+
         return
     
     def _initEffectiveStorageLengthMap(self):
@@ -186,25 +201,38 @@ class VehicleRoute(Object):
         self.executor = vehicle_routes.executor
         self.vehicle_routes = vehicle_routes
         self.vehicle_routing_decision = vehicle_routes.vehicle_routing_decision
+        self.network = self.vehicle_routing_decision.network
 
         self.com = com
 
-        # set signal_heads object and connector
-        self.signal_heads = SignalHeads(self)
-        self.connector = self.vehicle_routing_decision.network.links[int(self.com.DestLink.AttValue('No'))]
-        self.connector.set('vehicle_route', self)   
-
-        self._initProps(road_route_map)
+        self._initProps()
+        self._connectObjects(road_route_map)
         return
     
-    def _initProps(self, road_route_map):
+    def _initProps(self):
         # set id
         self.id = int(self.com.AttValue('No'))
 
-        # set route_id
-        target_road = self.connector.to_link.road
-        self.route_id = road_route_map[target_road.get('id')]
+        # set route_id (VehicleRoute._connectObjects())
+        self.route_id = None 
 
         # set turn_ratio
         self.turn_ratio = None
+        return
+    
+    def _connectObjects(self, road_route_map):
+        # set signal_head (SignalHead._connectObjects())
+        self.signal_head = None
+
+        # set connector
+        self.connector = self.network.links[int(self.com.DestLink.AttValue('No'))]
+        self.connector.vehicle_route = self
+        self.route_id = road_route_map[self.connector.to_link.road.get('id')]
+
+        # set lane
+        self.lane = self.connector.lanes.getAll()[0]
+        self.lane.vehicle_route = self
+
+        # set data_collection_point (DataCollectionPoint._connectObjects())
+        self.data_collection_point = None
         return

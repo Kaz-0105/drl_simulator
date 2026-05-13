@@ -39,7 +39,7 @@ class MasterAgents(Container):
             num_roads = intersection.get('num_roads')
             num_lanes_tuple = intersection.get('num_lanes_tuple')
 
-            if intersection.has('master_agent'):
+            if intersection.master_agent is not None:
                 continue
 
             self.add(MasterAgent(
@@ -86,20 +86,10 @@ class MasterAgent(Object):
         self.network = master_agents.network
 
         self._initProps(num_roads, num_lanes_tuple)
-        self._initIntersections()
-        
-        # set symmetry_phase_map, save_dir_path_map
-        self._makeSymmetryPhaseMap()
-        self._makeSaveDirPathMap()
-
-        # initialize drl objects
-        self._initDrlObjects()
+        self._connectObjects()
         
         # load model, session, and buffer
         self._load()
-        
-        # set local_agents
-        self.local_agents = LocalAgents(self)
         return
     
     @property
@@ -201,23 +191,7 @@ class MasterAgent(Object):
         # set reward information
         self.gamma = float(drl_info['reward']['common']['gamma'])
 
-        # set update_count, episode, and session_df
-        self.update_count = 0
-        self.episode = 1
-        self.session_df = None
-        self.active_phases_df = None
-        self.epsilon_record_df = None
-        return
-    
-    def _initIntersections(self):
-        self.intersections = Intersections(self)
-        for intersection in self.network.intersections.getAll():
-            if intersection.get('num_lanes_tuple') == tuple((self.num_lanes_map[road_id] for road_id in range(1, self.num_roads + 1))):
-                self.intersections.add(intersection)
-                intersection.set('master_agent', self)
-        return
-    
-    def _makeSymmetryPhaseMap(self):
+        # set symmetry_phase_map
         self.symmetry_phase_map = {}
         symmetry_phases_df_map = self.config.get('symmetry_phases_df_map')
         if self.num_roads == 4:
@@ -234,9 +208,18 @@ class MasterAgent(Object):
         else:
             raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
         
+        # set save_dir_path_map
+        self._initSaveDirPathMap()
+
+        # set update_count, episode, and session_df
+        self.update_count = 0
+        self.episode = 1
+        self.session_df = None
+        self.active_phases_df = None
+        self.epsilon_record_df = None
         return
-        
-    def _makeSaveDirPathMap(self):
+    
+    def _initSaveDirPathMap(self):
         self.save_dir_path_map = {}
 
         # get drl_dir_path
@@ -347,9 +330,15 @@ class MasterAgent(Object):
             path.mkdir(parents=True, exist_ok=True)
 
         return
+    
+    def _connectObjects(self):
+        # set intersections
+        self.intersections = Intersections(self)
+
+        # set local_agents (LocalAgents._connectObjects())
+        self.local_agents = LocalAgents(self)
         
-    def _initDrlObjects(self):
-        # initialize model and target_model
+        # set model and target_model
         if self.architecture == 'proto':
             self.model = ProtoQNet(self, requires_grad=True)
             self.model.showInfo('parameters')
@@ -362,22 +351,19 @@ class MasterAgent(Object):
             self.target_model = ProtoQNet(self, requires_grad=False)
         else:
             raise NotImplementedError(f"Not supported architecture: {self.architecture}")
-        
         self.target_model.eval()
         self.target_model.to(self.device)
 
-        # initialize buffer
+        # set buffer
         self.buffer = ApexBuffer(self)
 
-        # initialize optimizer and criterion
+        # set optimizer and criterion
         self.criterion = nn.MSELoss()
-
         self.optimizer = optim.Adam(
             self.model.parameters(), 
             lr=self.learning_rate, 
             weight_decay=self.weight_decay
         )
-        
         return
 
     def _load(self):
@@ -492,7 +478,7 @@ class MasterAgent(Object):
         # get queue_length (average of max queue length of all intersections and all time steps)
         queue_records_map = self.network.get('queue_records_map')
         max_queue_series = pd.concat(
-            [queue_record['max_queue_length'] for queue_record in queue_records_map['intersections'].values()], 
+            [queue_record['max'] for queue_record in queue_records_map['intersections'].values()], 
             axis=1
         ).mean(axis=1)
         queue_length = max_queue_series.mean()

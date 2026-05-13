@@ -142,20 +142,8 @@ class LocalAgent(Object):
 
         self.id = self.local_agents.count() + 1
 
-        # connect intersection
-        self.intersection = intersection
-        self.intersection.set('local_agent', self)
-
-        # set roads, signal_controller
-        self.roads = self.intersection.input_roads
-        self.signal_controller = self.intersection.signal_controller
-
-        # connect master_agent
-        self.master_agent = self.intersection.get('master_agent')
-        self.master_agent.local_agents.add(self)
-
-        # set properties
         self._initProps(epsilon)
+        self._connectObjects(intersection)
 
         # initialize model
         self._makeModel()
@@ -192,14 +180,12 @@ class LocalAgent(Object):
         return len(future_phase_ids) <= 1
     
     def _initProps(self, epsilon):
-        # set num_roads and num_max_phases
-        self.num_roads = self.master_agent.get('num_roads')
-        self.num_max_phases = self.master_agent.get('num_max_phases')
-
-        self.num_lanes_map = self.master_agent.get('num_lanes_map') 
-        self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
-        self.active_phase_list = self.master_agent.get('active_phase_list')
-        self.phase_map = self.signal_controller.get('phase_map')
+        self.num_roads = None
+        self.num_max_phases = None
+        self.num_lanes_map = None
+        self.symmetry_phase_map = None
+        self.active_phase_list = None
+        self.phase_map = None
 
         # set epsilon
         self.epsilon = epsilon
@@ -227,7 +213,8 @@ class LocalAgent(Object):
         
         if self.reward_type == 'waiting_vehicles':
             waiting_vehicles_info = drl_info['reward']['waiting_vehicles']
-            self.bonus = waiting_vehicles_info['bonus']
+            self.pass_bonus = waiting_vehicles_info['bonus']['pass']
+            self.movement_bonus = waiting_vehicles_info['bonus']['movement']
             self.weight_flg = (waiting_vehicles_info['weight']['type'] is not None)
             if self.weight_flg:
                 self.weight_type = waiting_vehicles_info['weight']['type']
@@ -239,8 +226,6 @@ class LocalAgent(Object):
                     raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
 
             self.reward_scaling_flg = (waiting_vehicles_info['scaler']['type'] is not None)
-            if self.reward_scaling_flg:
-                self.reward_scaling_function = WaitingVehiclesRewardScaler(self)
         
         elif self.reward_type == 'speedy_vehicles':
             speedy_vehicles_info = drl_info['reward']['speedy_vehicles']
@@ -255,6 +240,63 @@ class LocalAgent(Object):
         # set data augmentation information
         self.data_augmentation_flg = drl_info['data_augmentation']['flg']
         if self.data_augmentation_flg:
+            self.data_augmentation_type = None
+
+        # set length_info_map
+        self.length_info_map = None
+        self.branch_pos_map = None
+                
+        # set lanes_map
+        self.lanes_map = None
+
+        # initialize other properties
+        self.state_record = deque(maxlen=self.td_steps + 1)
+        self.action_record = deque(maxlen=self.td_steps)
+        self.previous_action = None
+        self.random_action_flg_record = deque(maxlen=self.td_steps)
+        self.reward_record = deque(maxlen=self.td_steps)
+        self.calc_time_record_list = []
+
+        self.spacing = LocalAgent.INITIAL_SPACING
+        self.done_flg = False
+        self.learning_data_list = []
+        self.total_reward = 0
+        self.num_model_runs = 0
+        self.sync_flg = False
+        return
+    
+    def _connectObjects(self, intersection):
+        # set intersection
+        self.intersection = intersection
+        self.intersection.local_agent = self
+
+        # set roads
+        self.roads = self.intersection.input_roads
+
+        # set signal_controller
+        self.signal_controller = self.intersection.signal_controller
+        self.signal_controller.local_agent = self
+
+        # set phase_map
+        self.phase_map = self.signal_controller.get('phase_map')
+
+        # connect master_agent
+        self.master_agent = self.intersection.master_agent
+        self.master_agent.local_agents.add(self)
+
+        # set num_roads, num_max_phases, num_lanes_map, symmetry_phase_map, and active_phase_list
+        self.num_roads = self.master_agent.get('num_roads')
+        self.num_max_phases = self.master_agent.get('num_max_phases')
+        self.num_lanes_map = self.master_agent.get('num_lanes_map') 
+        self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
+        self.active_phase_list = self.master_agent.get('active_phase_list')
+        
+        # set reward_scaling_function
+        if self.reward_type == 'waiting_vehicles' and self.reward_scaling_flg:
+            self.reward_scaling_function = WaitingVehiclesRewardScaler(self)
+
+        # set data_augmentation type
+        if self.data_augmentation_flg:
             if self.num_roads == 4:
                 if len(set(self.num_lanes_map.values())) == 1:
                     self.data_augmentation_type = 1
@@ -264,8 +306,8 @@ class LocalAgent(Object):
                     self.data_augmentation_type = 0
             else:
                 raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
-
-        # set length_info_map
+        
+        # set length_info_map and branch_pos_map
         self.length_info_map = {}
         self.branch_pos_map = {}
         for road_id, road in self.roads.items():
@@ -277,23 +319,34 @@ class LocalAgent(Object):
                         'signal_pos': link.get('length')
                     }
                 elif link.get('type') == 'connector':
-                    next_link = link.to_links.getAll()[0]
                     self.length_info_map[road.get('id'), link.get('id')] = {
                         'length': link.get('length'),
                         'start_pos': link.get('from_pos'),
-                        'signal_pos': link.get('from_pos') + link.get('length') - link.get('to_pos') + next_link.get('length') 
+                        'signal_pos': link.get('from_pos') + link.get('length') - link.get('to_pos') + link.to_link.get('length') 
                     }
                     self.branch_pos_map[road_id] = link.get('from_pos')
                 elif link.get('type') in ['right', 'left']:
-                    from_connector = link.from_links.getAll()[0]
+                    from_connector_info = {
+                        'from_pos': 0,
+                        'length': 0,
+                        'to_pos': 0
+                    }
+                    for connector in link.from_links.getAll():
+                        from_connector_info['from_pos'] += connector.get('from_pos')
+                        from_connector_info['length'] += connector.get('length')
+                        from_connector_info['to_pos'] += connector.get('to_pos')
+                    
+                    for length_key in from_connector_info.keys():
+                        from_connector_info[length_key] /= len(link.from_links.getAll())
+
                     self.length_info_map[road.get('id'), link.get('id')] = {
                         'length': link.get('length'),
-                        'start_pos': from_connector.get('from_pos') + from_connector.get('length') - from_connector.get('to_pos'),
-                        'signal_pos': from_connector.get('from_pos') + from_connector.get('length') - from_connector.get('to_pos') + link.get('length'),
+                        'start_pos': from_connector_info['from_pos'] + from_connector_info['length'] - from_connector_info['to_pos'],
+                        'signal_pos': from_connector_info['from_pos'] + from_connector_info['length'] - from_connector_info['to_pos'] + link.get('length'),
                     }
                 else:
                     raise NotImplementedError(f"Not supported link type: {link.get('type')}")
-                
+
         # set lanes_map
         self.lanes_map = {road_id: {} for road_id in range(1, self.num_roads + 1)}
         for road_id, road in self.roads.items():
@@ -328,21 +381,8 @@ class LocalAgent(Object):
                     lane = link.lanes[lane_id]
                     self.lanes_map[road_id][counter] = lane
                     counter += 1
-
-        # initialize other properties
-        self.state_record = deque(maxlen=self.td_steps + 1)
-        self.action_record = deque(maxlen=self.td_steps)
-        self.random_action_flg_record = deque(maxlen=self.td_steps)
-        self.reward_record = deque(maxlen=self.td_steps)
-        self.calc_time_record_list = []
-
-        self.spacing = LocalAgent.INITIAL_SPACING
-        self.done_flg = False
-        self.learning_data_list = []
-        self.total_reward = 0
-        self.num_model_runs = 0
-        self.sync_flg = False
         return
+
         
     def _makeModel(self):
         if self.architecture == 'proto':
@@ -405,7 +445,7 @@ class LocalAgent(Object):
 
                 next_link = road.links[int(vehicle_row['next_link_id'])]
                 if next_link.get('type') == 'connector':
-                    wait_link = next_link.to_links.getAll()[0]
+                    wait_link = next_link.to_link
                     wait_lane = next_link.to_lane
                 elif next_link.get('type') in ['right', 'left']:
                     wait_link = next_link
@@ -545,10 +585,17 @@ class LocalAgent(Object):
                 raise NotImplementedError(f"Not supported reward_type: {self.reward_type}")
 
             for lane_id, lane in self.lanes_map[road_id].items():
-                self.vehicles_df_map[road_id, lane_id] = vehicles_df[
-                    (vehicles_df['link_id'] == lane.link.get('id')) & 
-                    (vehicles_df['lane_id'] == lane.get('id'))
-                ].copy().reset_index(drop=True)
+                # get vehicles_df for each lane
+                if lane.link.get('type') in ['left', 'right']:
+                    # include from_connector in addition to the lane
+                    self.vehicles_df_map[road_id, lane_id] = vehicles_df[
+                        ((vehicles_df['link_id'] == lane.link.get('id')) & (vehicles_df['lane_id'] == lane.get('id'))) | 
+                        (vehicles_df['link_id'] == lane.from_connector.get('id')) 
+                    ].copy().reset_index(drop=True)
+                else:
+                    self.vehicles_df_map[road_id, lane_id] = vehicles_df[
+                        ((vehicles_df['link_id'] == lane.link.get('id')) & (vehicles_df['lane_id'] == lane.get('id')))
+                    ].copy().reset_index(drop=True)
         return
 
     def _updateSpacing(self):
@@ -661,6 +708,7 @@ class LocalAgent(Object):
             random_action_flg = False
 
         # save action and set signal phase
+        self.previous_action = self.action_record[-1] if len(self.action_record) > 0 else None
         self.action_record.append(action)
         self.random_action_flg_record.append(random_action_flg)
         self.signal_controller.setPhases([self.current_action] * self.duration_steps)
@@ -731,28 +779,44 @@ class LocalAgent(Object):
         reward = 0
         num_vehs = 0
 
+        # get bonus_route_list_map
+        bonus_route_list_map = {road_id: [] for road_id in range(1, self.num_roads + 1)}
+        if self.previous_action is not None:
+            for signal_group_id in self.phase_map[self.previous_action]:
+                bonus_route_list_map[(signal_group_id - 1) // (self.num_roads - 1) + 1].append((signal_group_id - 1) % (self.num_roads - 1) + 1)
+
         # the number of waiting and not-waiting vehicles
-        if self.weight_flg:
-            for (road_id, _), vehicles_df in self.vehicles_df_map.items():
-                if vehicles_df.shape[0] == 0:
-                    continue
-
-                weight_array = self._getWaitingVehicleWeights(vehicles_df, road_id)
-
-                num_vehs += weight_array.sum()
-                reward += np.dot(
-                    np.where(vehicles_df['wait_flg'].to_numpy(), -1.0, 1.0),
-                    weight_array
+        for (road_id, _), vehicles_df in self.vehicles_df_map.items():
+            if vehicles_df.shape[0] == 0:
+                continue
+            
+            # get weight_array
+            if self.weight_flg:
+                weight_array = self._getWeightArray(
+                    vehicles_df=vehicles_df, 
+                    road_id=road_id, 
                 )
+            else:
+                weight_array = np.ones(vehicles_df.shape[0])
+            
+            # get bonus_array (same movement bonus)
+            if self.movement_bonus > 0:
+                bonus_array = self._getBonusArray(
+                    vehicles_df=vehicles_df,
+                    bonus_route_list=bonus_route_list_map[road_id]
+                )
+            else:
+                bonus_array = np.ones(vehicles_df.shape[0])
 
-        else:
-            for _, vehicles_df in self.vehicles_df_map.items():
-                if vehicles_df.shape[0] == 0:
-                    continue
+            # get element-wise multiplication of weight_array and bonus_array
+            weight_bonus_array = weight_array * bonus_array
 
-                num_vehs += vehicles_df.shape[0]
-                reward += (~vehicles_df['wait_flg']).sum()
-                reward -= vehicles_df['wait_flg'].sum()
+            # get num_vehs and not-normalized reward
+            num_vehs += (weight_bonus_array).sum()
+            reward += np.dot(
+                np.where(vehicles_df['wait_flg'].to_numpy(), -1.0, 1.0),
+                weight_bonus_array
+            )
 
         # the number of passing vehicles
         for road in self.roads.getAll():
@@ -764,10 +828,18 @@ class LocalAgent(Object):
                     if data_collection_measurement.get('type') == 'multiple':
                         continue
                     
+                    # get num_pass_vehs
                     num_vehs_record = data_collection_measurement.get('num_vehs_record')
                     num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
-                    reward += num_pass_vehs * (1 + self.bonus)
-                    num_vehs += num_pass_vehs
+
+                    # update not-normalized reward and num_vehs
+                    if self.previous_action == self.current_action:
+                        bonus = (1 + self.pass_bonus) * (1 + self.movement_bonus)
+                    else:
+                        bonus = (1 + self.pass_bonus)
+
+                    reward += num_pass_vehs * bonus
+                    num_vehs += num_pass_vehs * bonus
         
         # normalize the reward
         reward = reward / num_vehs if num_vehs > 0 else 0
@@ -778,15 +850,22 @@ class LocalAgent(Object):
         reward = self.reward_scaling_function(reward).item()
         return reward
     
-    def _getWaitingVehicleWeights(self, vehicles_df, road_id):
+    def _getWeightArray(self, vehicles_df, road_id):
         if self.weight_type == 'exponential':
             decay_constant = np.log(2) / self.half_life
             return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
+        
         elif self.weight_type == 'queue_exponential':
             decay_constant = np.log(2) / self.roads[road_id].get('close_threshold')
             return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
         else:
             raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
+        
+    def _getBonusArray(self, vehicles_df, bonus_route_list):
+        movement_bonus_array = np.ones(vehicles_df.shape[0])
+        mask = np.isin(vehicles_df['route_id'].to_numpy(), bonus_route_list) & (~vehicles_df['wait_flg'].to_numpy())
+        movement_bonus_array[mask] += self.movement_bonus
+        return movement_bonus_array
     
     def _getSpeedyVehiclesReward(self):
         reward = 0

@@ -5,8 +5,10 @@ from objects.data_collections import DataCollectionPoints
 import pandas as pd
 import re
 
+from objects.travel_time_measurements import TravelTimeMeasurements
+
 class Links(Container):
-    def __init__(self, upper_object, options = None):
+    def __init__(self, upper_object):
         super().__init__()
         
         # set objects
@@ -14,131 +16,124 @@ class Links(Container):
         self.executor = upper_object.executor
         
         if upper_object.__class__.__name__ == 'Network':
-            # set network
             self.network = upper_object
-
-            # set com object
             self.com = self.network.com.Links
 
-            # initialize link objects
             self._initElements()
-
-            # set inputs
-            self._initInputs()
-
-            # connect links based on from_link and to_link information in vissim
-            self._makeLinkConnections()
-
-            # connect links and roads based on road_link_tags in config file
-            self._makeRoadConnections()
-
-        elif upper_object.__class__.__name__ == 'Link':
-            # set link
-            self.link = upper_object
-
-            # set type
-            self.type = options['type']
+            self._connectObjects()
 
         elif upper_object.__class__.__name__ == 'Road':
-            # set road
             self.road = upper_object
+            self.network = self.road.network
         
-        elif upper_object.__class__.__name__ == 'TravelTimeMeasurement':
-            # set travel_time_measurement
-            self.travel_time_measurement = upper_object
+        elif upper_object.__class__.__name__ == 'Intersection':
+            self.intersection = upper_object
+            self.network = self.intersection.network
+
+        elif upper_object.__class__.__name__ == 'Link':
+            self.link = upper_object
+            self.network = self.link.network
+
+        elif upper_object.__class__.__name__ == 'Lane':
+            self.lane = upper_object
+            self.network = self.lane.network
         
         elif upper_object.__class__.__name__ == 'DelayMeasurement':
-            # set delay_measurement
             self.delay_measurement = upper_object
+            self.network = self.delay_measurement.network
         
         else:
             raise NotImplementedError(f"Not supported upper object: {upper_object.__class__.__name__}")
-        return
-
-    def _initElements(self):
-        for link_com in self.com.GetAll():
-            self.add(Link(link_com, self))
-    
-    def _initInputs(self):
-        # get inflows_df
-        inflow_name = self.network.simulation.get('inflow_name')
-        link_input_tags_df_map = self.config.get('link_input_tags_df_map')
-        inflows_df = link_input_tags_df_map[inflow_name]
-
-        # set input_volume to each link object
-        for _, inflow_row in inflows_df.iterrows():
-            link = self[int(inflow_row['link_id'])]
-            link.set('input_volume', int(inflow_row['input_volume']))
-
-        return
-    
-    def _makeLinkConnections(self):
-        for connector in self.getAll():
-            if connector.get('type') != 'connector':
-                continue
-
-            from_link = self[int(connector.com.AttValue('FromLink'))]
-            to_link = self[int(connector.com.AttValue('ToLink'))]
-            
-            # set from_link, to_link and to_lane for connector
-            connector.from_links.add(from_link)
-            connector.to_links.add(to_link)
-            connector.set('from_link', from_link)
-            connector.set('to_link', to_link)
-            connector.set('to_lane', to_link.lanes[connector.get('to_lane_id')])
-            
-            # set connector for from_link and to_link
-            from_link.to_links.add(connector)
-            to_link.from_links.add(connector)
-        return
         
-    def _makeRoadConnections(self):
-        tags_df = self.config.get('road_link_tags_df')
-        for _, tag_row in tags_df.iterrows():
-            road = self.network.roads[tag_row['road_id']]
-            link = self[tag_row['link_id']]
+        return
+
+    def _initElements(self): 
+        # get link_info_map
+        link_info_map = {}
+        link_input_tags_df = self.config.get('link_input_tags_df_map')[self.network.simulation.get('inflow_name')]
+        for _, link_input_tag_row in link_input_tags_df.iterrows():
+            link_info_map[int(link_input_tag_row['link_id'])] = {
+                'input_volume': int(link_input_tag_row['input_volume'])
+            }
+
+        road_link_tags_df = self.config.get('road_link_tags_df')
+        for _, road_link_tag_row in road_link_tags_df.iterrows():
+            if int(road_link_tag_row['link_id']) not in link_info_map:
+                link_info_map[int(road_link_tag_row['link_id'])] = {}
+            link_info_map[int(road_link_tag_row['link_id'])]['type'] = road_link_tag_row['type']
+        
+        # make road elements
+        for link_com in self.com.GetAll():
+            self.add(Link(
+                com=link_com, 
+                links=self,
+                link_info=link_info_map[int(link_com.AttValue('No'))] if int(link_com.AttValue('No')) in link_info_map else {}
+            ))
+        return
+    
+    def _connectObjects(self):
+        # set link
+        for link in self.getAll():
+            if link.get('type') != 'connector':
+                continue
             
-            # set type and road for link
-            link.set('type', tag_row['type'])
-            link.set('road', road)
+            # set from_link and to_link
+            link.from_link = self[int(link.com.AttValue('FromLink'))]
+            link.from_link.to_links.add(link)
+            link.to_link = self[int(link.com.AttValue('ToLink'))]
+            link.to_link.from_links.add(link)
 
-            # set link to road
-            road.links.add(link)
-            if tag_row['type'] == 'main':
-                road.set('main_link', link)
-                road.set('length', link.get('length'))
-            elif tag_row['type'] == 'right':
-                road.set('right_link', link)
-            elif tag_row['type'] == 'left':
-                road.set('left_link', link)
+            # set to_lane and from_lane
+            link.to_lane = link.to_link.lanes[link.com.ToLane.AttValue('Index')]
+            link.from_lane = link.from_link.lanes[link.com.FromLane.AttValue('Index')]
+            if link.to_link.get('type') in ['main', 'link']:
+                link.to_lane.from_connectors.add(link)
+                link.from_lane.to_connectors.add(link)
+            elif link.to_link.get('type') in ['left', 'right']:
+                link.to_lane.from_connector = link
+                link.from_lane.to_connectors.add(link)
             else:
-                raise NotImplementedError(f"Not supported link type: {tag_row['type']}")
+                raise NotImplementedError(f"Not supported link type for lane connection: {link.to_link.get('type')}")
 
-            # set input_volume to road if link has input_volume
-            if link.has('input_volume'):
-                road.set('input_volume', link.get('input_volume'))
+        # set road
+        road_link_tags_df = self.config.get('road_link_tags_df')
+        for _, road_link_tag_row in road_link_tags_df.iterrows():
+            link = self[int(road_link_tag_row['link_id'])]
+            road = self.network.roads[int(road_link_tag_row['road_id'])]
 
+            link.road = road
+            road.links.add(link)
+            road.set('inflow_volume', link.get('input_volume'))
+
+            if link.get('type') == 'main':
+                road.main_link = link
+            elif link.get('type') == 'right':
+                road.right_link = link
+            elif link.get('type') == 'left':
+                road.left_link = link
+            else:
+                raise NotImplementedError(f"Not supported link type: {link.get('type')}")
+                
         for link in self.getAll():
             if link.get('type') != 'connector':
                 continue
 
-            from_link = link.from_links.getAll()[0]
-            to_link = link.to_links.getAll()[0]
+            if link.to_link.get('type') in ['main', 'link']:
+                link.intersection = link.to_link.road.input_intersection
+                link.intersection.connectors.add(link)
 
-            if from_link.road == to_link.road:
-                road = from_link.road
+            elif link.to_link.get('type') == 'right':
+                link.road = link.to_link.road
+                link.road.right_connector = link
+                link.road.links.add(link)
 
-                # connect link and road
-                link.set('road', road)
-                road.links.add(link)
-                
-                if to_link == road.right_link:
-                    road.set('right_connector', link)
-                elif to_link == road.left_link:
-                    road.set('left_connector', link)
-                else:
-                    raise ValueError(f"Something wrong in layout design: road_id = {road.get('id')}, connector_id = {link.get('id')}")
+            elif link.to_link.get('type') == 'left':
+                link.road = link.to_link.road
+                link.road.left_connector = link
+                link.road.links.add(link)
 
+            else:
+                raise NotImplementedError(f"Not supported link type for road connection: {link.to_link.get('type')}")
         return
     
     def update(self):
@@ -153,47 +148,105 @@ class Links(Container):
         return
         
 class Link(Object):
-    def __init__(self, com, links):
+    def __init__(self, com, links, link_info):
         super().__init__()
 
-        # set objects
         self.config = links.config
         self.executor = links.executor
         self.links = links
         self.network = self.links.network
 
-        # set com objects
         self.com = com
 
-        # set properties
-        self._initProps()
+        self._initProps(link_info)
 
-        # init lane objects
-        self.lanes = Lanes(self)
-
-        # initialize from_links, to_links, and data_collection_points
-        self.from_links = Links(self, options={'type': 'from'})
-        self.to_links = Links(self, options={'type': 'to'})
-        self.data_collection_points = DataCollectionPoints(self)
+        self._connectObjects()
         return
+    
+    @property
+    def length(self):
+        return self.length_info['length']
+    
+    @property
+    def to_pos(self):
+        if self.get('type') != 'connector':
+            raise NotImplementedError(f"to_pos is only implemented for connector link. current link type: {self.get('type')}")
+        
+        return self.length_info['to_pos']
+    
+    @property
+    def from_pos(self):
+        if self.get('type') != 'connector':
+            raise NotImplementedError(f"from_pos is only implemented for connector link. current link type: {self.get('type')}")
+        
+        return self.length_info['from_pos'] 
 
-    def _initProps(self):
+    def _initProps(self, link_info):
+        # set id and input_volume
         self.id = int(self.com.AttValue('No'))
-        self.type = 'link' if self.com.AttValue('ToLink') is None else 'connector'
+        self.input_volume = link_info['input_volume'] if 'input_volume' in link_info else None
 
+        # set type (main, left, right, link, or connector)
+        if 'type' in link_info:
+            self.type = link_info['type']
+        elif self.com.AttValue('ToLink') is None:
+            self.type = 'link'
+        else:
+            self.type = 'connector'
+
+        # set length_info
         self.length_info = {}
         self.length_info['length'] = float(self.com.AttValue('Length2D'))
-        self.length = self.length_info['length']
+        if self.type == 'connector':
+            self.length_info['to_pos'] = float(self.com.AttValue('ToPos'))
+            self.length_info['from_pos'] = float(self.com.AttValue('FromPos'))
 
-        if self.type == 'link':
-            return
+        return
+    
+    def _connectObjects(self):
+        # set road (Link._connectObjects), intersection (Links._connectObjects), and travel_time_measurements (TravelTimeMeasurement._connectObjects)
+        if self.type == 'connector':
+            self.road = None
+            self.intersection = None
+            self.travel_time_measurements = None
+            
+        elif self.type == 'main':
+            self.road = None
+            self.travel_time_measurements = TravelTimeMeasurements(self)
+            self.vehicle_routing_decision = None
 
-        self.to_lane_id = self.com.ToLane.AttValue('Index')
-        self.length_info['to_pos'] = float(self.com.AttValue('ToPos'))
-        self.length_info['from_pos'] = float(self.com.AttValue('FromPos'))
-        self.to_pos = self.length_info['to_pos']
-        self.from_pos = self.length_info['from_pos']
+        elif self.type in ['main', 'link', 'left', 'right']:
+            self.road = None
+
+        else:
+            raise NotImplementedError(f"Not supported link type: {self.type}")
+
+        # set lanes
+        self.lanes = Lanes(self)
+
+        # set link (Links._connectObjects())
+        if self.type == 'connector':
+            self.from_link = None 
+            self.to_link = None
+            self.to_lane = None
+            self.from_lane = None
+        elif self.type in ['main', 'link', 'left', 'right']:
+            self.from_links = Links(self)
+            self.to_links = Links(self)
+            self.from_lanes = Lanes(self)
+            self.to_lanes = Lanes(self)
+        else:
+            raise NotImplementedError(f"Not supported link type: {self.type}")
         
+        if self.type == 'connector':
+            # set vehicle_route (VehicleRoute._connectObjects())
+            self.vehicle_route = None
+
+            # set signal_head (SignalHead._connectObjects())
+            self.signal_head = None
+        
+        # set data_collection_points (DataCollectionPoint._connectObjects())
+        self.data_collection_points = DataCollectionPoints(self)
         return
     
     def update(self):
@@ -323,7 +376,12 @@ class Lane(Object):
         self.com = com
 
         self._initProps()
+        self._connectObjects()
         return
+    
+    @property
+    def length(self):
+        return self.link.get('length')
 
     @property
     def num_vehicles(self):
@@ -334,11 +392,36 @@ class Lane(Object):
         return self.vehicles_df[self.vehicles_df['in_queue']].shape[0]
     
     def _initProps(self):
-        # set id, length_info
         self.id = int(self.com.AttValue('Index'))
-        self.length_info = self.link.get('length_info')
+        return
+    
+    def _connectObjects(self):
+        if self.link.get('type') in ['main', 'link']:
+            # set connector (Links._connectObjects())
+            self.from_connectors = Links(self)
+            self.to_connectors = Links(self)
 
-        self.length = self.length_info['length']
+            # set data_collection_point (DataCollectionPoint._connectObjects())
+            self.data_collection_point = None
+
+        elif self.link.get('type') in ['left', 'right']:
+            # set connector (Links._connectObjects())
+            self.from_connector = None
+            self.to_connectors = Links(self)
+
+        elif self.link.get('type') == 'connector':
+            # set data_collection_point (DataCollectionPoint._connectObjects())
+            self.data_collection_point = None
+
+            # set signal_head (SignalHead._connectObjects())
+            self.signal_head = None
+
+            # set vehicle_route (VehicleRoute._connectObjects())
+            self.vehicle_route = None
+
+        else:
+            raise NotImplementedError(f"Not supported link type for lane connection: {self.link.get('type')}")
+            
         return
 
     def update(self):
