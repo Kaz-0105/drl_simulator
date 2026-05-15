@@ -147,6 +147,15 @@ class Road(Object):
         return self.vehicles_df.shape[0]
     
     @property
+    def inflow_rate(self):
+        for data_collection_point in self.data_collection_points.getAll():
+            if data_collection_point.get('type') != 'input':
+                continue
+            return data_collection_point.get('flow_rate')
+        
+        raise Exception(f"No input type data collection point found for Road {self.id}")
+    
+    @property
     def route_signal_color_map(self):
         route_signal_color_map = {}
         for route_id, signal_group_id in self.route_signal_group_map.items():

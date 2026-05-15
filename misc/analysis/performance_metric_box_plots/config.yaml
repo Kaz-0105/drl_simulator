@@ -78,8 +78,6 @@ scoot:
   spacing_threshold: 20     
 
 drl:
-  action:
-    random_type: 1
   architecture:
     common:
       activation_function:
@@ -117,36 +115,22 @@ drl:
           vehicle_encoder: 2
           vehicles: 1
     type: proto
-  data_augmentation:
-    flg: true
   duration_steps: 5
   framework:
     apex:
       buffer:
         file_capacity: 10000
-        priority:
-          initial_value: 500
-          reset:
-            episode:
-              interval: 10
-            type: target
         size: 200000
-      local_agent:
-        update_interval: 10
-      target_network:
-        update_interval: 1000
       td_steps: 1
     type: apex
   reward:
     common:
-      gamma: 0.95
-    speedy_vehicles:
-      threshold: 0.5
-    throughput:
-      baseline: 2800
+      gamma: 0.8
     type: waiting_vehicles
     waiting_vehicles:
-      bonus: 1.0
+      bonus:
+        movement: 0.1
+        pass: 1.0
       scaler:
         tanh:
           alpha: 3
@@ -156,8 +140,7 @@ drl:
       weight:
         exponential:
           half: 50
-        type: exponential
-  simulation_type: test
+        type: queue_exponential
   state:
     intersection:
       phase: true
@@ -171,16 +154,3 @@ drl:
       route: true
     vehicle:
       number: 10
-  stop:
-    episode: 150
-    interval: 100
-    type: episode
-  training:
-    batch:
-      number: 20
-      size: 128
-    epoch: 1
-    learning_rate: 1e-5
-    norm_clip: 1.0
-    threshold: 50
-    weight_decay: 0.0   

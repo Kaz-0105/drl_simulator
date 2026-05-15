@@ -16,7 +16,7 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode # episode or interval
-    episode: 20
+    episode: 10
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
@@ -47,10 +47,10 @@ drl:
   duration_steps: 5
   state:
     vehicle:
-      number : 9
-      position: false
-      speed: false
-      route: false
+      number : 10
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
@@ -59,13 +59,14 @@ drl:
       queue: true
       delay: true
       route: true
+      inflow: true
     intersection:
       phase: true
   action:
     random:
       type: top_k # normal, top_k, num_vehs
       top_k:
-        num_actions: 8
+        num_actions: 17
   reward: 
     type: waiting_vehicles # waiting_vehicles, speedy_vehicles, throughput
     common:

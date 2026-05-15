@@ -31,6 +31,7 @@ class Config(Common):
             self.observer.start()
             self._showInfo('observer_start')
 
+        self._showInfo('finish')
         return
     
     def _initProps(self):
@@ -377,7 +378,7 @@ class Config(Common):
         self.num_features_map['road'] = {num_roads: 0 for num_roads in [3, 4, 5]}
         self.max_num_features_map['road'] = {num_roads: 0 for num_roads in [3, 4, 5]}
         for feature_name, feature_flg in self.drl_info['state']['road'].items():
-            if feature_name in ['queue', 'delay']:
+            if feature_name in ['queue', 'delay', 'inflow']:
                 self.max_num_features_map['road'] = {num_roads: num_features + 1 for num_roads, num_features in self.max_num_features_map['road'].items()}
                 if not feature_flg:
                     continue
@@ -412,6 +413,8 @@ class Config(Common):
             print(f"status: start observer for config change")
         elif type == 'observer_stop':
             print(f"status: stop observer for config change")
+        elif type == 'finish':
+            print(f"status: finish initializing config")
         else:
             raise NotImplementedError(f"Not supported type: {type}")
         return

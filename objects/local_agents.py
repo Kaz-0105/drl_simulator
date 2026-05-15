@@ -104,9 +104,9 @@ class LocalAgents(Container):
                     continue
                 
                 if agent.get('current_random_action_flg'):
-                    print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')} (r), reward = {agent.get('current_reward'):.1f}")
+                    print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')} (r), reward = {agent.get('current_reward'):.1f}, total_reward = {agent.total_reward:.1f}")
                 else:
-                    print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')}, reward = {agent.get('current_reward'):.1f}")
+                    print(f"local_agent {agent.get('id')}: action = {agent.get('current_action')}, reward = {agent.get('current_reward'):.1f}, total_reward = {agent.total_reward:.1f}")
         else:
             raise NotImplementedError(f"Not supported type: {type}")
 
@@ -128,6 +128,7 @@ class LocalAgent(Object):
     INITIAL_SPACING = 6
     VEHICLE_DISTANCE = 1
     MAX_DELAY = 120
+    REFERENCE_INFLOW_RATE = 0.5 # veh/(s*lane)
 
 
     def __init__(self, local_agents, intersection, epsilon):
@@ -633,6 +634,7 @@ class LocalAgent(Object):
             road_features = [
                 road.get('max_queue_length') / road.get('length'),
                 road.get('average_delay') / LocalAgent.MAX_DELAY,
+                road.get('inflow_rate') / (LocalAgent.REFERENCE_INFLOW_RATE * road.main_link.lanes.count()),
             ]
             turn_ratio_list = list(road.get('turn_ratios').values())
             road_features.extend([turn_ratio / sum(turn_ratio_list) for turn_ratio in turn_ratio_list])
@@ -819,7 +821,7 @@ class LocalAgent(Object):
             )
 
         # the number of passing vehicles
-        for road in self.roads.getAll():
+        for road_id, road in self.roads.items():
             for data_collection_point in road.data_collection_points.getAll():
                 if data_collection_point.get('type') != 'intersection':
                     continue
@@ -833,7 +835,7 @@ class LocalAgent(Object):
                     num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
 
                     # update not-normalized reward and num_vehs
-                    if self.previous_action == self.current_action:
+                    if data_collection_point.get('route_id') in bonus_route_list_map[road_id]:
                         bonus = (1 + self.pass_bonus) * (1 + self.movement_bonus)
                     else:
                         bonus = (1 + self.pass_bonus)
