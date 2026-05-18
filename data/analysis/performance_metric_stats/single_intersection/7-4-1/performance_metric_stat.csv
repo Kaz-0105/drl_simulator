@@ -9,8 +9,8 @@ id,performance_metric,method,mean,worst,std,improve_rate,num_best
 8,delay_avg,Micro DRL,11.67,28.37,6.21,-36.96,39
 9,delay_max,Micro DRL,45.34,77.63,17.21,-9.62,30
 10,speed_avg,Micro DRL,26.35,15.76,5.05,40.14,42
-11,queue_avg,Macro DRL,17.15,30.05,6.91,-50.52,0
-12,queue_max,Macro DRL,34.25,56.24,12.47,-52.49,1
-13,delay_avg,Macro DRL,12.76,20.94,4.21,-31.02,2
-14,delay_max,Macro DRL,47.75,79.65,11.91,-4.82,0
-15,speed_avg,Macro DRL,24.15,19.25,2.92,28.4,0
+11,queue_avg,Macro DRL,13.99,30.05,7.25,-59.63,0
+12,queue_max,Macro DRL,28.5,56.24,13.12,-60.46,1
+13,delay_avg,Macro DRL,11.13,20.94,4.32,-39.84,2
+14,delay_max,Macro DRL,45.81,79.65,13.56,-8.68,0
+15,speed_avg,Macro DRL,25.69,19.25,3.38,36.59,0
