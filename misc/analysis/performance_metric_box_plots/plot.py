@@ -39,9 +39,6 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
     
     # regarding mpc
     mpc_dir_path = simulator_dir_path / 'mpc'
-    if not mpc_dir_path.exists():
-        continue
-
     for method_dir_path in mpc_dir_path.glob('config_*'):
         with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
             method_config = yaml.safe_load(f)
@@ -85,9 +82,6 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
         continue
 
     scoot_dir_path = simulator_dir_path / 'scoot'
-    if not scoot_dir_path.exists():
-        continue
-
     for method_dir_path in scoot_dir_path.glob('config_*'):
         with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
             method_config = yaml.safe_load(f)
@@ -118,9 +112,6 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
 
     # regarding drl
     drl_dir_path = simulator_dir_path / 'drl'
-    if not drl_dir_path.exists():
-        continue
-
     for method_dir_path in drl_dir_path.glob('config_*'):
         with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
             method_config = yaml.safe_load(f)
