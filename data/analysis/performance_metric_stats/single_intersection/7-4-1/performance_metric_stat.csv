@@ -1,16 +1,16 @@
 id,performance_metric,method,mean,worst,std,improve_rate,num_best
 1,queue_avg,SCOOT,34.66,70.77,16.6,0.0,0
 2,queue_max,SCOOT,72.09,141.54,35.85,0.0,0
-3,delay_avg,SCOOT,18.5,35.67,7.2,0.0,1
-4,delay_max,SCOOT,50.17,73.83,12.35,0.0,12
+3,delay_avg,SCOOT,18.5,35.67,7.2,0.0,0
+4,delay_max,SCOOT,50.17,73.83,12.35,0.0,10
 5,speed_avg,SCOOT,18.81,12.92,3.46,0.0,0
-6,queue_avg,Micro DRL,16.5,48.11,10.83,-52.41,42
-7,queue_max,Micro DRL,33.5,103.96,21.43,-53.53,41
-8,delay_avg,Micro DRL,11.67,28.37,6.21,-36.96,39
-9,delay_max,Micro DRL,45.34,77.63,17.21,-9.62,30
-10,speed_avg,Micro DRL,26.35,15.76,5.05,40.14,42
-11,queue_avg,Macro DRL,13.99,30.05,7.25,-59.63,0
-12,queue_max,Macro DRL,28.5,56.24,13.12,-60.46,1
-13,delay_avg,Macro DRL,11.13,20.94,4.32,-39.84,2
-14,delay_max,Macro DRL,45.81,79.65,13.56,-8.68,0
-15,speed_avg,Macro DRL,25.69,19.25,3.38,36.59,0
+6,queue_avg,Micro DRL,16.5,48.11,10.83,-52.41,40
+7,queue_max,Micro DRL,33.5,103.96,21.43,-53.53,38
+8,delay_avg,Micro DRL,11.67,28.37,6.21,-36.96,36
+9,delay_max,Micro DRL,45.34,77.63,17.21,-9.62,29
+10,speed_avg,Micro DRL,26.35,15.76,5.05,40.14,39
+11,queue_avg,Macro DRL,22.51,69.21,16.26,-35.06,2
+12,queue_max,Macro DRL,43.49,119.91,27.82,-39.67,4
+13,delay_avg,Macro DRL,15.5,36.88,8.27,-16.22,6
+14,delay_max,Macro DRL,55.34,165.54,25.01,10.31,3
+15,speed_avg,Macro DRL,23.44,13.48,4.44,24.66,3

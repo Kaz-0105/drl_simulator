@@ -1,5 +1,5 @@
 target:
-  layout: '7-4-1'
+  layout: 7-4-1
   control_method:
     mpc:
       4-phase: false
