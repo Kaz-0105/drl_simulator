@@ -123,22 +123,17 @@ class MasterAgent(Object):
             sum_total_reward += total_reward
         return sum_total_reward / self.local_agents.count()
     
-    @property
-    def simulation_id(self):
-        return self.network.simulation.get('id')
-        
-    @property
-    def simulation_time(self):
-        return self.network.simulation.get('current_time')
-
-    @property
-    def seed(self):
-        return self.network.simulation.get('seed')
-    
     def _initProps(self, num_roads, num_lanes_tuple):
         # set id and num_roads
         self.id = self.master_agents.count() + 1
         self.num_roads = num_roads
+
+        # set layout_name and inflow_name
+        self.simulation_id = self.network.simulation.get('id')
+        self.layout_name = self.network.simulation.get('layout_name')
+        self.inflow_name = self.network.simulation.get('inflow_name')
+        self.simulation_time = self.network.simulation.get('simulation_time')
+        self.seed = self.network.simulation.get('seed')
         
         # get phases_df_map
         phases_df_map = self.config.get('phases_df_map')
@@ -481,13 +476,19 @@ class MasterAgent(Object):
             [queue_record['max'] for queue_record in queue_records_map['intersections'].values()], 
             axis=1
         ).mean(axis=1)
-        queue_length = max_queue_series.mean()
+        max_queue_length = max_queue_series.mean()
+        avg_queue_series = pd.concat(
+            [queue_record['avg'] for queue_record in queue_records_map['intersections'].values()],
+            axis=1
+        ).mean(axis=1)
+        avg_queue_length = avg_queue_series.mean()
 
         # update session_df
         session_row = pd.DataFrame({
             'episode': self.episode,
             'total_reward': self.avg_total_reward,
-            'queue_length': queue_length,
+            'max_queue_length': max_queue_length,
+            'avg_queue_length': avg_queue_length,
             'update_interval': self.update_interval,
             'new_data_count': self.buffer.get('new_data_count'),
             'num_batches': self.buffer.get('num_batches'),
@@ -495,6 +496,8 @@ class MasterAgent(Object):
             'num_epochs': self.num_epochs,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
+            'layout': self.layout_name,
+            'inflow': self.inflow_name,
             'simulation_time': self.simulation_time,
             'seed': self.seed,
         }, index=[0])

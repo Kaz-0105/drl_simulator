@@ -166,6 +166,7 @@ drl:
       type: true
     road:
       delay: true
+      inflow: true
       queue: true
       route: true
     vehicle:

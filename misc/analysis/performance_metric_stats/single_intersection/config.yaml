@@ -137,5 +137,6 @@ drl:
       delay: true
       queue: true
       route: true
+      inflow: true
     vehicle:
       number: 10
