@@ -1,8 +1,8 @@
 simulator:
   control_method : drl              # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name : 7-4-1               # layout folder name
-  inflow_name : balanced_700        # inflow file name
+  layout_name : 7-4-1            # layout folder name
+  inflow_name : balanced_500        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -16,7 +16,7 @@ drl:
   simulation_type: test # train or test
   stop: 
     type: episode        # episode or interval
-    episode: 40
+    episode: 100
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
@@ -26,7 +26,7 @@ drl:
       size: 128                  # batch size for learning
     epoch: 1                     # epoch for learning
     weight_decay: 0.0            # weight decay for learning
-    norm_clip: 1.0              # max norm for gradient clipping
+    norm_clip: 1.0               # max norm for gradient clipping
   framework: 
     type: apex
     apex:
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
