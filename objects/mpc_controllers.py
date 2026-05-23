@@ -420,7 +420,7 @@ class MpcController(Object):
             if vehicles_df.shape[0] == 0:
                 vehicles_df_map = {}
                 for combination_order_id in self.road_combinations_map[road_order_id].keys():
-                    vehicles_df_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'speed', 'lane_id', 'link_id', 'route_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
+                    vehicles_df_map[combination_order_id] = pd.DataFrame(columns=['id', 'position', 'length', 'speed', 'lane_id', 'link_id', 'route_id', 'wait_link_id', 'wait_lane_id', 'signal_id'])
                 self.road_vehicles_df_map[road_order_id] = vehicles_df_map
                 continue
             

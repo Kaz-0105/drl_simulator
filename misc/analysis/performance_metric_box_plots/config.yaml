@@ -1,10 +1,13 @@
 target:
-  layout: 7-4-1
+  layout: 7-4-1-sb
   control_method:
     mpc:
-      4-phase: true
-      8-phase: true
+      4-phase: false
+      8-phase: false
       17-phase: false
+    drl:
+      micro: true
+      macro: true
     scoot: true
   performance_metrics: [
     'queue_avg',
@@ -72,4 +75,83 @@ scoot:
     split: 1                 
   max_cycle: 60                
   min_split: 4                
-  spacing_threshold: 20        
+  spacing_threshold: 20     
+
+drl:
+  architecture:
+    common:
+      activation_function:
+        leaky_relu:
+          alpha: 0.01
+        type: leaky_relu
+      initialization:
+        type: he
+    proto:
+      compression:
+        rate:
+          dueling: 1.0
+          intersection: 0.5
+          intersection_encoder: 5.0
+          lane: 1.0
+          lane_encoder: 5.0
+          lanes: 0.5
+          road: 1.0
+          road_encoder: 5.0
+          roads: 0.5
+          vehicle_encoder: 5.0
+          vehicles: 1.0
+        type: linear
+      hidden_layers:
+        number:
+          dueling: 2
+          intersection: 1
+          intersection_encoder: 2
+          lane: 1
+          lane_encoder: 2
+          lanes: 1
+          road: 1
+          road_encoder: 2
+          roads: 1
+          vehicle_encoder: 2
+          vehicles: 1
+    type: proto
+  duration_steps: 5
+  framework:
+    apex:
+      buffer:
+        file_capacity: 10000
+        size: 200000
+      td_steps: 1
+    type: apex
+  reward:
+    common:
+      gamma: 0.8
+    type: waiting_vehicles
+    waiting_vehicles:
+      bonus:
+        movement: 0.1
+        pass: 1.0
+      scaler:
+        tanh:
+          alpha: 3
+        tanh_linear:
+          alpha: 3
+        type: tanh_linear
+      weight:
+        exponential:
+          half: 50
+        type: queue_exponential
+  state:
+    intersection:
+      phase: true
+    lane:
+      length: true
+      num_vehicles: true
+      type: true
+    road:
+      delay: true
+      queue: true
+      route: true
+      inflow: true
+    vehicle:
+      number: 10

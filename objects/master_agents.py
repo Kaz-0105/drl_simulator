@@ -39,7 +39,7 @@ class MasterAgents(Container):
             num_roads = intersection.get('num_roads')
             num_lanes_tuple = intersection.get('num_lanes_tuple')
 
-            if intersection.has('master_agent'):
+            if intersection.master_agent is not None:
                 continue
 
             self.add(MasterAgent(
@@ -75,7 +75,7 @@ class MasterAgents(Container):
         return
 
 class MasterAgent(Object):
-    def __init__(self, master_agents, num_roads,num_lanes_tuple):
+    def __init__(self, master_agents, num_roads, num_lanes_tuple):
         super().__init__()
 
         self.config = master_agents.config
@@ -86,20 +86,10 @@ class MasterAgent(Object):
         self.network = master_agents.network
 
         self._initProps(num_roads, num_lanes_tuple)
-        self._initIntersections()
-        
-        # set symmetry_phase_map, save_dir_path_map
-        self._makeSymmetryPhaseMap()
-        self._makeSaveDirPathMap()
-
-        # initialize drl objects
-        self._initDrlObjects()
+        self._connectObjects()
         
         # load model, session, and buffer
         self._load()
-        
-        # set local_agents
-        self.local_agents = LocalAgents(self)
         return
     
     @property
@@ -133,18 +123,17 @@ class MasterAgent(Object):
             sum_total_reward += total_reward
         return sum_total_reward / self.local_agents.count()
     
-    @property
-    def simulation_id(self):
-        return self.network.simulation.get('id')
-        
-    @property
-    def simulation_time(self):
-        return self.network.simulation.get('current_time')
-    
     def _initProps(self, num_roads, num_lanes_tuple):
         # set id and num_roads
         self.id = self.master_agents.count() + 1
         self.num_roads = num_roads
+
+        # set layout_name and inflow_name
+        self.simulation_id = self.network.simulation.get('id')
+        self.layout_name = self.network.simulation.get('layout_name')
+        self.inflow_name = self.network.simulation.get('inflow_name')
+        self.simulation_time = self.network.simulation.get('simulation_time')
+        self.seed = self.network.simulation.get('seed')
         
         # get phases_df_map
         phases_df_map = self.config.get('phases_df_map')
@@ -197,23 +186,7 @@ class MasterAgent(Object):
         # set reward information
         self.gamma = float(drl_info['reward']['common']['gamma'])
 
-        # set update_count, episode, and session_df
-        self.update_count = 0
-        self.episode = 1
-        self.session_df = None
-        self.active_phases_df = None
-        self.epsilon_record_df = None
-        return
-    
-    def _initIntersections(self):
-        self.intersections = Intersections(self)
-        for intersection in self.network.intersections.getAll():
-            if intersection.get('num_lanes_tuple') == tuple((self.num_lanes_map[road_id] for road_id in range(1, self.num_roads + 1))):
-                self.intersections.add(intersection)
-                intersection.set('master_agent', self)
-        return
-    
-    def _makeSymmetryPhaseMap(self):
+        # set symmetry_phase_map
         self.symmetry_phase_map = {}
         symmetry_phases_df_map = self.config.get('symmetry_phases_df_map')
         if self.num_roads == 4:
@@ -230,9 +203,18 @@ class MasterAgent(Object):
         else:
             raise NotImplementedError(f"Not supported number of roads: {self.num_roads}")
         
+        # set save_dir_path_map
+        self._initSaveDirPathMap()
+
+        # set update_count, episode, and session_df
+        self.update_count = 0
+        self.episode = 1
+        self.session_df = None
+        self.active_phases_df = None
+        self.epsilon_record_df = None
         return
-        
-    def _makeSaveDirPathMap(self):
+    
+    def _initSaveDirPathMap(self):
         self.save_dir_path_map = {}
 
         # get drl_dir_path
@@ -240,72 +222,60 @@ class MasterAgent(Object):
         drl_dir_path = root_dir_path / 'data' / 'drl'
         drl_dir_path.mkdir(parents=True, exist_ok=True)
         
-        # make saved_drl_info
-        saved_drl_info = copy.deepcopy(self.config.get('drl_info'))
+        # make drl_info
+        drl_info = copy.deepcopy(self.config.get('drl_info'))
 
-        saved_drl_info.pop('simulation_type')
-        saved_drl_info.pop('stop')
-        saved_drl_info.pop('training')
-        saved_drl_info.pop('data_augmentation')
+        # simulation_type, stop, training, and data_augmentation
+        drl_info.pop('simulation_type')
+        drl_info.pop('stop')
+        drl_info.pop('training')
+        drl_info.pop('data_augmentation')
 
         # framework
-        saved_framework_info = saved_drl_info['framework']
-
-        for key in copy.deepcopy(saved_framework_info):
+        saved_framework_info = drl_info['framework']
+        for key in copy.deepcopy(drl_info['framework']):
             if key == 'type':
                 continue
-            if key == saved_framework_info['type']:
+            if key == drl_info['framework']['type']:
                 continue
-            saved_framework_info.pop(key)
+            drl_info['framework'].pop(key)
 
-        if saved_framework_info['type'] == 'apex':
-            saved_apex_info = saved_framework_info['apex']
-
-            saved_apex_info.pop('local_agent')
-            saved_apex_info.pop('target_network')
-            
-            saved_buffer_info = saved_apex_info['buffer']
-            saved_buffer_info.pop('priority')
-
+        if drl_info['framework']['type'] == 'apex':
+            drl_info['framework']['apex'].pop('local_agent')
+            drl_info['framework']['apex'].pop('target_network')
+            drl_info['framework']['apex']['buffer'].pop('priority')
         else:
             raise NotImplementedError(f"Not supported framework type: {saved_framework_info['type']}")
         
         # action
-        saved_drl_info.pop('action')
+        drl_info.pop('action')
 
         # reward
-        reward_info = saved_drl_info['reward']
-        for key in copy.deepcopy(reward_info):
+        for key in copy.deepcopy(drl_info['reward']):
             if key == 'type':
                 continue
             if key == 'common':
                 continue
-            if key == reward_info['type']:
+            if key == drl_info['reward']['type']:
                 continue
-            reward_info.pop(key)
+            drl_info['reward'].pop(key)
         
         # architecture
-        saved_architecture_info = saved_drl_info['architecture']
-
-        for key in copy.deepcopy(saved_architecture_info):
+        for key in copy.deepcopy(drl_info['architecture']):
             if key == 'type':
                 continue
             if key == 'common':
                 continue
-            if key == saved_architecture_info['type']:
+            if key == drl_info['architecture']['type']:
                 continue
+            drl_info['architecture'].pop(key)
 
-            saved_architecture_info.pop(key)
-
-        common_info = saved_architecture_info['common']
-        activation_info = common_info['activation_function']
-        for key in copy.deepcopy(activation_info):
+        for key in copy.deepcopy(drl_info['architecture']['common']['activation_function']):
             if key == 'type':
                 continue
-            if key == activation_info['type']:
+            if key == drl_info['architecture']['common']['activation_function']['type']:
                 continue
-
-            activation_info.pop(key)
+            drl_info['architecture']['common']['activation_function'].pop(key)
         
         # get target config_dir_path
         found_flg = False
@@ -317,11 +287,22 @@ class MasterAgent(Object):
             with open(config_file_path, 'r', encoding='utf-8') as f:
                 config_yaml = yaml.safe_load(f)
 
-            if config_yaml == saved_drl_info:
-                found_flg = True
+            # check intersection shape
+            for start_road_id in range(1, self.num_roads + 1):
+                drl_info['shape'] = [self.num_lanes_map[((tmp_id - 1) // self.num_roads) + 1] for tmp_id in range(start_road_id, start_road_id + self.num_roads)]
+                if config_yaml == drl_info:
+                    found_flg = True
+                    break
+            
+            # if found_flg is true, break the loop
+            if found_flg:
                 break
         
         if not found_flg:
+            # reset shape information
+            drl_info['shape'] = [self.num_lanes_map[road_id] for road_id in range(1, self.num_roads + 1)]
+
+            # search empty config directory
             config_id = 1
             while True:
                 config_dir_path = drl_dir_path / f"config_{config_id}"
@@ -329,7 +310,7 @@ class MasterAgent(Object):
                     config_dir_path.mkdir(parents=True, exist_ok=False)
                     config_file_path = config_dir_path / 'config.yaml'
                     with config_file_path.open('w', encoding='utf-8') as f:
-                        yaml.dump(saved_drl_info, f)
+                        yaml.dump(drl_info, f)
                     break
                 config_id += 1
         
@@ -344,9 +325,15 @@ class MasterAgent(Object):
             path.mkdir(parents=True, exist_ok=True)
 
         return
+    
+    def _connectObjects(self):
+        # set intersections
+        self.intersections = Intersections(self)
+
+        # set local_agents (LocalAgents._connectObjects())
+        self.local_agents = LocalAgents(self)
         
-    def _initDrlObjects(self):
-        # initialize model and target_model
+        # set model and target_model
         if self.architecture == 'proto':
             self.model = ProtoQNet(self, requires_grad=True)
             self.model.showInfo('parameters')
@@ -359,22 +346,19 @@ class MasterAgent(Object):
             self.target_model = ProtoQNet(self, requires_grad=False)
         else:
             raise NotImplementedError(f"Not supported architecture: {self.architecture}")
-        
         self.target_model.eval()
         self.target_model.to(self.device)
 
-        # initialize buffer
+        # set buffer
         self.buffer = ApexBuffer(self)
 
-        # initialize optimizer and criterion
+        # set optimizer and criterion
         self.criterion = nn.MSELoss()
-
         self.optimizer = optim.Adam(
             self.model.parameters(), 
             lr=self.learning_rate, 
             weight_decay=self.weight_decay
         )
-        
         return
 
     def _load(self):
@@ -486,13 +470,25 @@ class MasterAgent(Object):
         return
     
     def _updateSession(self):
-        if self.simulation_type == 'test':
-            return
-        
+        # get queue_length (average of max queue length of all intersections and all time steps)
+        queue_records_map = self.network.get('queue_records_map')
+        max_queue_series = pd.concat(
+            [queue_record['max'] for queue_record in queue_records_map['intersections'].values()], 
+            axis=1
+        ).mean(axis=1)
+        max_queue_length = max_queue_series.mean()
+        avg_queue_series = pd.concat(
+            [queue_record['avg'] for queue_record in queue_records_map['intersections'].values()],
+            axis=1
+        ).mean(axis=1)
+        avg_queue_length = avg_queue_series.mean()
+
         # update session_df
         session_row = pd.DataFrame({
             'episode': self.episode,
             'total_reward': self.avg_total_reward,
+            'max_queue_length': max_queue_length,
+            'avg_queue_length': avg_queue_length,
             'update_interval': self.update_interval,
             'new_data_count': self.buffer.get('new_data_count'),
             'num_batches': self.buffer.get('num_batches'),
@@ -500,7 +496,10 @@ class MasterAgent(Object):
             'num_epochs': self.num_epochs,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
+            'layout': self.layout_name,
+            'inflow': self.inflow_name,
             'simulation_time': self.simulation_time,
+            'seed': self.seed,
         }, index=[0])
         if self.session_df is None:
             self.session_df = session_row.copy()
@@ -637,10 +636,7 @@ class MasterAgent(Object):
         return
             
     def save(self):
-        if self.simulation_type == 'test':
-            return
-        
-        # save session information and tree data
+        # save session information
         with open(self.save_dir_path_map['session'] / 'session.json', 'w', encoding='utf-8') as f:
             json.dump({
                 'episode': self.episode,
@@ -654,6 +650,7 @@ class MasterAgent(Object):
                 }
             }, f)
         
+        # save priority data for replay buffer
         self.buffer.save()
         
         # save session_df, phase_probs_df, and epsilon_record_df
@@ -666,6 +663,7 @@ class MasterAgent(Object):
         with open(self.save_dir_path_map['session'] / 'epsilon_record.csv', 'w', encoding='utf-8', newline='') as f:
             self.epsilon_record_df.to_csv(f, index=False)
 
+        # save model and optimizer
         torch.save(self.model.state_dict(), self.save_dir_path_map['model'] / 'q_net.pth')
         torch.save(self.target_model.state_dict(), self.save_dir_path_map['model'] / 'target_q_net.pth')
         torch.save(self.optimizer.state_dict(), self.save_dir_path_map['optimizer'] / 'optimizer.pth')

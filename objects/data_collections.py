@@ -5,145 +5,138 @@ import pandas as pd
 
 class DataCollectionPoints(Container):
     def __init__(self, upper_object):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
-            # 上位の紐づくオブジェクトを取得
             self.network = upper_object
-
-            # comオブジェクトを取得
             self.com = self.network.com.DataCollectionPoints
 
-            # 要素オブジェクトを初期化
-            self._initElements()
+            self._initElements(upper_object)
         
         elif upper_object.__class__.__name__ == 'Link':
-            # 上位の紐づくオブジェクトを取得
             self.link = upper_object
         
         elif upper_object.__class__.__name__ == 'DataCollectionMeasurement':
-            # 上位の紐づくオブジェクトを取得
             self.data_collection_measurement = upper_object
+            self.network = self.data_collection_measurement.network
+
+            self._initElements(upper_object)
         
         return
     
-    def _initElements(self):
-        for data_collection_point_com in self.com.GetAll():
-            self.add(DataCollectionPoint(data_collection_point_com, self))
+    def _initElements(self, upper_object):
+        if upper_object.__class__.__name__ == 'Network':
+            for data_collection_point_com in self.com.GetAll():
+                self.add(DataCollectionPoint(data_collection_point_com, self))
+
+        elif upper_object.__class__.__name__ == 'DataCollectionMeasurement':
+            for data_collection_point_com in self.data_collection_measurement.com.DataCollectionPoints.GetAll():
+                data_collection_point = self.network.data_collection_points[data_collection_point_com.AttValue('No')]
+                self.add(data_collection_point)
+                data_collection_point.data_collection_measurements.add(self.data_collection_measurement)
+
+        else:
+            raise NotImplementedError(f"Not supported upper_object class: {upper_object.__class__.__name__}")
+        
+        return
 
 class DataCollectionPoint(Object):
     def __init__(self, com, data_collection_points):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = data_collection_points.config
         self.executor = data_collection_points.executor
-
-       
-        # 上位の紐づくオブジェクトを取得
         self.data_collection_points = data_collection_points
-
-        # comオブジェクトを取得
-        self.com = com
-
-        # IDを取得
-        self.id = self.com.AttValue('No')
-
-        # networkオブジェクトに紐づける
         self.network = data_collection_points.network
 
-        # linkオブジェクトと紐づける
-        self._makeLinkConnection()
+        self.com = com
 
-        # typeを定義
-        self._makeType()
-
-        # roadオブジェクトと紐づける
-        self._makeRoadConnection()
-
-        # data_collection_measurementsオブジェクトを初期化
-        self.data_collection_measurements = DataCollectionMeasurements(self)
-        
-        return
-
-    def _makeLinkConnection(self):
-        # lane_idとlink_idを取得
-        lane_com = self.com.Lane
-        lane_id = lane_com.AttValue('Index')
-        link_com = lane_com.Link
-        link_id = link_com.AttValue('No')
-
-        # linkオブジェクトとlaneオブジェクトを取得
-        self.link = self.network.links[link_id]
-        self.link.data_collection_points.add(self)
-        self.lane = self.lane = self.link.lanes[lane_id]
-        self.lane.set('data_collection_point', self)
+        self._initProps()
+        self._connectObjects()
         return
     
-    def _makeType(self):
-        # コネクター上にあるときは交差点の計測用
+    @property
+    def flow_rate(self):
+        for data_collection_measurement in self.data_collection_measurements.getAll():
+            if data_collection_measurement.get('type') != 'single':
+                continue
+
+            return data_collection_measurement.get('flow_rate')
+        
+        raise Exception(f"No single type data collection measurement found for DataCollectionPoint {self.id}")
+    
+    def _initProps(self):
+        self.id = self.com.AttValue('No')
+
+        # set type (DataCollectionPoint._connectObjects())
+        self.type = None 
+
+        # set route_id (DataCollectionPoint._connectObjects())
+        self.route_id = None
+        return
+    
+    def _connectObjects(self):
+        # set link and lane
+        self.link = self.network.links[self.com.Lane.Link.AttValue('No')]
+        self.link.data_collection_points.add(self)
+        self.lane = self.link.lanes[self.com.Lane.AttValue('Index')]
+        self.lane.data_collection_point = self
+
+        # set data_collection_measurements (DataCollectionMeasurement._connectObjects())
+        self.data_collection_measurements = DataCollectionMeasurements(self)
+
+        # set type (intersection, input, output)
         if self.link.get('type') == 'connector':
-            self.type = 'intersection'
-            return
+            if self.link.intersection is not None:
+                self.type = 'intersection'
+            else:
+                raise NotImplementedError(f"Unsupported connector link for DataCollectionPoint {self.id} on Link {self.link.get('id')}: intersection is None")
+        else:
+            if self.link.road.input_intersection is not None:
+                self.type = 'output'
+            elif self.link.road.output_intersection is not None:
+                self.type = 'input'
+            else:
+                raise NotImplementedError(f"Unsupported road connection for DataCollectionPoint {self.id} on Link {self.link.get('id')}: input_intersection is None and output_intersection is None")
         
-        num_from_links = self.link.from_links.count()
-        num_to_links = self.link.to_links.count()
+        # set vehicle_route, signal_head and route_id
+        if self.type == 'intersection':
+            self.vehicle_route = self.link.vehicle_route
+            self.signal_head = self.link.signal_head
+            self.route_id = self.vehicle_route.get('route_id')
 
-        #　from_linkの数が0またはto_linkの数より小さいときは流入の計測
-        if num_from_links == 0 or num_from_links < num_to_links:
-            self.type = 'input'
-            return
-        
-        # to_linkの数が0またはfrom_linkの数より小さいときは流出の計測
-        if num_to_links == 0 or num_to_links < num_from_links:
-            self.type = 'output'
-            return
-
-        # それ以外はエラー
-        raise ValueError(f"DataCollectionPoint {self.id} on Link {self.link.get('id')} cannot determine type.")
-
-    def _makeRoadConnection(self):
-        # 流入道路または流出道路の計測用のとき
-        if self.type != 'intersection':
+        # set road
+        if self.type == 'intersection':
+            self.road = self.link.from_link.road
+            self.road.data_collection_points.add(self)
+        elif self.type in ['input', 'output']:
             self.road = self.link.road
             self.road.data_collection_points.add(self)
-            return
-        
-        # 交差点の計測用のとき
-        from_link = self.link.from_link
-        self.road = from_link.road
-        self.road.data_collection_points.add(self)
-
+        else:
+            raise NotImplementedError(f"Not supported data collection point type: {self.type}")
         return
     
 class DataCollectionMeasurements(Container):
     def __init__(self, upper_object):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = upper_object.config
         self.executor = upper_object.executor
 
         if upper_object.__class__.__name__ == 'Network':
-            # 上位の紐づくオブジェクトを取得
             self.network = upper_object
-
-            # comオブジェクトを取得
             self.com = self.network.com.DataCollectionMeasurements
 
-            # 要素オブジェクトを初期化
             self._initElements()
         
         elif upper_object.__class__.__name__ == 'DataCollectionPoint':
-            # 上位の紐づくオブジェクトを取得
             self.data_collection_point = upper_object
+        
+        else: 
+            raise NotImplementedError(f"Not supported upper_object class: {upper_object.__class__.__name__}")
         
         return
 
@@ -152,65 +145,67 @@ class DataCollectionMeasurements(Container):
             self.add(DataCollectionMeasurement(data_collection_measurement_com, self))
     
     def update(self):
-        # Comオブジェクトからデータを更新
         measurement_ids = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('No')]
         veh_nums = [tmp_data[1] for tmp_data in self.com.GetMultiAttValues('Vehs(Current, Last, All)')]
 
-        # データを要素オブジェクトにセット（非同期処理）
         for index, measurement_id in enumerate(measurement_ids):
             measurement = self[measurement_id]
             self.executor.submit(measurement.update, veh_nums[index])
     
 class DataCollectionMeasurement(Object):
+    DURATION = 60 # seconds
     def __init__(self, com, data_collection_measurements):
-        # 継承
         super().__init__()
 
-        # 設定オブジェクトと非同期処理オブジェクトを取得
         self.config = data_collection_measurements.config
         self.executor = data_collection_measurements.executor
-
-        # 上位の紐づくオブジェクトを取得
         self.data_collection_measurements = data_collection_measurements
-
-        # comオブジェクトを取得
-        self.com = com
-
-        # IDを取得
-        self.id = self.com.AttValue('No')
-
-        # networkオブジェクトと紐づける
         self.network = data_collection_measurements.network
 
-        # data_collection_pointと紐づける
-        self._makeDataCollectionPointConnection()
+        self.com = com
 
-        # typeを定義
-        self._makeType()
+        self._initProps()
+        self._connectObjects()
+        return
+    
+    @property
+    def type(self):
+        if self.data_collection_points.count() == 1:
+            return 'single'
+        else:
+            return 'multiple'
+        
+    @property
+    def current_time(self):
+        return self.network.simulation.get('current_time')
+    
+    @property
+    def time_step(self):
+        return self.network.simulation.get('time_step')
+    
+    @property
+    def flow_rate(self):
+        if self.type != 'single':
+            raise Exception(f"Flow rate is only available for single type data collection measurement, but the type of DataCollectionMeasurement {self.id} is {self.type}")
+        
+        if len(self.num_vehs_record) > self.duration_step:
+            num_vehs_sum = self.num_vehs_record['num_vehs'][-self.duration_step:].sum()
+            return num_vehs_sum / (self.duration_step * self.time_step) # [veh/second]
+        else:
+            num_vehs_sum = self.num_vehs_record['num_vehs'].sum()
+            return num_vehs_sum / (len(self.num_vehs_record) * self.time_step) # [veh/second]
+        
 
-        # 自動車の通過台数を初期化
+    def _initProps(self):
+        self.id = self.com.AttValue('No')
+        self.duration_step = int(DataCollectionMeasurement.DURATION / self.time_step)
+
         self.current_num_vehs = 0
         self.num_vehs_record = pd.DataFrame(columns=['time', 'num_vehs'])
         return
-
     
-    def _makeDataCollectionPointConnection(self):
+    def _connectObjects(self):
         self.data_collection_points = DataCollectionPoints(self)
-
-        for point_com in self.com.DataCollectionPoints.GetAll():
-            point_id = point_com.AttValue('No')
-            point = self.network.data_collection_points[point_id]
-            self.data_collection_points.add(point)
-            point.data_collection_measurements.add(self)
-
-        return
-
-    def _makeType(self):
-        if self.data_collection_points.count() == 1:
-            self.type = 'single'
-        else:
-            self.type = 'multiple'
-        
         return
     
     def update(self, num_vehs):
@@ -218,6 +213,4 @@ class DataCollectionMeasurement(Object):
         self.num_vehs_record.loc[len(self.num_vehs_record)] = [self.current_time, self.current_num_vehs]
         return
 
-    @property
-    def current_time(self):
-        return self.network.simulation.get('current_time')
+    

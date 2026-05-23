@@ -31,6 +31,7 @@ class Config(Common):
             self.observer.start()
             self._showInfo('observer_start')
 
+        self._showInfo('finish')
         return
     
     def _initProps(self):
@@ -128,7 +129,7 @@ class Config(Common):
 
         # if the setting of simulator_info is same as the existing one, use the existing save_dir_path
         simulator_info = copy.deepcopy(self.simulator_info)
-        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step']}
+        simulator_info = {key: simulator_info[key] for key in ['num_red_steps', 'simulation_time','time_step', 'seed']}
         
         simulation_dir_path = None
         for tmp_dir_path in common_save_dir_path.glob('simulator_*'):
@@ -234,6 +235,60 @@ class Config(Common):
         elif self.simulator_info['control_method'] == 'drl':
             drl_info = copy.deepcopy(self.drl_info)
 
+            drl_info.pop('simulation_type')
+            drl_info.pop('stop')
+            drl_info.pop('training')
+            drl_info.pop('data_augmentation')
+
+            # framework
+            for key in copy.deepcopy(drl_info['framework']):
+                if key == 'type':
+                    continue
+                if key == drl_info['framework']['type']:
+                    continue
+                drl_info['framework'].pop(key)
+
+            if drl_info['framework']['type'] == 'apex':
+                drl_info['framework']['apex'].pop('local_agent')
+                drl_info['framework']['apex'].pop('target_network')
+            
+                drl_info['framework']['apex']['buffer'].pop('priority')
+
+            else:
+                raise NotImplementedError(f"Not supported framework type: {drl_info['framework']['type']}")
+            
+            # action
+            drl_info.pop('action')
+
+            # reward
+            for key in copy.deepcopy(drl_info['reward']):
+                if key == 'type':
+                    continue
+                if key == 'common':
+                    continue
+                if key == drl_info['reward']['type']:
+                    continue
+                drl_info['reward'].pop(key)
+            
+            # architecture
+            for key in copy.deepcopy(drl_info['architecture']):
+                if key == 'type':
+                    continue
+                if key == 'common':
+                    continue
+                if key == drl_info['architecture']['type']:
+                    continue
+
+                drl_info['architecture'].pop(key)
+
+            for key in copy.deepcopy(drl_info['architecture']['common']['activation_function']):
+                if key == 'type':
+                    continue
+                if key == drl_info['architecture']['common']['activation_function']['type']:
+                    continue
+
+                drl_info['architecture']['common']['activation_function'].pop(key)
+
             save_dir_path = None
             for tmp_dir_path in control_method_dir_path.glob('config_*'):
                 config_file_path = tmp_dir_path / 'config.yaml'
@@ -269,55 +324,87 @@ class Config(Common):
     
     def _initNumFeaturesMap(self):
         self.num_features_map = {}
+        self.max_num_features_map = {}
 
         # vehicle features
-        tmp_num_features_map = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.num_features_map['vehicle'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.max_num_features_map['vehicle'] = {num_roads: 0 for num_roads in [3, 4, 5]}
         for feature_name, feature_flg in self.drl_info['state']['vehicle'].items():
             if feature_name in ['number']:
                 continue
 
-            if not feature_flg:
-                continue
-
             if feature_name in ['position', 'speed']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['vehicle'] = {num_roads: num_features + 1 for num_roads, num_features in self.max_num_features_map['vehicle'].items()}
+                if not feature_flg:
+                    continue        
+                self.num_features_map['vehicle'] = {num_roads: num_features + 1 for num_roads, num_features in self.num_features_map['vehicle'].items()}
+        
             elif feature_name in ['route']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + num_roads for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['vehicle'] = {num_roads: num_features + num_roads for num_roads, num_features in self.max_num_features_map['vehicle'].items()}
+                if not feature_flg:
+                    continue
+                self.num_features_map['vehicle'] = {num_roads: num_features + num_roads for num_roads, num_features in self.num_features_map['vehicle'].items()}
+            
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()} # for existence of vehicle
-        self.num_features_map['vehicle'] = tmp_num_features_map
+        
+        # add vehicle existence feature (if we use vehicle-scale information)
+        for num_roads, num_features in self.num_features_map['vehicle'].items():
+            self.max_num_features_map['vehicle'][num_roads] += 1
+            if num_features == 0:
+                continue
+            self.num_features_map['vehicle'][num_roads] += 1
 
         # lane features
-        tmp_num_features = 0
+        self.num_features_map['lane'] = 0
+        self.max_num_features_map['lane'] = 0
         for feature_name, feature_flg in self.drl_info['state']['lane'].items():
-            if not feature_flg:
-                continue
-
             if feature_name in ['length', 'num_vehicles']:
-                tmp_num_features += 1
+                self.max_num_features_map['lane'] += 1
+                if not feature_flg:
+                    continue
+                self.num_features_map['lane'] += 1
+
             elif feature_name in ['type']:
-                tmp_num_features += 3
+                self.max_num_features_map['lane'] += 3
+                if not feature_flg:
+                    continue
+                self.num_features_map['lane'] += 3
+
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        self.num_features_map['lane'] = tmp_num_features
 
         # road features
-        tmp_num_features_map = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.num_features_map['road'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.max_num_features_map['road'] = {num_roads: 0 for num_roads in [3, 4, 5]}
         for feature_name, feature_flg in self.drl_info['state']['road'].items():
-            if not feature_flg:
-                continue
-
-            if feature_name in ['queue', 'delay']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + 1 for num_roads in tmp_num_features_map.keys()}
+            if feature_name in ['queue', 'delay', 'inflow']:
+                self.max_num_features_map['road'] = {num_roads: num_features + 1 for num_roads, num_features in self.max_num_features_map['road'].items()}
+                if not feature_flg:
+                    continue
+                self.num_features_map['road'] = {num_roads: num_features + 1 for num_roads, num_features in self.num_features_map['road'].items()}
+             
             elif feature_name in ['route']:
-                tmp_num_features_map = {num_roads: tmp_num_features_map[num_roads] + (num_roads - 1) for num_roads in tmp_num_features_map.keys()}
+                self.max_num_features_map['road'] = {num_roads: num_features + (num_roads - 1) for num_roads, num_features in self.max_num_features_map['road'].items()}
+                if not feature_flg:
+                    continue
+                self.num_features_map['road'] = {num_roads: num_features + (num_roads - 1) for num_roads, num_features in self.num_features_map['road'].items()}
             else:
                 raise NotImplementedError(f"Not supported feature: {feature_name}")
-        self.num_features_map['road'] = tmp_num_features_map
     
         # intersection features
-        self.num_features_map['intersection'] = {num_roads: len(phases) for num_roads, phases in self.phases_df_map.items()}
+        self.num_features_map['intersection'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        self.max_num_features_map['intersection'] = {num_roads: 0 for num_roads in [3, 4, 5]}
+        for feature_name, feature_flg in self.drl_info['state']['intersection'].items():
+            if feature_name in ['phase']:
+                for num_roads, phases in self.phases_df_map.items():
+                    self.max_num_features_map['intersection'][num_roads] += len(phases)
+                if not feature_flg:
+                    continue
+                for num_roads, phases in self.phases_df_map.items():
+                    self.num_features_map['intersection'][num_roads] += len(phases)
+            else:
+                raise NotImplementedError(f"Not supported feature: {feature_name}")  
         return
     
     def _showInfo(self, type):
@@ -326,6 +413,8 @@ class Config(Common):
             print(f"status: start observer for config change")
         elif type == 'observer_stop':
             print(f"status: stop observer for config change")
+        elif type == 'finish':
+            print(f"status: finish initializing config")
         else:
             raise NotImplementedError(f"Not supported type: {type}")
         return

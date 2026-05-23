@@ -20,7 +20,7 @@ class Simulation(Common):
     @property
     def finish_flg(self):
         if self.control_method == 'drl':
-            if self.current_time < self.end_time:
+            if self.current_time < self.simulation_time:
                 return False
             
             if self.network.get('drl_framework') == 'apex':
@@ -30,7 +30,7 @@ class Simulation(Common):
                 raise NotImplementedError(f"Not supported DRL framework: {self.network.get('drl_framework')}")
 
         elif self.control_method in ['mpc', 'scoot']:
-            return self.current_time >= self.end_time
+            return self.current_time >= self.simulation_time
 
         else:
             raise NotImplementedError(f"Not supported control method: {self.control_method}")
@@ -42,7 +42,7 @@ class Simulation(Common):
         self.layout_name = simulator_info['layout_name']
         self.inflow_name = simulator_info['inflow_name']
 
-        self.end_time = simulator_info['simulation_time']
+        self.simulation_time = simulator_info['simulation_time']
         self.time_step = simulator_info['time_step']
         
         self.debug_flg = simulator_info['debug']['flg']
@@ -80,7 +80,7 @@ class Simulation(Common):
     def _setParametersToVissim(self):
         # Vissimにパラメータを設定
         self.com.SetAttValue('RandSeed', self.seed)
-        self.com.SetAttValue('SimPeriod', self.end_time + 2)
+        self.com.SetAttValue('SimPeriod', self.simulation_time + 2)
 
         # シミュレーションの速度について
         self.com.SetAttValue('UseAllCores', True)
@@ -90,17 +90,17 @@ class Simulation(Common):
         evaluation_com = self.vissim.com.Evaluation
         evaluation_com.SetAttValue('DelaysCollectData', True)
         evaluation_com.SetAttValue('DelaysFromTime', 0)
-        evaluation_com.SetAttValue('DelaysToTime', self.end_time + 2)
+        evaluation_com.SetAttValue('DelaysToTime', self.simulation_time + 2)
         evaluation_com.SetAttValue('DelaysInterval', self.time_step)
 
         evaluation_com.SetAttValue('QueuesCollectData', True)
         evaluation_com.SetAttValue('QueuesFromTime', 0)
-        evaluation_com.SetAttValue('QueuesToTime', self.end_time + 2)
+        evaluation_com.SetAttValue('QueuesToTime', self.simulation_time + 2)
         evaluation_com.SetAttValue('QueuesInterval', self.time_step)
 
         evaluation_com.SetAttValue('DataCollCollectData', True)
         evaluation_com.SetAttValue('DataCollFromTime', 0)
-        evaluation_com.SetAttValue('DataCollToTime', self.end_time + 2)
+        evaluation_com.SetAttValue('DataCollToTime', self.simulation_time + 2)
         evaluation_com.SetAttValue('DataCollInterval', self.time_step)
         return
     
@@ -113,9 +113,10 @@ class Simulation(Common):
         self.network.update('initial')
         local_agents.update('initial_state')
         
-        while self.current_time < self.end_time:
+        while self.current_time < self.simulation_time:
             # sync local agents
-            local_agents.sync(type='model')
+            if self.drl_simulation_type == 'train':
+                local_agents.sync(type='model')
 
             # get action
             local_agents.update('action')
@@ -144,9 +145,6 @@ class Simulation(Common):
         # show the results of this episode
         master_agents.showInfo('result')
 
-        # update session information and save them
-        master_agents.update('session')
-
         # save performance metrics
         self.network.save()
         return
@@ -157,7 +155,7 @@ class Simulation(Common):
         if self.network.get('bc_flg'):
             bc_buffers = self.network.bc_buffers
 
-        while self.current_time < self.end_time:
+        while self.current_time < self.simulation_time:
             self.network.update()
 
             mpc_controllers.optimize()
@@ -180,7 +178,7 @@ class Simulation(Common):
         bc_agent = self.network.bc_agent
         bc_agent.cloneExpert()
 
-        while self.current_time < self.end_time:
+        while self.current_time < self.simulation_time:
             # 最初のネットワークの更新
             self.network.update(type='initial')
 
@@ -205,7 +203,7 @@ class Simulation(Common):
     def _runScoot(self):
         scoot_controllers = self.network.scoot_controllers
 
-        while self.current_time < self.end_time:
+        while self.current_time < self.simulation_time:
             self.network.update()
             scoot_controllers.updateParameters()
             self._runSingleStep()

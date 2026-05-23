@@ -11,24 +11,35 @@ class SignalHeads(Container):
             self.network = upper_object
             self.com = self.network.com.SignalHeads
             
-            self._initElements()
+            self._initElements(upper_object)
 
         elif upper_object.__class__.__name__ == 'VehicleRoute':
             self.vehicle_route = upper_object
         
         elif upper_object.__class__.__name__ == 'SignalGroup':
             self.signal_group = upper_object
+            self.network = self.signal_group.network
+
             self.com = self.signal_group.com.SigHeads
-            
-            network = self.signal_group.signal_controller.network
-            for signal_head_com in self.com.GetAll():
-                self.add(network.signal_heads[int(signal_head_com.AttValue('No'))])
+
+            self._initElements(upper_object)
+        
+        else:
+            raise NotImplementedError(f"Not supported upper_object class: {upper_object.__class__.__name__}")
         
         return
     
-    def _initElements(self):
-        for signal_head_com in self.com.GetAll():
-            self.add(SignalHead(signal_head_com, self))
+    def _initElements(self, upper_object):
+        if upper_object.__class__.__name__ == 'Network':
+            for signal_head_com in self.com.GetAll():
+                self.add(SignalHead(signal_head_com, self))
+        
+        elif upper_object.__class__.__name__ == 'SignalGroup':
+            for signal_head_com in self.com.GetAll():
+                self.add(self.network.signal_heads[int(signal_head_com.AttValue('No'))])
+        
+        else:
+            raise NotImplementedError(f"Not supported upper_object class for element initialization: {upper_object.__class__.__name__}")
 
         return
 
@@ -41,23 +52,26 @@ class SignalHead(Object):
         self.network = signal_heads.network
         self.com = com
 
-        # set id
+        self._initProps()
+        self._connectObjects()
+        return
+    
+    def _initProps(self):
         self.id = int(self.com.AttValue('No'))
+        self.route_id = None
+        return
+    
+    def _connectObjects(self):
+        # set connector
+        self.connector = self.network.links[int(self.com.Lane.Link.AttValue('No'))]
+        self.connector.signal_head = self
 
-        # set lane and connector
-        lane_com = self.com.Lane
-        link_com = lane_com.Link
-        lane = self.network.links[link_com.AttValue('No')].lanes[lane_com.AttValue('Index')]
+        # set lane
+        self.lane = self.connector.lanes[int(self.com.Lane.AttValue('Index'))]
+        self.lane.signal_head = self
 
-        self.lane = lane
-        lane.set('signal_head', self)
-
-        self.connector = lane.lanes.link
-
-        # set vehicle route
+        # set vehicle_route
         self.vehicle_route = self.connector.vehicle_route
-        self.vehicle_route.signal_heads.add(self)
-
-        # set route_id 
+        self.vehicle_route.signal_head = self
         self.route_id = self.vehicle_route.get('route_id')
         return

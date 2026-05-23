@@ -6,8 +6,9 @@ from objects.queue_counters import QueueCounters
 from objects.delay_measurements import DelayMeasurements
 from objects.data_collections import DataCollectionPoints
 
-from pandas import DataFrame
 import pandas as pd
+
+from objects.travel_time_measurements import TravelTimeMeasurements
 
 
 class Roads(Container): 
@@ -19,12 +20,13 @@ class Roads(Container):
 
         if upper_object.__class__.__name__ == 'Network':
             self.network = upper_object
-            self._initElements()
+            self._initElements(upper_object)
 
         elif upper_object.__class__.__name__ == 'Intersection':
             self.intersection = upper_object
+            self.network = self.intersection.network
             self.type = type
-            self._initElements()
+            self._initElements(upper_object)
         
         else:
             raise NotImplementedError(f"Not supported upper_object: {upper_object.__class__.__name__}")
@@ -40,13 +42,13 @@ class Roads(Container):
         
         return max_length
     
-    def _initElements(self):
-        if self.has('network'):
+    def _initElements(self, upper_object):
+        if upper_object.__class__.__name__ == 'Network':
             roads_df = self.config.get('roads_df')
             for _, road_row in roads_df.iterrows():
                 self.add(Road(road_row, self))
 
-        elif self.has('intersection'):
+        elif upper_object.__class__.__name__ == 'Intersection':
             # get intersection_road_tags_df
             tags_df = self.config.get('intersection_road_tags_df')
             target_tags_df = tags_df[
@@ -61,9 +63,9 @@ class Roads(Container):
                 self.add(road, tag_row['order_id'])
 
                 if self.type == 'input':
-                    road.set('output_intersection', self.intersection)
+                    road.output_intersection = self.intersection
                 elif self.type == 'output':
-                    road.set('input_intersection', self.intersection)
+                    road.input_intersection = self.intersection
                 else:
                     raise NotImplementedError(f"Not supported road type: {self.type}")
 
@@ -117,20 +119,21 @@ class Road(Object):
         self.network = roads.network
 
         self._initProps(road_row)
-
-        # initialize links, queue_counters, delay_measurements, signal_groups, data_collection_points, and vehicle_routing_decision objects
-        self.links = Links(self)
-        self.queue_counters = QueueCounters(self)
-        self.delay_measurements = DelayMeasurements(self)
-        self.signal_groups = SignalGroups(self)
-        self.data_collection_points = DataCollectionPoints(self)
-        self.vehicle_routing_decision = None
+        self._connectObjects()
         return
+    
+    @property
+    def length(self):
+        return self.main_link.get('length')
 
     @property
     def max_queue_length(self):
         return self.queue_counters.get('max_queue_length')
-
+    
+    @property
+    def close_threshold(self):
+        return self.max_queue_length if self.max_queue_length > self.max_speed else self.max_speed
+    
     @property
     def average_delay(self):
         delays = []
@@ -142,6 +145,15 @@ class Road(Object):
     @property
     def num_vehicles(self):
         return self.vehicles_df.shape[0]
+    
+    @property
+    def inflow_rate(self):
+        for data_collection_point in self.data_collection_points.getAll():
+            if data_collection_point.get('type') != 'input':
+                continue
+            return data_collection_point.get('flow_rate')
+        
+        raise Exception(f"No input type data collection point found for Road {self.id}")
     
     @property
     def route_signal_color_map(self):
@@ -158,8 +170,8 @@ class Road(Object):
         self.max_speed = int(road_row['max_speed'])
         self.type = road_row['type']
 
-        # set length (set in links initialization process)
-        self.length = None
+        # set inflow_volume (Links._connectObjects())
+        self.inflow_volume = None
     
         # initialize route_signal_group_map
         self.route_signal_group_map = {}
@@ -172,6 +184,36 @@ class Road(Object):
 
         if self.network.get('control_method') == 'scoot':
             self.effective_storage_length_map = None
+        return
+    
+    def _connectObjects(self):
+        # set link (Link._connectObjects)
+        self.links = Links(self)
+        self.main_link = None
+        self.right_link = None
+        self.left_link = None
+
+        # set intersection (Intersection._connectObjects)
+        self.input_intersection = None
+        self.output_intersection = None
+        
+        # set queue_counters (QueueCounters._connectObjects)
+        self.queue_counters = QueueCounters(self)
+
+        # set delay_measurements (DelayMeasurements._connectObjects)
+        self.delay_measurements = DelayMeasurements(self)
+
+        # set signal_groups (SignalGroups._connectObjects)
+        self.signal_groups = SignalGroups(self)
+
+        # set data_collection_points (DataCollectionPoints._connectObjects)
+        self.data_collection_points = DataCollectionPoints(self)
+
+        # set vehicle_routing_decision (VehicleRoutingDecision._connectObjects)
+        self.vehicle_routing_decision = None
+
+        # set travel_time_measurements (TravelTimeMeasurement._connectObjects)
+        self.travel_time_measurements = TravelTimeMeasurements(self)
         return
 
     def update(self):
@@ -201,10 +243,10 @@ class Road(Object):
 
         # initialize vehicles_df if it is None
         if self.vehicles_df is None:
-            self.vehicles_df = DataFrame(columns=['id', 'position', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
+            self.vehicles_df = pd.DataFrame(columns=['id', 'position', 'length', 'in_queue', 'speed', 'lane_id', 'link_id', 'road_id', 'route_id'])
 
         # if the road is not input road, skip the rest of the process    
-        if not self.has('output_intersection'):
+        if self.output_intersection is None:
             return
         
         # calculate route_num_vehs_map

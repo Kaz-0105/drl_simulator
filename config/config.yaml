@@ -1,8 +1,8 @@
 simulator:
   control_method : drl              # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name : 7-4-1               # layout folder name
-  inflow_name : balanced_700        # inflow file name
+  layout_name : 7-4-1-sb            # layout folder name
+  inflow_name : balanced_500        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -10,23 +10,23 @@ simulator:
   debug: 
     flg: false                      # flg for debugging                
   config_change:
-    flg: true                       # if true, you can change config during simulation usually used in drl experiments
+    flg: false                      # if true, you can change config during simulation usually used in drl experiments
 
 drl:
   simulation_type: train # train or test
   stop: 
-    type: episode # episode or interval
-    episode: 200
+    type: episode        # episode or interval
+    episode: 120
     interval: 100
   training:
-    learning_rate: 1e-4        # learning rate for drl
+    learning_rate: 1e-5        # learning rate for drl
     threshold: 50              # the number of new data for each learning update
     batch:
       number: 20                 # batch number for learning
       size: 128                  # batch size for learning
     epoch: 1                     # epoch for learning
     weight_decay: 0.0            # weight decay for learning
-    norm_clip: 1.0              # max norm for gradient clipping
+    norm_clip: 1.0               # max norm for gradient clipping
   framework: 
     type: apex
     apex:
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: true
-      speed: true
-      route: true
+      position: false
+      speed: false
+      route: false
     lane:
       length: true
       type: true
@@ -59,22 +59,28 @@ drl:
       queue: true
       delay: true
       route: true
+      inflow: true
     intersection:
       phase: true
   action:
-    random_type: 1 # 1: completely random, 2: random based on the number of vehicles
+    random:
+      type: top_k # normal, top_k, num_vehs
+      top_k:
+        num_actions: 4
   reward: 
     type: waiting_vehicles # waiting_vehicles, speedy_vehicles, throughput
     common:
-      gamma: 0.90
+      gamma: 0.80
     waiting_vehicles:
-      bonus: 1.0 # bonus for passing through the intersection
+      bonus: 
+        pass: 1.0 # bonus for passing through the intersection
+        movement: 0.1 # bonus for same movement as the previous step
       weight:
-        type: exponential # exponential or none
+        type: queue_exponential # exponential, queue_exponential or null
         exponential:
           half: 50 # the unit is meters
       scaler:
-        type: tanh_linear # tanh, tanh_linear or none
+        type: tanh_linear # tanh, tanh_linear or null
         tanh:
           alpha: 3
         tanh_linear:
@@ -141,14 +147,14 @@ mpc:
   objective_function:
     type: waiting_vehicles        # only waiting_vehicles
     waiting_vehicles:
-      definition: 4             # 1: delta_w2 is calculated with using delta_p, 2: delta_w2 is calculated without using delta_p, 3: delta_w1 and delta_w2 are both calculated without using delta_p 4: devide delta_w2 into separete binaries for before branching point and after branching point
-      range_type: separate      # common: use common range for all roads, separate: use separate range for each route 
+      definition: 4               # 1: delta_w2 is calculated with using delta_p, 2: delta_w2 is calculated without using delta_p, 3: delta_w1 and delta_w2 are both calculated without using delta_p 4: devide delta_w2 into separete binaries for before branching point and after branching point
+      range_type: separate        # common: use common range for all roads, separate: use separate range for each route 
       queue_measurement:
-        type: ema               # vissim: use vissim's built-in function, ema: use exponential moving average
+        type: ema                 # vissim: use vissim's built-in function, ema: use exponential moving average
         ema:  
           alpha: 0.3
       leader_detection:
-        type: multiple                 # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
+        type: multiple            # single: detect leader vehicle from the lane which the car go out, multiple: detect leader vehicle from multiple lanes
     signal_change:
       type: global                # global: use the signal-change binary for whole intersection, local: use the signal-change binary for each route
       weight: 12                  # weights for the term of signal change penalty

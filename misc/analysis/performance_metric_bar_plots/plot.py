@@ -47,9 +47,6 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
     
     # regarding mpc
     mpc_dir_path = simulator_dir_path / 'mpc'
-    if not mpc_dir_path.exists():
-        continue
-
     for method_dir_path in mpc_dir_path.glob('config_*'):
         with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
             method_config = yaml.safe_load(f)
@@ -99,9 +96,6 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
         continue
 
     scoot_dir_path = simulator_dir_path / 'scoot'
-    if not scoot_dir_path.exists():
-        continue
-
     for method_dir_path in scoot_dir_path.glob('config_*'):
         with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
             method_config = yaml.safe_load(f)
@@ -134,6 +128,53 @@ for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
                 performance_metric_map[performance_metric] = performance_value
             
             performance_metric_map_list.append(performance_metric_map)
+    
+    # regarding drl
+    drl_dir_path = simulator_dir_path / 'drl'
+    for method_dir_path in drl_dir_path.glob('config_*'):
+        with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+            method_config = yaml.safe_load(f)
+
+        vehicle_state_info = method_config['state']['vehicle']
+        
+        if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['micro']:
+            method_name = 'Micro DRL'
+        elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['macro']:
+            method_name = 'Macro DRL'
+        else:
+            continue
+
+        del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
+
+        if method_config != config_yaml['drl']:
+            continue
+        
+        for intersection_dir_path in method_dir_path.glob('intersection_*'):
+            # make performance_metric_map
+            performance_metric_map = {
+                'id': len(performance_metric_map_list) + 1,
+                'method': method_name,
+                'inflow': inflow,
+                'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
+            }
+            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                time_series_df = pd.read_csv(f)
+            for performance_metric in config_yaml['target']['performance_metrics']:
+            
+                if performance_metric == 'phase':
+                    time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
+                    time_series_df.loc[0, 'phase_change'] = False
+                    performance_value = time_series_df['phase_change'].sum()
+                elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
+                    performance_value = time_series_df[performance_metric].dropna().mean()       
+                elif performance_metric == 'delay_avg':
+                    performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                else:
+                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                
+                performance_metric_map[performance_metric] = performance_value
+            
+            performance_metric_map_list.append(performance_metric_map)
             
 performance_metric_df = pd.DataFrame(
     performance_metric_map_list, 
@@ -146,7 +187,7 @@ for inflow in performance_metric_df['inflow'].unique().tolist():
 
     # make hue_order_list
     hue_list = tmp_performance_metric_df['method'].unique().tolist()
-    ideal_hue_order_list = ['SCOOT'] + [f"{num_phases}-phase MPC" for num_phases in [4, 8, 17]]
+    ideal_hue_order_list = ['SCOOT'] + [f"{num_phases}-phase MPC" for num_phases in [4, 8, 17]] + ['Macro DRL', 'Micro DRL']
     hue_order_list = [method for method in ideal_hue_order_list if method in hue_list]
 
     for performance_metric in config_yaml['target']['performance_metrics']:
