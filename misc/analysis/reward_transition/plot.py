@@ -10,9 +10,6 @@ import yaml
 
 from libs.figure_config import init_figure_config
 
-init_figure_config()
-
-
 def main():
     # get config_info
     config_file_path = Path(__file__).parent / 'config.yaml'
@@ -109,4 +106,5 @@ def plotRewardTransition(figure_info, session_df, save_dir_path):
     return
 
 if __name__ == "__main__":
+    init_figure_config()
     main()
