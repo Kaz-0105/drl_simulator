@@ -221,17 +221,27 @@ class MasterAgent(Object):
         root_dir_path = self.network.get('root_dir_path')
         drl_dir_path = root_dir_path / 'data' / 'drl'
         drl_dir_path.mkdir(parents=True, exist_ok=True)
+
+        # get simulator_info
+        simulator_info = copy.deepcopy(self.config.get('simulator_info'))
+
+        simulator_info.pop('control_method')
+        simulator_info.pop('seed')
+        simulator_info.pop('layout_name')
+        simulator_info.pop('inflow_name')
+        simulator_info.pop('simulation_time')
+        simulator_info.pop('max_workers')
+        simulator_info.pop('debug')
+        simulator_info.pop('config_change')
         
-        # make drl_info
+        # get drl_info
         drl_info = copy.deepcopy(self.config.get('drl_info'))
 
-        # simulation_type, stop, training, and data_augmentation
         drl_info.pop('simulation_type')
         drl_info.pop('stop')
         drl_info.pop('training')
         drl_info.pop('data_augmentation')
 
-        # framework
         saved_framework_info = drl_info['framework']
         for key in copy.deepcopy(drl_info['framework']):
             if key == 'type':
@@ -247,10 +257,8 @@ class MasterAgent(Object):
         else:
             raise NotImplementedError(f"Not supported framework type: {saved_framework_info['type']}")
         
-        # action
         drl_info.pop('action')
 
-        # reward
         for key in copy.deepcopy(drl_info['reward']):
             if key == 'type':
                 continue
@@ -260,7 +268,6 @@ class MasterAgent(Object):
                 continue
             drl_info['reward'].pop(key)
         
-        # architecture
         for key in copy.deepcopy(drl_info['architecture']):
             if key == 'type':
                 continue
@@ -277,9 +284,35 @@ class MasterAgent(Object):
                 continue
             drl_info['architecture']['common']['activation_function'].pop(key)
         
-        # get target config_dir_path
+        # get target simulator_dir_path
         found_flg = False
-        for config_dir_path in drl_dir_path.glob('config_*'):
+        for simulator_dir_path in drl_dir_path.glob('simulator_*'):
+            config_file_path = simulator_dir_path / 'config.yaml'
+            if not config_file_path.exists():
+                continue
+
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                simulator_yaml = yaml.safe_load(f)
+            
+            if simulator_yaml == simulator_info:
+                found_flg = True
+                break
+        
+        if not found_flg:
+            simulator_id = 1
+            while True:
+                simulator_dir_path = drl_dir_path / f"simulator_{simulator_id}"
+                if not simulator_dir_path.exists():
+                    simulator_dir_path.mkdir(parents=True, exist_ok=False)
+                    config_file_path = simulator_dir_path / 'config.yaml'
+                    with config_file_path.open('w', encoding='utf-8') as f:
+                        yaml.dump(simulator_info, f)
+                    break
+                simulator_id += 1
+        
+        # get target config_dir_path
+        found_flg = False    
+        for config_dir_path in simulator_dir_path.glob('config_*'):
             config_file_path = config_dir_path / 'config.yaml'
             if not config_file_path.exists():
                 continue

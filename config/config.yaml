@@ -16,7 +16,7 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode        # episode or interval
-    episode: 120
+    episode: 121
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
