@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import yaml
-import re
 
 from libs.figure_config import init_figure_config
 
@@ -41,7 +40,19 @@ def getSessionDf(config_info):
         raise NotImplementedError('No drl data found.')
     
     found_flg = False
-    for config_dir_path in drl_dir_path.glob('config_*'):
+    for simulator_dir_path in drl_dir_path.glob('simulator_*'):
+        with open(simulator_dir_path / 'config.yaml', 'r') as f:
+            target_simulator_info = yaml.safe_load(f)
+
+        if target_simulator_info == config_info['simulator']:
+            found_flg = True
+            break
+    
+    if not found_flg:
+        raise NotImplementedError('No matching simulator config found.')
+    
+    found_flg = False
+    for config_dir_path in simulator_dir_path.glob('config_*'):
         with open(config_dir_path / 'config.yaml', 'r') as f:
             target_config_info = yaml.safe_load(f)
 
@@ -50,7 +61,7 @@ def getSessionDf(config_info):
             break
     
     if not found_flg:
-        raise NotImplementedError('No matching config found.')
+        raise NotImplementedError('No matching DRL config found.')
     
     session_file_path = config_dir_path / 'session' / 'session.csv'
     if not session_file_path.exists():
