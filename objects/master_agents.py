@@ -338,7 +338,7 @@ class MasterAgent(Object):
             # search empty config directory
             config_id = 1
             while True:
-                config_dir_path = drl_dir_path / f"config_{config_id}"
+                config_dir_path = simulator_dir_path / f"config_{config_id}"
                 if not config_dir_path.exists():
                     config_dir_path.mkdir(parents=True, exist_ok=False)
                     config_file_path = config_dir_path / 'config.yaml'
