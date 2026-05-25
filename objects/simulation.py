@@ -205,7 +205,7 @@ class Simulation(Common):
 
         while self.current_time < self.simulation_time:
             self.network.update()
-            scoot_controllers.updateParameters()
+            scoot_controllers.update()
             self._runSingleStep()
         
         self.network.update(type='final')

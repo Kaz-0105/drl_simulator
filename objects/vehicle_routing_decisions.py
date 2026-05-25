@@ -111,9 +111,9 @@ class VehicleRoutingDecision(Object):
             before_branch_length = self.road.right_connector.get('from_pos')
             after_branch_length = self.road.main_link.get('length') - before_branch_length
 
-            effective_storage_length_map['left'] += self.turn_ratios['left'] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios['left'] / (self.turn_ratios['left'] + self.turn_ratios['straight']) * after_branch_length
-            effective_storage_length_map['straight'] += self.turn_ratios['straight'] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios['straight'] / (self.turn_ratios['left'] + self.turn_ratios['straight']) * after_branch_length
-            effective_storage_length_map['right'] += self.turn_ratios['right'] / (sum(self.turn_ratios.values())) * before_branch_length
+            effective_storage_length_map['left'] += self.turn_ratios[1] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios[1] / (self.turn_ratios[1] + self.turn_ratios[2]) * after_branch_length
+            effective_storage_length_map['straight'] += self.turn_ratios[2] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios[2] / (self.turn_ratios[1] + self.turn_ratios[2]) * after_branch_length
+            effective_storage_length_map['right'] += self.turn_ratios[3] / (sum(self.turn_ratios.values())) * before_branch_length
 
             # 右車線について
             branch_length = 0.0
