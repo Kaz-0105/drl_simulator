@@ -107,6 +107,7 @@ class Links(Container):
 
             if link.get('type') == 'main':
                 road.main_link = link
+                road.set('length', link.get('length'))
             elif link.get('type') == 'right':
                 road.right_link = link
             elif link.get('type') == 'left':

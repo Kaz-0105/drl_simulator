@@ -123,28 +123,23 @@ class Road(Object):
         return
     
     @property
-    def length(self):
-        return self.main_link.get('length')
+    def close_threshold(self):
+        return self.max_queue_length if self.max_queue_length > self.max_speed else self.max_speed
 
     @property
     def max_queue_length(self):
         return self.queue_counters.get('max_queue_length')
     
     @property
-    def close_threshold(self):
-        return self.max_queue_length if self.max_queue_length > self.max_speed else self.max_speed
-    
-    @property
     def average_delay(self):
         delays = []
         for delay_measurement in self.delay_measurements.getAll():
             delays.append(delay_measurement.get('current_delay'))
-        
         return sum(delays) / len(delays) if len(delays) > 0 else 0
     
     @property
     def num_vehicles(self):
-        return self.vehicles_df.shape[0]
+        return self.vehicles_df.shape[0] if self.vehicles_df is not None else 0
     
     @property
     def inflow_rate(self):
@@ -152,7 +147,6 @@ class Road(Object):
             if data_collection_point.get('type') != 'input':
                 continue
             return data_collection_point.get('flow_rate')
-        
         raise Exception(f"No input type data collection point found for Road {self.id}")
     
     @property
@@ -170,8 +164,9 @@ class Road(Object):
         self.max_speed = int(road_row['max_speed'])
         self.type = road_row['type']
 
-        # set inflow_volume (Links._connectObjects())
+        # set inflow_volume and length (Links._connectObjects())
         self.inflow_volume = None
+        self.length = None
     
         # initialize route_signal_group_map
         self.route_signal_group_map = {}
@@ -192,6 +187,8 @@ class Road(Object):
         self.main_link = None
         self.right_link = None
         self.left_link = None
+        self.right_connector = None
+        self.left_connector = None
 
         # set intersection (Intersection._connectObjects)
         self.input_intersection = None

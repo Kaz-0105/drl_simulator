@@ -2,6 +2,8 @@ from libs.container import Container
 from libs.object import Object
 
 from collections import deque
+import copy
+import pandas as pd
 
 class ScootControllers(Container):
     def __init__(self, network):
@@ -50,6 +52,7 @@ class ScootController(Object):
 
         self._initProps(id)
         self._connectObjects(intersection)
+        self._showInfo('initial')
         return
 
     @property
@@ -85,6 +88,7 @@ class ScootController(Object):
                 phase_id: scoot_info['initial_parameters']['split'][phase_id - 1] for phase_id in range(1, ScootController.NUM_PHASES + 1)
             }
         }
+        self.previous_params = copy.deepcopy(self.params)
 
         self.remain_steps_info = {
             'cycle': self.params['cycle'],
@@ -105,9 +109,12 @@ class ScootController(Object):
         self.change_steps = scoot_info['change_steps']
         self.max_cycle = scoot_info['max_cycle']
         self.min_split = scoot_info['min_split']
+        
+        self.saturation_threshold = 1 / scoot_info['spacing_threshold']
 
-        self.spacing_threshold = scoot_info['spacing_threshold']
-        self.saturation_threshold = 1 / self.spacing_threshold
+        # set branch_length_map (ScootController._connectObjects())
+        self.branch_pos_map = None
+        self.link_phase_map = None
 
         # set effective_storage_length_map (ScootController._connectObjects())
         self.effective_storage_length_map = None 
@@ -117,8 +124,9 @@ class ScootController(Object):
         self.avg_saturation = None
         self.num_vehs_record = []
         self.saturation_record = []
-        self.phase_saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
-        self.phase_num_vehicles_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
+        self.saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
+        self.num_vehicles_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
+        self.empty_map = {phase_id: True for phase_id in range(1, self.num_phases + 1)}
         return
     
     def _connectObjects(self, intersection):
@@ -129,6 +137,24 @@ class ScootController(Object):
         # set signal_controller and roads
         self.signal_controller = self.intersection.signal_controller
         self.roads = self.intersection.input_roads
+
+        # set branch_length_map
+        self.branch_pos_map = {road_id: None for road_id in self.roads.getKeys()}
+        for road_id, road in self.roads.items():
+            if road.get('type') == 1:
+                self.branch_pos_map[road_id] = road.right_connector.get('from_pos')
+            else:
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+            
+        # set link_phase_map
+        self.link_phase_map = {}
+        for road_id, road in self.roads.items():
+            if road.get('type') == 1:
+                self.link_phase_map[road.main_link.get('id')] = 1 if road_id in [ScootController.NORTH_ROAD_ID, ScootController.SOUTH_ROAD_ID] else 2
+                self.link_phase_map[road.right_link.get('id')] = 3 if road_id in [ScootController.NORTH_ROAD_ID, ScootController.SOUTH_ROAD_ID] else 4
+                self.link_phase_map[road.right_connector.get('id')] = 3 if road_id in [ScootController.NORTH_ROAD_ID, ScootController.SOUTH_ROAD_ID] else 4
+            else:
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
 
         # set effective_storage_length_map
         self.effective_storage_length_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
@@ -170,46 +196,52 @@ class ScootController(Object):
         # update phase_saturation_map and phase_num_vehicles_map
         if len(self.num_vehs_record) == 1:
             for phase_id in range(1, self.num_phases + 1):
-                self.phase_saturation_map[phase_id] = self.saturation_record[-1][phase_id]
-                self.phase_num_vehicles_map[phase_id] = self.num_vehs_record[-1][phase_id]
+                self.saturation_map[phase_id] = self.saturation_record[-1][phase_id]
+                self.num_vehicles_map[phase_id] = self.num_vehs_record[-1][phase_id]
 
         elif len(self.num_vehs_record) <= self.params['cycle']:
             for phase_id in range(1, self.num_phases + 1):
-                self.phase_saturation_map[phase_id] = (self.phase_saturation_map[phase_id] * (len(self.num_vehs_record) - 1) + self.saturation_record[-1][phase_id]) / len(self.num_vehs_record)
-                self.phase_num_vehicles_map[phase_id] = (self.phase_num_vehicles_map[phase_id] * (len(self.num_vehs_record) - 1) + self.num_vehs_record[-1][phase_id]) / len(self.num_vehs_record)
+                self.saturation_map[phase_id] = (self.saturation_map[phase_id] * (len(self.num_vehs_record) - 1) + self.saturation_record[-1][phase_id]) / len(self.num_vehs_record)
+                self.num_vehicles_map[phase_id] = (self.num_vehicles_map[phase_id] * (len(self.num_vehs_record) - 1) + self.num_vehs_record[-1][phase_id]) / len(self.num_vehs_record)
 
         else:
             for phase_id in range(1, self.num_phases + 1):
-                self.phase_saturation_map[phase_id] += (self.saturation_record[-1][phase_id] - self.saturation_record[-1 - self.params['cycle']][phase_id]) / self.params['cycle']
-                self.phase_num_vehicles_map[phase_id] += (self.num_vehs_record[-1][phase_id] - self.num_vehs_record[-1 - self.params['cycle']][phase_id]) / self.params['cycle']
+                self.saturation_map[phase_id] += (self.saturation_record[-1][phase_id] - self.saturation_record[-1 - self.params['cycle']][phase_id]) / self.params['cycle']
+                self.num_vehicles_map[phase_id] += (self.num_vehs_record[-1][phase_id] - self.num_vehs_record[-1 - self.params['cycle']][phase_id]) / self.params['cycle']
         
-
-        # get total_num_vehicles and avg_saturation
-        self.total_num_vehicles = sum(self.phase_num_vehicles_map.values())
+        # update total_num_vehicles and avg_saturation
+        self.total_num_vehicles = sum(self.num_vehicles_map.values())
         self.avg_saturation = 0.0
-        for phase_id in range(1, self.num_phases + 1):
-            self.avg_saturation += self.phase_saturation_map[phase_id] * self.phase_num_vehicles_map[phase_id]
-        self.avg_saturation /= self.total_num_vehicles
+        if self.total_num_vehicles != 0:
+            for phase_id in range(1, self.num_phases + 1):
+                self.avg_saturation += self.saturation_map[phase_id] * self.num_vehicles_map[phase_id]
+            self.avg_saturation /= self.total_num_vehicles
+
+        if not self.split_update_flg:
+            return
+        
+        # update empty_map
+        for key in self.empty_map.keys():
+            self.empty_map[key] = []
+
+        for road_id, road in self.roads.items():
+            vehicles_df = road.get('vehicles_df').copy()
+            if road.get('type') == 1:
+                self.empty_map[self.link_phase_map[road.main_link.get('id')]].append(vehicles_df[
+                    (vehicles_df['link_id'] == road.main_link.get('id')) |
+                    (vehicles_df['position'] >= self.branch_pos_map[road_id]) 
+                ].shape[0] == 0)
+                self.empty_map[self.link_phase_map[road.right_link.get('id')]].append(vehicles_df[
+                    (vehicles_df['link_id'] == road.right_link.get('id')) | 
+                    (vehicles_df['link_id'] == road.right_connector.get('id'))
+                ].shape[0] == 0)
+            else:
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+
         return
     
     def _updateSplit(self):
-        if self.phase_saturation_map[self.current_phase] > self.phase_saturation_map[self.next_phase]:
-            if self.params['split'][self.next_phase] >= self.change_steps['split'] + self.min_split:
-                change_steps = self.change_steps['split']
-            else:
-                change_steps = self.params['split'][self.next_phase] - self.min_split
-            
-            if change_steps <= 0: return
-
-            self.first_partition['steps'] += change_steps
-            self.first_partition['fixed'] = True
-
-            self.params['split'][self.current_phase] += change_steps
-            self.params['split'][self.next_phase] -= change_steps
-
-            self.signal_controller.setPhases([self.current_phase] * change_steps)
-
-        else:
+        if all(flg for flg in self.empty_map[self.current_phase]) or self.saturation_map[self.current_phase] < self.saturation_map[self.next_phase]:
             if self.params['split'][self.current_phase] >= self.change_steps['split'] + self.min_split:
                 change_steps = self.change_steps['split']
             else:
@@ -225,6 +257,23 @@ class ScootController(Object):
 
             self.signal_controller.deletePhases(type='end', steps=change_steps)
 
+            if all(flg for flg in self.empty_map[self.current_phase]):
+                self._showInfo('empty')
+        else:
+            if self.params['split'][self.next_phase] >= self.change_steps['split'] + self.min_split:
+                change_steps = self.change_steps['split']
+            else:
+                change_steps = self.params['split'][self.next_phase] - self.min_split
+            
+            if change_steps <= 0: return
+
+            self.first_partition['steps'] += change_steps
+            self.first_partition['fixed'] = True
+
+            self.params['split'][self.current_phase] += change_steps
+            self.params['split'][self.next_phase] -= change_steps
+
+            self.signal_controller.setPhases([self.current_phase] * change_steps)
         return
 
     def _updateCycle(self):
@@ -265,10 +314,11 @@ class ScootController(Object):
 
             # update cycle information
             self.params['cycle'] += cumulative_change_steps
+
         else:
             # get phase_change_map
             phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
-            phase_order_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.phase_saturation_map[x] - self.saturation_threshold, reverse=True)
+            phase_order_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x] - self.saturation_threshold, reverse=True)
             for phase_order_id in range(self.max_cycle - self.params['cycle']):
                 phase_change_map[phase_order_list[phase_order_id % self.num_phases]] += 1
             
@@ -284,7 +334,7 @@ class ScootController(Object):
                     self.signal_controller.setPhases([partition['phase']['from']] * phase_change_map[partition['phase']['from']])
 
             # update cycle information
-            self.params['cycle'] += cumulative_change_steps
+            self.params['cycle'] += cumulative_change_steps    
         return
 
     def _proceedOneStep(self):
@@ -305,12 +355,39 @@ class ScootController(Object):
             self.remain_steps_info['cycle'] = self.params['cycle']
         self.remain_steps_info['cycle'] -= 1
         return
+
+    def _showInfo(self, type):
+        print('==============================================')
+        if type == 'update':
+            print('status: update parameters')
+            print(f"intersection id: {self.id}")
+            print(f"cycle: {self.previous_params['cycle']} -> {self.params['cycle']} steps")
+            for phase_id in ScootController.PHASE_ORDER_LIST:
+                print(f"phase {phase_id}: {self.previous_params['split'][phase_id]} -> {self.params['split'][phase_id]} steps")
+            
+        elif type == 'initial':
+            print('status: setup scoot controller')
+            print(f"intersection id: {self.id}")
+            print(f"cycle: {self.params['cycle']} steps")
+            for phase_id in ScootController.PHASE_ORDER_LIST:
+                print(f"phase {phase_id}: {self.params['split'][phase_id]} steps")
+        
+        elif type == 'empty':
+            print('status: current phase is empty')
+            print(f"intersection id: {self.id}")
+            print(f"phase {self.current_phase}: {self.previous_params['split'][self.current_phase]} -> {self.params['split'][self.current_phase]} steps")
+            print(f"phase {self.next_phase}: {self.previous_params['split'][self.next_phase]} -> {self.params['split'][self.next_phase]} steps")
+
+        else:
+            raise NotImplementedError(f"Not supported type: {type}")
     
     def update(self):
         self._updateTrafficInfo()
 
         if self.cycle_update_flg:
             self._updateCycle()
+            self._showInfo('update')
+            self.previous_params = copy.deepcopy(self.params)
 
         if self.split_update_flg:
             self._updateSplit()

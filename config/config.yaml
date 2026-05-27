@@ -2,7 +2,7 @@ simulator:
   control_method : scoot            # mpc, drl, scoot
   seed: 1                           # random seed for vissim
   layout_name : 7-4-1-sb            # layout folder name
-  inflow_name : balanced_800        # inflow file name
+  inflow_name : balanced_700        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -168,7 +168,7 @@ scoot:
     split: 1                   # cahnge amount of split (step)
   max_cycle: 60                # max cycle time (step)
   min_split: 4                 # min split for each phase (step)
-  spacing_threshold: 20        # spacing threshold for deciding whether increase or decrease cycle time
+  spacing_threshold: 30        # spacing threshold for cycle adjustment (m/veh)
     
 save:
   common:
