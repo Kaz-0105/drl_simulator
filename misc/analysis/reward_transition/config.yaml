@@ -100,9 +100,9 @@ drl:
       inflow: true
     vehicle:
       number: 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
   shape:
   - 2
   - 2
