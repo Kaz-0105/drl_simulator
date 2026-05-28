@@ -436,7 +436,7 @@ class ScootController(Object):
             phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
             phase_order_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
             for phase_order_id in range(min(self.max_cycle - self.params['cycle'], self.change_steps['cycle'] * self.num_phases)):
-                if any(self.blocked_info_map[phase_order_list[phase_order_id % self.num_phases]]):
+                if any(self.blocked_info_map[phase_order_list[phase_order_id % self.num_phases]].values()):
                     continue
                 phase_change_map[phase_order_list[phase_order_id % self.num_phases]] += 1
             
