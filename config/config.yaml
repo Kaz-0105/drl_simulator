@@ -165,9 +165,9 @@ scoot:
     split: [10, 10, 10, 10]    # initial split for each phase (step)
   change_steps:
     cycle: 1                   # change amount of cycle time (step)
-    split: 1                   # cahnge amount of split (step)
+    split: 2                   # change amount of split (step)
   max_cycle: 60                # max cycle time (step)
-  min_split: 4                 # min split for each phase (step)
+  min_split: 5                 # min split for each phase (step)
   spacing_threshold: 30        # spacing threshold for cycle adjustment (m/veh)
     
 save:
