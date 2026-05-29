@@ -205,19 +205,35 @@ class Link(Object):
         return
     
     def _connectObjects(self):
-        # set road (Link._connectObjects), intersection (Links._connectObjects), and travel_time_measurements (TravelTimeMeasurement._connectObjects)
         if self.type == 'connector':
+            # set road (Link._connectObjects)
             self.road = None
+
+            # set intersection (Links._connectObjects)
             self.intersection = None
+
+            # set travel_time_measurements (TravelTimeMeasurement._connectObjects)
             self.travel_time_measurements = None
             
         elif self.type == 'main':
+            # set road (Link._connectObjects)
             self.road = None
+
+            # set travel_time_measurements (TravelTimeMeasurement._connectObjects)
             self.travel_time_measurements = TravelTimeMeasurements(self)
+
+            # set vehicle_route and vehicle_routing_decision (TravelTimeMeasurement._connectObjects)
             self.vehicle_routing_decision = None
 
-        elif self.type in ['main', 'link', 'left', 'right']:
+            # set queue_counter (QueueCounter._connectObjects)
+            self.queue_counter = None
+
+        elif self.type in ['left', 'right']:
+            # set road (Link._connectObjects)
             self.road = None
+
+            # set queue_counter (QueueCounter._connectObjects)
+            self.queue_counter = None
 
         else:
             raise NotImplementedError(f"Not supported link type: {self.type}")

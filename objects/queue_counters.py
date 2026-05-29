@@ -13,6 +13,7 @@ class QueueCounters(Container):
             self.network = upper_object
             self.com = self.network.com.QueueCounters
             self._initElements()
+
         elif upper_object.__class__.__name__ == 'Road':
             self.road = upper_object
         else:
@@ -61,6 +62,7 @@ class QueueCounter(Object):
 
         # set properties
         self._initProps()
+        self._connectObjects()
         return
 
     def _initProps(self):
@@ -70,10 +72,14 @@ class QueueCounter(Object):
         # initialize queue_length_list
         self.record_list = []
         self.record_df = None
-
-        # connect to link and road object
+        return 
+    
+    def _connectObjects(self):
+        # set link
         self.link = self.network.links[self.com.Link.AttValue('No')]
-        self.link.set('queue_counter', self)
+        self.link.queue_counter = self
+
+        # set road
         self.road = self.link.road
         self.road.queue_counters.add(self)
         return
@@ -90,6 +96,13 @@ class QueueCounter(Object):
             self.record_df = pd.DataFrame(self.record_list)
         else:
             raise NotImplementedError(f"Not supported type: {type}")
+        
+    @property
+    def current_time(self):
+        if len(self.record_list) == 0:
+            return None
+        else:
+            return self.record_list[-1]['time']
 
     @property
     def current_queue_length(self):

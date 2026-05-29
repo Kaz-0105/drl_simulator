@@ -60,13 +60,10 @@ class DataCollectionPoint(Object):
     
     @property
     def flow_rate(self):
-        for data_collection_measurement in self.data_collection_measurements.getAll():
-            if data_collection_measurement.get('type') != 'single':
-                continue
-
-            return data_collection_measurement.get('flow_rate')
+        if self.data_collection_measurement is None:
+            raise Exception(f"No single type data collection measurement found for DataCollectionPoint {self.id}, so flow rate is not available")
         
-        raise Exception(f"No single type data collection measurement found for DataCollectionPoint {self.id}")
+        return self.data_collection_measurement.get('flow_rate')
     
     def _initProps(self):
         self.id = self.com.AttValue('No')
@@ -87,6 +84,7 @@ class DataCollectionPoint(Object):
 
         # set data_collection_measurements (DataCollectionMeasurement._connectObjects())
         self.data_collection_measurements = DataCollectionMeasurements(self)
+        self.data_collection_measurement = None
 
         # set type (intersection, input, output)
         if self.link.get('type') == 'connector':
@@ -118,6 +116,12 @@ class DataCollectionPoint(Object):
         else:
             raise NotImplementedError(f"Not supported data collection point type: {self.type}")
         return
+
+    def getFlowRate(self, duration_step=None):
+        if self.data_collection_measurement is None:
+            raise Exception(f"No single type data collection measurement found for DataCollectionPoint {self.id}, so flow rate is not available")
+        
+        return self.data_collection_measurement.getFlowRate(duration_step=duration_step)
     
 class DataCollectionMeasurements(Container):
     def __init__(self, upper_object):
@@ -167,13 +171,6 @@ class DataCollectionMeasurement(Object):
         self._initProps()
         self._connectObjects()
         return
-    
-    @property
-    def type(self):
-        if self.data_collection_points.count() == 1:
-            return 'single'
-        else:
-            return 'multiple'
         
     @property
     def current_time(self):
@@ -199,6 +196,7 @@ class DataCollectionMeasurement(Object):
     def _initProps(self):
         self.id = self.com.AttValue('No')
         self.duration_step = int(DataCollectionMeasurement.DURATION / self.time_step)
+        self.type = None 
 
         self.current_num_vehs = 0
         self.num_vehs_record = pd.DataFrame(columns=['time', 'num_vehs'])
@@ -206,11 +204,31 @@ class DataCollectionMeasurement(Object):
     
     def _connectObjects(self):
         self.data_collection_points = DataCollectionPoints(self)
+        self.type = 'single' if self.data_collection_points.count() == 1 else 'multiple'
+
+        if self.type == 'single':
+            self.data_collection_point = self.data_collection_points.getAll()[0]
+            self.data_collection_point.data_collection_measurement = self
         return
     
     def update(self, num_vehs):
         self.current_num_vehs = 0 if num_vehs is None else num_vehs
         self.num_vehs_record.loc[len(self.num_vehs_record)] = [self.current_time, self.current_num_vehs]
         return
+
+    def getFlowRate(self, duration_step=None):
+        if self.type != 'single':
+            raise Exception(f"Flow rate is only available for single type data collection measurement, but the type of DataCollectionMeasurement {self.id} is {self.type}")
+        
+        if duration_step is None:
+            duration_step = self.duration_step
+        
+        if len(self.num_vehs_record) > duration_step:
+            num_vehs_sum = self.num_vehs_record['num_vehs'][-duration_step:].sum()
+            return num_vehs_sum / (duration_step * self.time_step) # [veh/second]
+        else:
+            num_vehs_sum = self.num_vehs_record['num_vehs'].sum()
+            return num_vehs_sum / (len(self.num_vehs_record) * self.time_step) # [veh/second]
+
 
     

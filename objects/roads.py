@@ -91,8 +91,7 @@ class Roads(Container):
                     turn_ratios[order_id] = turn_ratio_record[f"ratio{order_id}"].to_numpy()[0]
                 
                 road = self[road_order_id]
-                road.set('turn_ratios', turn_ratios)
-
+                road.turn_ratios = turn_ratios
             return 
         
     def update(self):
@@ -163,6 +162,9 @@ class Road(Object):
         self.id = int(road_row['id'])
         self.max_speed = int(road_row['max_speed'])
         self.type = road_row['type']
+
+        # set turn_ratios (Roads._initElements())
+        self.turn_ratios = None
 
         # set inflow_volume and length (Links._connectObjects())
         self.inflow_volume = None
