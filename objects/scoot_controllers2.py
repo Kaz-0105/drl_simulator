@@ -152,7 +152,6 @@ class ScootController(Object):
         self.time_step = self.network.simulation.get('time_step')
 
         # initialize other properties
-        self.max_outflow_rate_map = {phase_id: self.INITIAL_FLOW_RATE for phase_id in range(1, self.num_phases + 1)}
         self.inflow_rate_record_map = {phase_id: pd.DataFrame(columns=['time', 'inflow_rate']) for phase_id in range(1, self.num_phases + 1)}
         self.outflow_rate_record_map = {phase_id: pd.DataFrame(columns=['time', 'outflow_rate']) for phase_id in range(1, self.num_phases + 1)}
         self.saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
@@ -182,6 +181,16 @@ class ScootController(Object):
                 }
             else:
                 raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+
+        # set max_outflow_rate_map 
+        self.max_outflow_rate_map = {}
+        for phase_id, road_list in self.PHASE_ROAD_LIST_MAP.items():
+            if phase_id in self.STRAIGHT_PHASE_LIST:
+                self.max_outflow_rate_map[(self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'straight')] = self.INITIAL_FLOW_RATE
+            elif phase_id in self.RIGHT_PHASE_LIST:
+                self.max_outflow_rate_map[(self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'right')] = self.INITIAL_FLOW_RATE
+            else:
+                raise NotImplementedError(f"Not supported phase id: {phase_id}")
         
         return
 
@@ -253,12 +262,26 @@ class ScootController(Object):
             'time': int(self.network.get('current_time')),
             'outflow_rate': outflow_rate
         }
+        
+        road_list = self.PHASE_ROAD_LIST_MAP[self.current_phase]
+        if self.current_phase in self.STRAIGHT_PHASE_LIST:
+            # update max_outflow_rate_map
+            tmp_keys = (self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'straight')
+            self.max_outflow_rate_map[tmp_keys] = max(self.max_outflow_rate_map[tmp_keys], outflow_rate)
 
-        # update max_outflow_rate_map
-        self.max_outflow_rate_map[self.current_phase] = max(self.max_outflow_rate_map[self.current_phase], outflow_rate)
+            # update saturation_map
+            self.saturation_map[self.current_phase] = inflow_rate * self.params['cycle'] / (self.max_outflow_rate_map[tmp_keys] * self.params['split'][self.current_phase])
+        
+        elif self.current_phase in self.RIGHT_PHASE_LIST:
+            # update max_outflow_rate_map
+            tmp_keys = (self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'right')
+            self.max_outflow_rate_map[tmp_keys] = max(self.max_outflow_rate_map[tmp_keys], outflow_rate)
 
-        # update saturation_map
-        self.saturation_map[self.current_phase] = inflow_rate * self.params['cycle'] / (self.max_outflow_rate_map[self.current_phase] * self.params['split'][self.current_phase])
+            # update saturation_map
+            self.saturation_map[self.current_phase] = inflow_rate * self.params['cycle'] / (self.max_outflow_rate_map[tmp_keys] * self.params['split'][self.current_phase])
+        
+        else:
+            raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
         return 
     
     def _updateSplit(self):
