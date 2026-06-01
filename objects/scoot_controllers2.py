@@ -50,11 +50,14 @@ class ScootController(Object):
     STRAIGHT_PHASE_LIST = [1, 2]
     RIGHT_PHASE_LIST = [3, 4]
 
+    MIN_DISTANCE = 1.0
+
     TURN_LEFT_ID = 1
     GO_STRAIGHT_ID = 2
     TURN_RIGHT_ID = 3
 
-    INITIAL_FLOW_RATE = 0.2
+    INITIAL_FLOW_RATE = 0.5
+    SPILLBACK_THRESHOLD = 0.8
 
     def __init__(self, scoot_controllers, intersection, id):
         super().__init__()
@@ -96,7 +99,15 @@ class ScootController(Object):
     
     @property
     def split_update_flg(self):
-        return (self.first_partition['steps'] == self.change_steps['split'] and not self.first_partition['fixed'])
+        return (self.first_partition['steps'] == self.change_steps['split']['normal'] and not self.first_partition['fixed'])
+
+    @property
+    def current_blocked_flg(self):
+        return any(self.blocked_info_map[self.current_phase].values())
+    
+    @property
+    def next_blocked_flg(self):
+        return any(self.blocked_info_map[self.next_phase].values())
     
     @property
     def max_saturation(self):
@@ -145,6 +156,7 @@ class ScootController(Object):
         self.inflow_rate_record_map = {phase_id: pd.DataFrame(columns=['time', 'inflow_rate']) for phase_id in range(1, self.num_phases + 1)}
         self.outflow_rate_record_map = {phase_id: pd.DataFrame(columns=['time', 'outflow_rate']) for phase_id in range(1, self.num_phases + 1)}
         self.saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
+        self.blocked_info_map = {phase_id: {} for phase_id in range(1, self.num_phases + 1)}
         return
     
     def _connectObjects(self, intersection):
@@ -158,9 +170,43 @@ class ScootController(Object):
         
         # set initial phases in signal_controller
         self.signal_controller.setPhases([self.first_partition['phase']['from']] * self.first_partition['steps'])
+
+        # set branch_length_map and link_phase_map
+        self.branch_info_map = {road_id: {} for road_id in self.roads.getKeys(container_flg=True)}
+        for road_id, road in self.roads.items():
+            if road.get('type') == 1:
+                self.branch_info_map[road_id]['pos'] = road.right_connector.get('from_pos')
+                self.branch_info_map[road_id]['length'] = {
+                    'straight': road.main_link.get('length') - road.right_connector.get('from_pos'),
+                    'right': road.right_connector.get('length') - road.right_connector.get('to_pos') + road.right_link.get('length'),
+                }
+            else:
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+        
         return
 
     def _updateTrafficInfo(self):
+        # udpate blocked_info_map
+        self.blocked_info_map[self.current_phase] = {}
+        for road_id, road in self.roads.items():
+            if road.get('type') == 1:
+                if road_id not in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
+                    continue
+
+                vehicles_df = road.get('vehicles_df')
+                vehicle_size = vehicles_df['length'].mean()
+
+                if self.current_phase in self.STRAIGHT_PHASE_LIST:
+                    num_vehs = vehicles_df[vehicles_df['link_id'].isin([road.right_link.get('id'), road.right_connector.get('id')])].shape[0]
+                    self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['right'] * self.SPILLBACK_THRESHOLD
+                
+                elif self.current_phase in self.RIGHT_PHASE_LIST:
+                    num_vehs = vehicles_df[
+                        (vehicles_df['link_id'] == road.main_link.get('id')) &
+                        (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
+                    ].shape[0]
+                    self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
+
         if self.split_update_flg:
             return
         
@@ -173,7 +219,7 @@ class ScootController(Object):
                 if data_collection_point.get('type') != 'input':
                     continue
 
-                tmp_inflow_rate = data_collection_point.getFlowRate(duration_step=self.params['cycle'] - self.change_steps['split'])
+                tmp_inflow_rate = data_collection_point.getFlowRate(duration_step=self.params['cycle'] - self.change_steps['split']['normal'])
             
             turn_ratios = road.get('turn_ratios')
             if self.current_phase in self.STRAIGHT_PHASE_LIST:
@@ -199,13 +245,7 @@ class ScootController(Object):
                 if data_collection_point.get('type') != 'intersection':
                     continue
 
-                if self.current_phase in self.STRAIGHT_PHASE_LIST and data_collection_point.get('route_id') == self.TURN_RIGHT_ID:
-                    continue
-
-                if self.current_phase in self.RIGHT_PHASE_LIST and data_collection_point.get('route_id') in [self.TURN_LEFT_ID, self.GO_STRAIGHT_ID]:
-                    continue
-
-                tmp_outflow_rate += data_collection_point.getFlowRate(duration_step=self.params['split'][self.current_phase] - self.change_steps['split'])
+                tmp_outflow_rate += data_collection_point.getFlowRate(duration_step=self.params['split'][self.current_phase] - self.change_steps['split']['normal'])
 
             outflow_rate += tmp_outflow_rate
 
@@ -222,22 +262,36 @@ class ScootController(Object):
         return 
     
     def _updateSplit(self):
-        if self.saturation_map[self.current_phase] < self.saturation_map[self.next_phase]:
-            self._decrementSplit()
+        if self.first_partition['fixed']:
+            return
+        
+        if self.current_blocked_flg:
+            self._decrementSplit(type='blocked')
+            self._showInfo('blocked', 'current')
+        elif (self.current_phase in self.STRAIGHT_PHASE_LIST) and self.next_blocked_flg:
+            self._incrementSplit(type='blocked')
+            self._showInfo('blocked', 'next')
+        elif self.saturation_map[self.current_phase] < self.saturation_map[self.next_phase]:
+            self._decrementSplit(type='normal')
         else:
-            self._incrementSplit()
+            self._incrementSplit(type='normal')
+
         return
     
-    def _decrementSplit(self):
-        if self.params['split'][self.current_phase] >= self.change_steps['split'] + self.min_split:
-            change_steps = self.change_steps['split']
+    def _decrementSplit(self, type):
+        if type == 'normal':
+            change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.current_phase] - self.min_split)
+        elif type == 'blocked':
+            change_steps = min(self.change_steps['split']['blocked'], self.params['split'][self.current_phase] - self.min_split)
         else:
-            change_steps = self.params['split'][self.current_phase] - self.min_split
-
+            raise NotImplementedError(f"Not supported type: {type}")
+        
         if change_steps <= 0: return
 
+        # not change fixed property if only blocked_flg is true
+        if self.first_partition['steps'] - change_steps <= self.change_steps['split']['normal']:
+            self.first_partition['fixed'] = True
         self.first_partition['steps'] -= change_steps
-        self.first_partition['fixed'] = True
 
         self.params['split'][self.current_phase] -= change_steps
         self.params['split'][self.next_phase] += change_steps
@@ -245,16 +299,18 @@ class ScootController(Object):
         self.signal_controller.deletePhases(type='end', steps=change_steps)
         return
     
-    def _incrementSplit(self):
-        if self.params['split'][self.next_phase] >= self.change_steps['split'] + self.min_split:
-            change_steps = self.change_steps['split']
+    def _incrementSplit(self, type):
+        if type == 'normal':
+            change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.next_phase] - self.min_split)
+        elif type == 'blocked':
+            change_steps = min(self.change_steps['split']['blocked'], self.params['split'][self.next_phase] - self.min_split)
         else:
-            change_steps = self.params['split'][self.next_phase] - self.min_split
+            raise NotImplementedError(f"Not supported type: {type}")
         
         if change_steps <= 0: return
 
-        self.first_partition['steps'] += change_steps
         self.first_partition['fixed'] = True
+        self.first_partition['steps'] += change_steps
 
         self.params['split'][self.current_phase] += change_steps
         self.params['split'][self.next_phase] -= change_steps
@@ -264,24 +320,36 @@ class ScootController(Object):
     
     def _updateCycle(self):
         if self.max_saturation < 0.8:
-            if self.first_partition['steps'] == 0:
-                return
-            
+            phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
+            for phase_id in range(1, self.num_phases + 1):
+                if self.saturation_map[phase_id] > 0.8:
+                    continue
+
+                change_steps = min(self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
+
+                if change_steps <= 0: continue
+                
+                if self.first_partition['phase']['from'] == phase_id:
+                    phase_change_map[phase_id] = min(change_steps, self.first_partition['steps'])
+                else:
+                    phase_change_map[phase_id] = change_steps 
+
             # update split information
             cumulative_change_steps = 0
             for partition_id, partition in enumerate(self.remain_steps_info['split']):
-                if self.params['split'][partition['phase']['from']] >= self.change_steps['cycle'] + self.min_split:
-                    change_steps = self.change_steps['cycle']
-                else:
-                    change_steps = self.params['split'][partition['phase']['from']] - self.min_split
-                
-                cumulative_change_steps += change_steps
+                cumulative_change_steps += phase_change_map[partition['phase']['from']]
 
                 partition['steps'] -= cumulative_change_steps
-                self.params['split'][partition['phase']['from']] -= change_steps
+                self.params['split'][partition['phase']['from']] -= phase_change_map[partition['phase']['from']]
+                
+                if partition_id != 0:
+                    continue
 
-                if partition_id == 0:
-                    self.signal_controller.deletePhases(type='end', steps=change_steps)
+                if partition['steps'] <= self.change_steps['split']['normal']:
+                    partition['fixed'] = True
+
+                if phase_change_map[partition['phase']['from']] > 0:
+                    self.signal_controller.deletePhases(type='end', steps=phase_change_map[partition['phase']['from']])
 
             # update cycle information
             self.params['cycle'] -= cumulative_change_steps
@@ -289,10 +357,19 @@ class ScootController(Object):
         elif self.max_saturation > 0.9:
             # get phase_change_map
             phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
-            phase_order_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
-            for phase_order_id in range(min(self.max_cycle - self.params['cycle'], self.change_steps['cycle'] * self.num_phases)):
-                phase_change_map[phase_order_list[phase_order_id % self.num_phases]] += 1
-            
+            prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
+            cumurative_change_steps = 0
+            for phase_id in prioritize_phase_list:
+                if self.saturation_map[phase_id] < 0.9:
+                    continue
+
+                change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
+
+                if change_steps <= 0: continue
+
+                phase_change_map[phase_id] = change_steps
+                cumurative_change_steps += change_steps
+                
             # update split information
             cumulative_change_steps = 0
             for partition_id, partition in enumerate(self.remain_steps_info['split']):
@@ -301,7 +378,7 @@ class ScootController(Object):
                 partition['steps'] += cumulative_change_steps
                 self.params['split'][partition['phase']['from']] += phase_change_map[partition['phase']['from']]
 
-                if partition_id == 0:
+                if partition_id == 0 and phase_change_map[partition['phase']['from']] > 0:
                     self.signal_controller.setPhases([partition['phase']['from']] * phase_change_map[partition['phase']['from']])
 
             # update cycle information
@@ -327,7 +404,7 @@ class ScootController(Object):
         self.remain_steps_info['cycle'] -= 1
         return
 
-    def _showInfo(self, type):
+    def _showInfo(self, type, option=None):
         print('==============================================')
         if type == 'update':
             print('status: update parameters')
@@ -343,12 +420,15 @@ class ScootController(Object):
             for phase_id in self.PHASE_ORDER_LIST:
                 print(f"phase {phase_id}: {self.params['split'][phase_id]} steps")
         
-        elif type == 'blocked':
-            print('status: current phase is empty and blocked')
+        elif type == 'blocked' and option == 'current':
+            print('status: blocked in current phase')
             print(f"intersection id: {self.id}")
             print(f"current_phase: {self.current_phase}")
-            for road_id, blocked_flg in self.blocked_info_map[self.current_phase].items():
-                print(f"road {road_id}: blocked_flg = {blocked_flg}")
+        
+        elif type == 'blocked' and option == 'next':
+            print('status: blocked in next phase')
+            print(f"intersection id: {self.id}")
+            print(f"current_phase: {self.current_phase}")
 
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -361,7 +441,11 @@ class ScootController(Object):
             self._showInfo('update')
             self.previous_params = copy.deepcopy(self.params)
 
-        if self.split_update_flg:
+        if not self.first_partition['fixed']:
+            self._proceedOneStep()
+            return
+        
+        if self.split_update_flg or self.current_blocked_flg:
             self._updateSplit()
 
         self._proceedOneStep()

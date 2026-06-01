@@ -1,0 +1,4 @@
+num_red_steps: 1
+seed: 1
+simulation_time: 2000
+time_step: 2

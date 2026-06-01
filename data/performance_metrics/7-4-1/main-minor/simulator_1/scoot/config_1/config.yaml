@@ -1,13 +1,14 @@
 change_steps:
   cycle: 1
-  split: 2
-initial_parameters:
-  cycle: 40
   split:
-  - 10
-  - 10
-  - 10
-  - 10
+    blocked: 2
+    normal: 1
+initial_parameters:
+  cycle: 20
+  split:
+  - 5
+  - 5
+  - 5
+  - 5
 max_cycle: 60
-min_split: 5
-spacing_threshold: 30
+min_split: 3

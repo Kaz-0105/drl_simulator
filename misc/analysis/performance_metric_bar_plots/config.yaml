@@ -84,14 +84,15 @@ mpc:
 
 scoot:
   initial_parameters:          
-    cycle: 40                 
-    split: [10, 10, 10, 10]    
+    cycle: 20                  # initial cycle time (step)
+    split: [5, 5, 5, 5]    # initial split for each phase (step)
   change_steps:
-    cycle: 1                 
-    split: 1                 
-  max_cycle: 60                
-  min_split: 4                
-  spacing_threshold: 20  
+    cycle: 1                   # change amount of cycle time (step)
+    split: 
+      normal: 1                # change amount of split for each phase when normal (step)
+      blocked: 2               # change amount of split for each phase when blocked (step)        
+  max_cycle: 60                # max cycle time (step)
+  min_split: 3                 # min split for each phase (step)   
 
 drl:
   architecture:
