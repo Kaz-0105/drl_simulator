@@ -47,6 +47,13 @@ class ScootController(Object):
         4: [EAST_ROAD_ID, WEST_ROAD_ID],    
     }
 
+    OPPOSITE_PHASE_MAP = {
+        1: 2,
+        2: 1,
+        3: 4,
+        4: 3,
+    }
+
     STRAIGHT_PHASE_LIST = [1, 2]
     RIGHT_PHASE_LIST = [3, 4]
 
@@ -108,10 +115,6 @@ class ScootController(Object):
     @property
     def next_blocked_flg(self):
         return any(self.blocked_info_map[self.next_phase].values())
-    
-    @property
-    def max_saturation(self):
-        return max(self.saturation_map.values())
 
     def _initProps(self, id):
         # set id and num_phases
@@ -197,28 +200,56 @@ class ScootController(Object):
     def _updateTrafficInfo(self):
         # udpate blocked_info_map
         self.blocked_info_map[self.current_phase] = {}
-        for road_id, road in self.roads.items():
-            if road.get('type') == 1:
-                if road_id not in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
-                    continue
+        if self.current_phase in self.STRAIGHT_PHASE_LIST:
+            for road_id, road in self.roads.items():
+                if road.get('type') == 1:
+                    if road_id not in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
+                        continue
 
-                vehicles_df = road.get('vehicles_df')
-                vehicle_size = vehicles_df['length'].mean()
+                    vehicles_df = road.get('vehicles_df')
+                    vehicle_size = vehicles_df['length'].mean()
 
-                if self.current_phase in self.STRAIGHT_PHASE_LIST:
                     num_vehs = vehicles_df[vehicles_df['link_id'].isin([road.right_link.get('id'), road.right_connector.get('id')])].shape[0]
                     self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['right'] * self.SPILLBACK_THRESHOLD
-                
-                elif self.current_phase in self.RIGHT_PHASE_LIST:
-                    num_vehs = vehicles_df[
-                        (vehicles_df['link_id'] == road.main_link.get('id')) &
-                        (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-                    ].shape[0]
-                    self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
                 else:
-                    raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
-            else:
-                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+                    raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+
+        elif self.current_phase in self.RIGHT_PHASE_LIST:
+            for road_id, road in self.roads.items():
+                if road.get('type') == 1:
+                    if road_id in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
+                        vehicles_df = road.get('vehicles_df')
+                        vehicle_size = vehicles_df['length'].mean()
+
+                        num_vehs = vehicles_df[
+                            (vehicles_df['link_id'] == road.main_link.get('id')) &
+                            (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
+                        ].shape[0]
+
+                        self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
+                    
+                    elif road_id in self.PHASE_ROAD_LIST_MAP[self.OPPOSITE_PHASE_MAP[self.current_phase]]:
+                        if self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id]:
+                            continue
+
+                        vehicles_df = road.get('vehicles_df')
+                        vehicle_size = vehicles_df['length'].mean()
+
+                        num_vehs = vehicles_df[
+                            (vehicles_df['link_id'] == road.main_link.get('id')) &
+                            (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
+                        ].shape[0]
+
+                        self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
+                        
+                        if self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id]:
+                            print('blocked in opposite phase!')
+                    else:
+                        raise NotImplementedError(f"Road id {road_id} is not included in current phase {self.current_phase} and opposite phase {self.OPPOSITE_PHASE_MAP[self.current_phase]}")
+                else:
+                    raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+        else:
+            raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
             
         if self.split_update_flg:
             return
@@ -289,14 +320,11 @@ class ScootController(Object):
         return 
     
     def _updateSplit(self):
-        if self.first_partition['fixed']:
-            return
-        
         if self.current_blocked_flg:
             self._decrementSplit(type='blocked')
             self._showInfo('blocked', 'current')
 
-        elif (self.next_phase in self.RIGHT_PHASE_LIST) and self.next_blocked_flg:
+        elif (self.current_phase in self.STRAIGHT_PHASE_LIST) and self.next_blocked_flg:
             self._incrementSplit(type='blocked')
             self._showInfo('blocked', 'next')
 
@@ -310,9 +338,9 @@ class ScootController(Object):
     
     def _decrementSplit(self, type):
         if type == 'normal':
-            change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.current_phase] - self.min_split)
+            change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
         elif type == 'blocked':
-            change_steps = min(self.change_steps['split']['blocked'], self.params['split'][self.current_phase] - self.min_split)
+            change_steps = min(self.change_steps['split']['blocked'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
         else:
             raise NotImplementedError(f"Not supported type: {type}")
         
@@ -399,6 +427,12 @@ class ScootController(Object):
 
         # update cycle information
         self.params['cycle'] += cumulative_change_steps    
+
+        # show update information
+        self._showInfo('update')
+
+        # update previous_params
+        self.previous_params = copy.deepcopy(self.params)
         return
 
     def _proceedOneStep(self):
@@ -450,19 +484,22 @@ class ScootController(Object):
             raise NotImplementedError(f"Not supported type: {type}")
     
     def update(self):
+        # update traffic information
         self._updateTrafficInfo()
 
+        # update cycle
         if self.cycle_update_flg:
             self._updateCycle()
-            self._showInfo('update')
-            self.previous_params = copy.deepcopy(self.params)
-
-        if not self.first_partition['fixed']:
+        
+        # if cycle adjustment leads first_partition to be fixed, proceed one step without split adjustment and return
+        if self.first_partition['fixed']:
             self._proceedOneStep()
             return
         
+        # update split
         if self.split_update_flg or self.current_blocked_flg:
             self._updateSplit()
-
+        
+        # proceed one step
         self._proceedOneStep()
         return
