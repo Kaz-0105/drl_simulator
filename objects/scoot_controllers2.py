@@ -215,7 +215,11 @@ class ScootController(Object):
                         (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
                     ].shape[0]
                     self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
-
+                else:
+                    raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
+            else:
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+            
         if self.split_update_flg:
             return
         
@@ -291,11 +295,14 @@ class ScootController(Object):
         if self.current_blocked_flg:
             self._decrementSplit(type='blocked')
             self._showInfo('blocked', 'current')
-        elif (self.current_phase in self.STRAIGHT_PHASE_LIST) and self.next_blocked_flg:
+
+        elif (self.next_phase in self.RIGHT_PHASE_LIST) and self.next_blocked_flg:
             self._incrementSplit(type='blocked')
             self._showInfo('blocked', 'next')
+
         elif self.saturation_map[self.current_phase] < self.saturation_map[self.next_phase]:
             self._decrementSplit(type='normal')
+
         else:
             self._incrementSplit(type='normal')
 
@@ -342,70 +349,56 @@ class ScootController(Object):
         return
     
     def _updateCycle(self):
-        if self.max_saturation < 0.8:
-            phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
-            for phase_id in range(1, self.num_phases + 1):
-                if self.saturation_map[phase_id] > 0.8:
-                    continue
+        # get phase_change_map
+        phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
+        
+        cumurative_change_steps = 0
+        for phase_id in range(1, self.num_phases + 1):
+            if self.saturation_map[phase_id] > 0.8:
+                continue
 
-                change_steps = min(self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
+            change_steps = min(self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
+            if change_steps <= 0: continue
 
-                if change_steps <= 0: continue
-                
-                if self.first_partition['phase']['from'] == phase_id:
-                    phase_change_map[phase_id] = min(change_steps, self.first_partition['steps'])
-                else:
-                    phase_change_map[phase_id] = change_steps 
+            if self.first_partition['phase']['from'] == phase_id:
+                phase_change_map[phase_id] = - min(change_steps, self.first_partition['steps'])
+            else:
+                phase_change_map[phase_id] = - change_steps
+            cumurative_change_steps += phase_change_map[phase_id]
+        
+        prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
+        for phase_id in prioritize_phase_list:
+            if self.saturation_map[phase_id] < 0.9:
+                continue
 
-            # update split information
-            cumulative_change_steps = 0
-            for partition_id, partition in enumerate(self.remain_steps_info['split']):
-                cumulative_change_steps += phase_change_map[partition['phase']['from']]
+            change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
+            if change_steps <= 0: continue
 
-                partition['steps'] -= cumulative_change_steps
-                self.params['split'][partition['phase']['from']] -= phase_change_map[partition['phase']['from']]
-                
-                if partition_id != 0:
-                    continue
+            phase_change_map[phase_id] = change_steps
+            cumurative_change_steps += phase_change_map[phase_id]
 
-                if partition['steps'] <= self.change_steps['split']['normal']:
-                    partition['fixed'] = True
+        # update split information
+        cumulative_change_steps = 0
+        for partition_id, partition in enumerate(self.remain_steps_info['split']):
+            cumulative_change_steps += phase_change_map[partition['phase']['from']]
 
-                if phase_change_map[partition['phase']['from']] > 0:
-                    self.signal_controller.deletePhases(type='end', steps=phase_change_map[partition['phase']['from']])
+            partition['steps'] += cumulative_change_steps
+            self.params['split'][partition['phase']['from']] += phase_change_map[partition['phase']['from']]
 
-            # update cycle information
-            self.params['cycle'] -= cumulative_change_steps
+            if partition_id != 0:
+                continue
 
-        elif self.max_saturation > 0.9:
-            # get phase_change_map
-            phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
-            prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
-            cumurative_change_steps = 0
-            for phase_id in prioritize_phase_list:
-                if self.saturation_map[phase_id] < 0.9:
-                    continue
+            if partition['steps'] <= self.change_steps['split']['normal']:
+                partition['fixed'] = True
+            
+            if phase_change_map[partition['phase']['from']] > 0:
+                self.signal_controller.setPhases([partition['phase']['from']] * phase_change_map[partition['phase']['from']])
 
-                change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
+            elif phase_change_map[partition['phase']['from']] < 0:
+                self.signal_controller.deletePhases(type='end', steps=-phase_change_map[partition['phase']['from']])
 
-                if change_steps <= 0: continue
-
-                phase_change_map[phase_id] = change_steps
-                cumurative_change_steps += change_steps
-                
-            # update split information
-            cumulative_change_steps = 0
-            for partition_id, partition in enumerate(self.remain_steps_info['split']):
-                cumulative_change_steps += phase_change_map[partition['phase']['from']]
-
-                partition['steps'] += cumulative_change_steps
-                self.params['split'][partition['phase']['from']] += phase_change_map[partition['phase']['from']]
-
-                if partition_id == 0 and phase_change_map[partition['phase']['from']] > 0:
-                    self.signal_controller.setPhases([partition['phase']['from']] * phase_change_map[partition['phase']['from']])
-
-            # update cycle information
-            self.params['cycle'] += cumulative_change_steps    
+        # update cycle information
+        self.params['cycle'] += cumulative_change_steps    
         return
 
     def _proceedOneStep(self):
