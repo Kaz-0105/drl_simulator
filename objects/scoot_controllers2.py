@@ -66,6 +66,11 @@ class ScootController(Object):
     INITIAL_FLOW_RATE = 0.5
     SPILLBACK_THRESHOLD = 0.8
 
+    SATURATION_THRESHOLD_MAP = {
+        'up': 0.85,
+        'down': 0.70,
+    }
+
     def __init__(self, scoot_controllers, intersection, id):
         super().__init__()
 
@@ -229,7 +234,7 @@ class ScootController(Object):
                         self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
                     
                     elif road_id in self.PHASE_ROAD_LIST_MAP[self.OPPOSITE_PHASE_MAP[self.current_phase]]:
-                        if self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id]:
+                        if road_id in self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]] and self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id]:
                             continue
 
                         vehicles_df = road.get('vehicles_df')
@@ -241,9 +246,6 @@ class ScootController(Object):
                         ].shape[0]
 
                         self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
-                        
-                        if self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id]:
-                            print('blocked in opposite phase!')
                     else:
                         raise NotImplementedError(f"Road id {road_id} is not included in current phase {self.current_phase} and opposite phase {self.OPPOSITE_PHASE_MAP[self.current_phase]}")
                 else:
@@ -382,7 +384,7 @@ class ScootController(Object):
         
         cumurative_change_steps = 0
         for phase_id in range(1, self.num_phases + 1):
-            if self.saturation_map[phase_id] > 0.8:
+            if self.saturation_map[phase_id] > self.SATURATION_THRESHOLD_MAP['down']:
                 continue
 
             change_steps = min(self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
@@ -396,7 +398,7 @@ class ScootController(Object):
         
         prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
         for phase_id in prioritize_phase_list:
-            if self.saturation_map[phase_id] < 0.9:
+            if self.saturation_map[phase_id] < self.SATURATION_THRESHOLD_MAP['up']:
                 continue
 
             change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
