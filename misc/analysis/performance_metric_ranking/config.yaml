@@ -18,6 +18,7 @@ target:
     'delay_max',
     'speed_avg',
   ]
+  sort_by: queue_avg
   seed:
     fix_flg: true
     fix_value: 1

@@ -1,5 +1,5 @@
 simulator:
-  control_method : scoot            # mpc, drl, scoot, scoot2
+  control_method : drl            # mpc, drl, scoot, scoot2
   seed: 1                           # random seed for vissim
   layout_name : 7-4-1-sb            # layout folder name
   inflow_name : balanced_800          # inflow file name

@@ -13,6 +13,9 @@ import copy
 from libs.figure_config import init_figure_config
 
 def main():
+    # reflect figure configuration
+    init_figure_config()
+    
     # get config_info
     config_file_path = Path(__file__).parent / 'config.yaml'
     with open(config_file_path, 'r') as f:
@@ -139,5 +142,4 @@ def plotRewardTransition(figure_info, session_df_map, save_dir_path):
     return
 
 if __name__ == "__main__":
-    init_figure_config()
     main()
