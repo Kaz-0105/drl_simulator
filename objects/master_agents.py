@@ -88,8 +88,12 @@ class MasterAgent(Object):
         self._initProps(num_roads, num_lanes_tuple)
         self._connectObjects()
         
-        # load model, session, and buffer
-        self._load()
+        # load saved data (ex. model parameters, training session information)
+        self._loadSavedData()
+
+        # validation check
+        self._validation()
+        
         return
     
     @property
@@ -394,8 +398,8 @@ class MasterAgent(Object):
         )
         return
 
-    def _load(self):
-        # load session_info, session_df
+    def _loadSavedData(self):
+        # load update_count, session_df, active_phases_df, epsilon_record_df, and episode
         if self.simulation_id > 1:
             self.update_count = self.shared_resources.get('update_count')
             self.session_df = self.shared_resources.get('session_df')
@@ -428,7 +432,7 @@ class MasterAgent(Object):
                 with open(epsilon_record_df_file_path, 'r', encoding='utf-8', newline='') as f:
                     self.epsilon_record_df = pd.read_csv(f)
                     
-        # load model
+        # load model and target_model
         if self.simulation_id > 1:
             self.model = self.shared_resources.get('model')
         
@@ -457,19 +461,11 @@ class MasterAgent(Object):
                 self.optimizer.load_state_dict(torch.load(optimizer_file_path))
         return
     
-    def _makeEpsilon(self):
-        apex_info = self.config.get('apex_info')
-        self.epsilon_schedule_flg = apex_info['epsilon']['schedule_flg']
-
-        if not self.epsilon_schedule_flg:
-            self.epsilon = apex_info['epsilon']['value']
-            return
-        
-        # epsilonのスケジュールを取得
-        epsilon_schedule = self.config.get('epsilon_schedule')
-        schedule_interval = len(epsilon_schedule) 
-
-        self.epsilon = epsilon_schedule['epsilon'].iloc[(self.episode - 1) % schedule_interval]
+    def _validation(self):
+        # stop episode check
+        if self.simulation_type == 'train' and self.stop_type == 'episode':
+            if self.episode > self.stop_episode:
+                raise ValueError(f"Invalid stop episode: current episode = {self.episode}, stop episode = {self.stop_episode}")
         return
     
     def _toDevice(self, data):

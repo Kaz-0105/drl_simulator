@@ -146,7 +146,7 @@ drl:
     type: waiting_vehicles
     waiting_vehicles:
       bonus:
-        movement: 0.1
+        movement: 0.3
         pass: 1.0
       scaler:
         tanh:

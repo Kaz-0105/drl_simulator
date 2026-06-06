@@ -1,8 +1,8 @@
 simulator:
-  control_method : drl            # mpc, drl, scoot, scoot2
+  control_method : drl              # mpc, drl, scoot, scoot2
   seed: 1                           # random seed for vissim
   layout_name : 7-4-1-sb            # layout folder name
-  inflow_name : balanced_800          # inflow file name
+  inflow_name : balanced_500        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -13,10 +13,10 @@ simulator:
     flg: false                      # if true, you can change config during simulation usually used in drl experiments
 
 drl:
-  simulation_type: train # train or test
+  simulation_type: test # train or test
   stop: 
     type: episode        # episode or interval
-    episode: 20
+    episode: 60
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
@@ -66,7 +66,7 @@ drl:
     random:
       type: top_k # normal, top_k, num_vehs
       top_k:
-        num_actions: 8
+        num_actions: 4
   reward: 
     type: waiting_vehicles # waiting_vehicles, speedy_vehicles, throughput
     common:
