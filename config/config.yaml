@@ -1,8 +1,8 @@
 simulator:
   control_method : drl              # mpc, drl, scoot, scoot2
   seed: 1                           # random seed for vissim
-  layout_name : 7-4-1-sb            # layout folder name
-  inflow_name : balanced_700        # inflow file name
+  layout_name : 7-4-1-sb               # layout folder name
+  inflow_name : balanced_500        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -13,10 +13,10 @@ simulator:
     flg: false                      # if true, you can change config during simulation usually used in drl experiments
 
 drl:
-  simulation_type: train # train or test
+  simulation_type: test # train or test
   stop: 
     type: episode        # episode or interval
-    episode: 80
+    episode: 70
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
@@ -64,23 +64,23 @@ drl:
       phase: true
   action:
     random:
-      type: top_k # normal, top_k, num_vehs
+      type: top_k               # normal, top_k, num_vehs
       top_k:
         num_actions: 4
   reward: 
-    type: waiting_vehicles # waiting_vehicles, speedy_vehicles, throughput
+    type: waiting_vehicles      # waiting_vehicles, speedy_vehicles, throughput
     common:
       gamma: 0.80
     waiting_vehicles:
       bonus: 
-        pass: 1.0 # bonus for passing through the intersection
-        movement: 0.3 # bonus for same movement as the previous step
+        pass: 1.0               # bonus for passing through the intersection
+        movement: 0.1           # bonus for same movement as the previous step
       weight:
         type: queue_exponential # exponential, queue_exponential or null
         exponential:
-          half: 50 # the unit is meters
+          half: 50              # the unit is meters
       scaler:
-        type: tanh_linear # tanh, tanh_linear or null
+        type: tanh_linear       # tanh, tanh_linear or null
         tanh:
           alpha: 3
         tanh_linear:
