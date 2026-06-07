@@ -256,7 +256,9 @@ class LocalAgent(Object):
         self.previous_action = None
         self.random_action_flg_record = deque(maxlen=self.td_steps)
         self.reward_record = deque(maxlen=self.td_steps)
+
         self.calc_time_record_list = []
+        self.reward_record_list = []
 
         self.spacing = LocalAgent.INITIAL_SPACING
         self.done_flg = False
@@ -774,6 +776,11 @@ class LocalAgent(Object):
 
         self.reward_record.append(reward)
         self.total_reward += reward
+
+        self.reward_record_list.append({
+            'time': self.current_time,
+            'value': reward,
+        })
         return
     
     def _getWaitingVehiclesReward(self):
@@ -1082,6 +1089,7 @@ class LocalAgent(Object):
 
         elif type == 'dataframe':
             self.calc_time_record_df = pd.DataFrame(self.calc_time_record_list)
+            self.reward_record_df = pd.DataFrame(self.reward_record_list)
 
         else:
             raise NotImplementedError(f"Not supported type: {type}")

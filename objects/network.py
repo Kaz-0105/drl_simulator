@@ -116,12 +116,12 @@ class Network(Common):
         return
     
     def _setParametersToVissim(self):
-        # 流入量をセット
+        # set input volumes
         for vehicle_input in self.vehicle_inputs.getAll():
             input_volume = vehicle_input.link.get('input_volume')
             vehicle_input.com.SetAttValue('Volume(1)', input_volume)
 
-        # 旋回率をセット
+        # set turn ratios
         for vehicle_routing_decision in self.vehicle_routing_decisions.getAll():
             for vehicle_route in vehicle_routing_decision.vehicle_routes.getAll():
                 vehicle_route.com.SetAttValue('RelFlow(1)', vehicle_route.get('turn_ratio'))
@@ -154,6 +154,9 @@ class Network(Common):
         self._makeSpeedRecordsMap()
         self._makeCalcTimeRecordsMap()
         self._makePhaseRecordsMap()
+
+        if self.control_method == 'drl':
+            self._makeRewardRecordsMap()
 
         # save drl information (only for train simulation, not for test simulation)
         if self.control_method == 'drl' and self.drl_simulation_type == 'train':
@@ -463,6 +466,16 @@ class Network(Common):
             self.phase_records_map[intersection.get('id')] = intersection.signal_controller.get('record_df')
         
         return
+    
+    def _makeRewardRecordsMap(self):
+        if not self.save_flg_map['reward']:
+            return
+        
+        self.local_agents.sync('dataframe')
+        self.reward_records_map = {}
+        for local_agent in self.local_agents.getAll():
+            self.reward_records_map[local_agent.intersection.get('id')] = local_agent.get('reward_record_df')
+        return
 
     def _saveCSV(self):
         # skip if all save flags are false
@@ -512,6 +525,13 @@ class Network(Common):
                 data_map['phase'] = tmp_record_df['value'].values
             
             record_df = pd.DataFrame(data_map)
+
+            if self.save_flg_map['reward'] and self.control_method == 'drl':
+                tmp_record_df = self.reward_records_map[intersection.get('id')]
+                tmp_record_df = tmp_record_df.rename(columns={'value': 'reward'})
+
+                record_df = pd.merge(record_df, tmp_record_df, on='time', how='left')
+            
             record_df.to_csv(
                 path_or_buf=save_dir_path / 'performance_metrics.csv', 
                 float_format='%.2f',

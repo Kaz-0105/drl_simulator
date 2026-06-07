@@ -179,6 +179,7 @@ save:
       speed: true
       calc_time: true
       phase: true
+      reward: true
     road_scale_flg: true 
   drl:
     model: true
