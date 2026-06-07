@@ -17,6 +17,7 @@ target:
     'delay_avg',
     'delay_max',
     'speed_avg',
+    'num_phase_changes',
   ]
   seed:
     fix_flg: true
@@ -34,6 +35,7 @@ figure:
     delay_avg: 'Average Delay Comparison Across All Traffic Scenarios'
     delay_max: 'Maximum Delay Comparison Across All Traffic Scenarios'
     speed_avg: 'Average Speed Comparison Across All Traffic Scenarios'
+    num_phase_changes: 'Number of Phase Changes Comparison Across All Traffic Scenarios'
   y_axis:
     label: 
       queue_avg: 'Average Queue Length [m]'
@@ -41,6 +43,7 @@ figure:
       delay_avg: 'Average Delay [s]'
       delay_max: 'Maximum Delay [s]'
       speed_avg: 'Average Speed [km/h]'
+      num_phase_changes: 'Number of Phase Changes'
 
 simulator:
   num_red_steps: 1            

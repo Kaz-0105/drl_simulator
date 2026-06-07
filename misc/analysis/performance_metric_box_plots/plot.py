@@ -90,6 +90,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'num_phase_changes':
+                            performance_metric_map[performance_metric] = time_series_df['phase'].diff().fillna(0).ne(0).sum()
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -123,6 +125,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'num_phase_changes':
+                            performance_metric_map[performance_metric] = time_series_df['phase'].diff().fillna(0).ne(0).sum()
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -164,6 +168,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'num_phase_changes':
+                            performance_metric_map[performance_metric] = time_series_df['phase'].diff().fillna(0).ne(0).sum()
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
