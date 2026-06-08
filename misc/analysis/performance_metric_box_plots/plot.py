@@ -28,11 +28,8 @@ def main():
     save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_box_plots'
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # get order_list
-    order_list = getOrderList(config_yaml)
-
     # plot figure
-    plotFigure(config_yaml, performance_metric_df, order_list, save_dir_path)
+    plotFigure(config_yaml, performance_metric_df, save_dir_path)
     return
 
 def getPerformanceMetricDf(config_yaml):
@@ -92,6 +89,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                         elif performance_metric == 'num_phase_changes':
                             performance_metric_map[performance_metric] = time_series_df['phase'].diff().fillna(0).ne(0).sum()
+                        elif performance_metric == 'reward':
+                            pass
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -127,6 +126,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                         elif performance_metric == 'num_phase_changes':
                             performance_metric_map[performance_metric] = time_series_df['phase'].diff().fillna(0).ne(0).sum()
+                        elif performance_metric == 'reward':
+                            pass
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -170,6 +171,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
                         elif performance_metric == 'num_phase_changes':
                             performance_metric_map[performance_metric] = time_series_df['phase'].diff().fillna(0).ne(0).sum()
+                        elif performance_metric == 'reward':
+                            performance_metric_map[performance_metric] = time_series_df['reward'].fillna(0).sum()
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -182,14 +185,16 @@ def getPerformanceMetricDf(config_yaml):
     )
     return performance_metric_df
 
-def getOrderList(config_yaml):
+def getOrderList(config_yaml, performance_metric):
     order_list = []
-    if config_yaml['target']['control_method']['scoot']:
-        order_list.append('SCOOT')
-    
-    for num_phases in [4, 8, 17]:
-        if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
-            order_list.append(f"{num_phases}-phase MPC")
+
+    if performance_metric != 'reward':
+        if config_yaml['target']['control_method']['scoot']:
+            order_list.append('SCOOT')
+        
+        for num_phases in [4, 8, 17]:
+            if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+                order_list.append(f"{num_phases}-phase MPC")
 
     if config_yaml['target']['control_method']['drl']['macro']:
         order_list.append('Macro DRL')
@@ -199,10 +204,12 @@ def getOrderList(config_yaml):
     
     return order_list
 
-def plotFigure(config_yaml, performance_metric_df, order_list, save_dir_path):
+def plotFigure(config_yaml, performance_metric_df, save_dir_path):
     for performance_metric in config_yaml['target']['performance_metrics']:
         fig, ax = plt.subplots()
-
+        
+        order_list = getOrderList(config_yaml, performance_metric)
+        
         sns.boxplot(
             ax=ax,
             x='method',
@@ -236,6 +243,10 @@ def plotFigure(config_yaml, performance_metric_df, order_list, save_dir_path):
             order=order_list,
             size=8,
         )
+
+      
+
+
 
         ax.set_title(config_yaml['figure']['title'][performance_metric])
         ax.set_xlabel('')

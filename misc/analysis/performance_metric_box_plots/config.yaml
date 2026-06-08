@@ -18,6 +18,7 @@ target:
     'delay_max',
     'speed_avg',
     'num_phase_changes',
+    'reward'
   ]
   seed:
     fix_flg: true
@@ -36,6 +37,7 @@ figure:
     delay_max: 'Maximum Delay Comparison Across All Traffic Scenarios'
     speed_avg: 'Average Speed Comparison Across All Traffic Scenarios'
     num_phase_changes: 'Number of Phase Changes Comparison Across All Traffic Scenarios'
+    reward: 'Total Reward Comparison Across All Traffic Scenarios'
   y_axis:
     label: 
       queue_avg: 'Average Queue Length [m]'
@@ -44,7 +46,7 @@ figure:
       delay_max: 'Maximum Delay [s]'
       speed_avg: 'Average Speed [km/h]'
       num_phase_changes: 'Number of Phase Changes'
-
+      reward: 'Total Reward'
 simulator:
   num_red_steps: 1            
   simulation_time: 500
