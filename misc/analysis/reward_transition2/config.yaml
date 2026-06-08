@@ -4,13 +4,13 @@ target:
     micro: true
 
 figure:
-  title: Total Reward Transition
+  title: Learning Progress of the Proposed Method and the Baseline
   x_axis:
-    label: Episode
+    label: Training Episode
   y_axis:
-    label: Total Reward
+    label: Average Total Reward
   legend:
-    title: DRL Method
+    title: Method
     labels: 
       macro: Baseline (Low-resolution)
       micro: Proposed (High-resolution)
