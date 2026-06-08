@@ -11,217 +11,247 @@ import re
 
 from libs.figure_config import init_figure_config
 
-# reflect figure configuration
-init_figure_config()
 
-# get config_yaml
-config_file_path = root_dir_path / 'misc' / 'analysis' / 'performance_metric_bar_plots' / 'config.yaml'
-with open(config_file_path, 'r', encoding='utf-8') as f:
-    config_yaml = yaml.safe_load(f)
+def main():
+    # reflect figure config
+    init_figure_config()
 
-# set data and performance_metrics directory paths
-data_dir_path = root_dir_path / 'data'
-performance_metrics_dir_path = data_dir_path / 'performance_metrics'
-save_base_dir_path = data_dir_path / 'analysis' / 'performance_metric_bar_plots'
+    # get config_yaml
+    config_file_path = Path(__file__).parent / 'config.yaml'
+    with open(config_file_path, 'r', encoding='utf-8') as f:
+        config_yaml = yaml.safe_load(f)
 
-# initialize performance_df
-performance_metric_map_list = []
-data_dir_path = root_dir_path / 'data'
-performance_metrics_dir_path = data_dir_path / 'performance_metrics'
-layout_dir_path = performance_metrics_dir_path / config_yaml['target']['layout']
-for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
-    with open(simulator_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
-        simulator_config = yaml.safe_load(f)
-    
-    # if seed is fixed in the plot config, check it
-    if config_yaml['target']['seed']['fix_flg'] and simulator_config['seed'] != config_yaml['target']['seed']['fix_value']:
-        continue
-    del simulator_config['seed'] 
+    # get performance_metric_df
+    performance_metric_df = getPerformanceMetricDf(config_yaml)
 
-    # check simulator config matches the plot config
-    if simulator_config != config_yaml['simulator']:
-        continue
+    # plot figures
+    plotFigures(config_yaml, performance_metric_df)
+    return
 
-    # get inflow file name
-    inflow = simulator_dir_path.parent.name
-    
-    # regarding mpc
-    mpc_dir_path = simulator_dir_path / 'mpc'
-    for method_dir_path in mpc_dir_path.glob('config_*'):
-        with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
-            method_config = yaml.safe_load(f)
-
-        # check num_phases
-        num_phases = method_config['phases']['4-road'] # TODO: currently only support 4-road intersection
-        if num_phases not in [4, 8, 17]:
-            raise ValueError(f"Not supported num_phases: {num_phases}")
-        if not config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
-            continue 
-        del method_config['phases']
-
-        config_yaml['mpc']['objective_function']['signal_change']['weight'] = config_yaml['target']['signal_change_weight'][f"{num_phases}-phase"]
-
-        if method_config != config_yaml['mpc']:
-            continue
-        
-        for intersection_dir_path in method_dir_path.glob('intersection_*'):
-            # make performance_metric_map
-            performance_metric_map = {
-                'id': len(performance_metric_map_list) + 1,
-                'method': f"{num_phases}-phase MPC",
-                'inflow': inflow,
-                'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
-            }
-            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
-                time_series_df = pd.read_csv(f)
-            for performance_metric in config_yaml['target']['performance_metrics']:
+def getPerformanceMetricDf(config_yaml):
+    performance_metric_map_list = []
+    for layout in config_yaml['target']['layout']:
+        layout_dir_path = root_dir_path / 'data' / 'performance_metrics' / layout
+        for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
+            with open(simulator_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+                simulator_config = yaml.safe_load(f)
             
-                if performance_metric == 'phase':
-                    time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
-                    time_series_df.loc[0, 'phase_change'] = False
-                    performance_value = time_series_df['phase_change'].sum()
-                elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
-                    performance_value = time_series_df[performance_metric].dropna().mean()       
-                elif performance_metric == 'delay_avg':
-                    performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
-                else:
-                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+            # if seed is fixed in the plot config, check it
+            if config_yaml['target']['seed']['fix_flg'] and simulator_config['seed'] != config_yaml['target']['seed']['fix_value']:
+                continue
+            del simulator_config['seed'] 
+
+            # check simulator config matches the plot config
+            if simulator_config != config_yaml['simulator']:
+                continue
+
+            # get inflow file name
+            inflow = simulator_dir_path.parent.name
+            
+            # regarding mpc
+            mpc_dir_path = simulator_dir_path / 'mpc'
+            for method_dir_path in mpc_dir_path.glob('config_*'):
+                with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+                    method_config = yaml.safe_load(f)
+
+                # check num_phases
+                num_phases = method_config['phases']['4-road'] # TODO: currently only support 4-road intersection
+                if num_phases not in [4, 8, 17]:
+                    raise ValueError(f"Not supported num_phases: {num_phases}")
+                if not config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+                    continue 
+                del method_config['phases']
+
+                config_yaml['mpc']['objective_function']['signal_change']['weight'] = config_yaml['target']['signal_change_weight'][f"{num_phases}-phase"]
+
+                if method_config != config_yaml['mpc']:
+                    continue
                 
-                performance_metric_map[performance_metric] = performance_value
-            
-            performance_metric_map_list.append(performance_metric_map)
+                for intersection_dir_path in method_dir_path.glob('intersection_*'):
+                    # make performance_metric_map
+                    performance_metric_map = {
+                        'id': len(performance_metric_map_list) + 1,
+                        'method': f"{num_phases}-phase MPC",
+                        'layout': layout,
+                        'inflow': inflow,
+                        'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
+                    }
+                    with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                        time_series_df = pd.read_csv(f)
+                    for performance_metric in config_yaml['target']['performance_metrics']:
+                    
+                        if performance_metric == 'phase':
+                            time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
+                            time_series_df.loc[0, 'phase_change'] = False
+                            performance_value = time_series_df['phase_change'].sum()
+                        elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
+                            performance_value = time_series_df[performance_metric].dropna().mean()       
+                        elif performance_metric == 'delay_avg':
+                            performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'reward':
+                            pass
+                        else:
+                            raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                        
+                        performance_metric_map[performance_metric] = performance_value
+                    
+                    performance_metric_map_list.append(performance_metric_map)
 
-    # regarding scoot
-    if not config_yaml['target']['control_method']['scoot']:
-        continue
+            # regarding scoot
+            if not config_yaml['target']['control_method']['scoot']:
+                continue
 
-    scoot_dir_path = simulator_dir_path / 'scoot'
-    for method_dir_path in scoot_dir_path.glob('config_*'):
-        with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
-            method_config = yaml.safe_load(f)
+            scoot_dir_path = simulator_dir_path / 'scoot'
+            for method_dir_path in scoot_dir_path.glob('config_*'):
+                with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+                    method_config = yaml.safe_load(f)
 
-        if method_config != config_yaml['scoot']:
-            continue
-        
-        for intersection_dir_path in method_dir_path.glob('intersection_*'):
-            # make performance_metric_map
-            performance_metric_map = {
-                'id': len(performance_metric_map_list) + 1,
-                'method': 'SCOOT',
-                'inflow': inflow,
-                'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
-            }
-            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
-                time_series_df = pd.read_csv(f)
-            for performance_metric in config_yaml['target']['performance_metrics']:
-                if performance_metric == 'phase':
-                    time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
-                    time_series_df.loc[0, 'phase_change'] = False
-                    performance_value = time_series_df['phase_change'].sum()
-                elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
-                    performance_value = time_series_df[performance_metric].dropna().mean()
-                elif performance_metric == 'delay_avg':
-                    performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
-                else:
-                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                if method_config != config_yaml['scoot']:
+                    continue
                 
-                performance_metric_map[performance_metric] = performance_value
+                for intersection_dir_path in method_dir_path.glob('intersection_*'):
+                    # make performance_metric_map
+                    performance_metric_map = {
+                        'id': len(performance_metric_map_list) + 1,
+                        'method': 'SCOOT',
+                        'layout': layout,
+                        'inflow': inflow,
+                        'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
+                    }
+                    with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                        time_series_df = pd.read_csv(f)
+                    for performance_metric in config_yaml['target']['performance_metrics']:
+                        if performance_metric == 'phase':
+                            time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
+                            time_series_df.loc[0, 'phase_change'] = False
+                            performance_value = time_series_df['phase_change'].sum()
+                        elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
+                            performance_value = time_series_df[performance_metric].dropna().mean()
+                        elif performance_metric == 'delay_avg':
+                            performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'reward':
+                            pass
+                        else:
+                            raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                        
+                        performance_metric_map[performance_metric] = performance_value
+                    
+                    performance_metric_map_list.append(performance_metric_map)
             
-            performance_metric_map_list.append(performance_metric_map)
+            # regarding drl
+            drl_dir_path = simulator_dir_path / 'drl'
+            for method_dir_path in drl_dir_path.glob('config_*'):
+                with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
+                    method_config = yaml.safe_load(f)
+
+                vehicle_state_info = method_config['state']['vehicle']
+                
+                if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['micro']:
+                    method_name = 'Micro DRL'
+                elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['macro']:
+                    method_name = 'Macro DRL'
+                else:
+                    continue
+
+                del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
+
+                if method_config != config_yaml['drl']:
+                    continue
+                
+                for intersection_dir_path in method_dir_path.glob('intersection_*'):
+                    # make performance_metric_map
+                    performance_metric_map = {
+                        'id': len(performance_metric_map_list) + 1,
+                        'method': method_name,
+                        'layout': layout,
+                        'inflow': inflow,
+                        'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
+                    }
+                    with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
+                        time_series_df = pd.read_csv(f)
+                    for performance_metric in config_yaml['target']['performance_metrics']:
+                    
+                        if performance_metric == 'phase':
+                            time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
+                            time_series_df.loc[0, 'phase_change'] = False
+                            performance_value = time_series_df['phase_change'].sum()
+                        elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
+                            performance_value = time_series_df[performance_metric].dropna().mean()       
+                        elif performance_metric == 'delay_avg':
+                            performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'reward':
+                            performance_value = time_series_df['reward'].fillna(0).sum()
+                        else:
+                            raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+                        
+                        performance_metric_map[performance_metric] = performance_value
+                    
+                    performance_metric_map_list.append(performance_metric_map)
+                
+    performance_metric_df = pd.DataFrame(
+        performance_metric_map_list, 
+        columns=['id', 'method', 'layout', 'inflow', 'intersection'] + config_yaml['target']['performance_metrics']
+    )
+    return performance_metric_df
+
+def getHueOrderList(config_yaml, performance_metric):
+    hue_order_list = []
+    if performance_metric != 'reward':
+        if config_yaml['target']['control_method']['scoot']:
+            hue_order_list.append('SCOOT')
+        
+        for num_phases in [4, 8, 17]:
+            if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+                hue_order_list.append(f"{num_phases}-phase MPC")
     
-    # regarding drl
-    drl_dir_path = simulator_dir_path / 'drl'
-    for method_dir_path in drl_dir_path.glob('config_*'):
-        with open(method_dir_path / 'config.yaml', 'r', encoding='utf-8') as f:
-            method_config = yaml.safe_load(f)
+    if config_yaml['target']['control_method']['drl']['macro']:
+        hue_order_list.append('Macro DRL')
+    if config_yaml['target']['control_method']['drl']['micro']:
+        hue_order_list.append('Micro DRL')
 
-        vehicle_state_info = method_config['state']['vehicle']
-        
-        if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['micro']:
-            method_name = 'Micro DRL'
-        elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['macro']:
-            method_name = 'Macro DRL'
-        else:
-            continue
+    return hue_order_list
 
-        del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
+def plotFigures(config_yaml, performance_metric_df):
+    for layout in performance_metric_df['layout'].unique().tolist():
+        for inflow in performance_metric_df['inflow'].unique().tolist():
+            tmp_performance_metric_df = performance_metric_df[
+                (performance_metric_df['layout'] == layout) & 
+                (performance_metric_df['inflow'] == inflow)
+            ]
 
-        if method_config != config_yaml['drl']:
-            continue
-        
-        for intersection_dir_path in method_dir_path.glob('intersection_*'):
-            # make performance_metric_map
-            performance_metric_map = {
-                'id': len(performance_metric_map_list) + 1,
-                'method': method_name,
-                'inflow': inflow,
-                'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
-            }
-            with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
-                time_series_df = pd.read_csv(f)
             for performance_metric in config_yaml['target']['performance_metrics']:
-            
-                if performance_metric == 'phase':
-                    time_series_df['phase_change'] = time_series_df['phase'].ne(time_series_df['phase'].shift(1))
-                    time_series_df.loc[0, 'phase_change'] = False
-                    performance_value = time_series_df['phase_change'].sum()
-                elif performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
-                    performance_value = time_series_df[performance_metric].dropna().mean()       
-                elif performance_metric == 'delay_avg':
-                    performance_value = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
-                else:
-                    raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-                
-                performance_metric_map[performance_metric] = performance_value
-            
-            performance_metric_map_list.append(performance_metric_map)
-            
-performance_metric_df = pd.DataFrame(
-    performance_metric_map_list, 
-    columns=['id', 'method', 'inflow', 'intersection'] + config_yaml['target']['performance_metrics']
-)
+                fig, ax = plt.subplots()
+                sns.barplot(
+                    ax = ax,
+                    data = tmp_performance_metric_df,
+                    x = 'intersection',
+                    hue = 'method',
+                    y = performance_metric,
+                    palette=config_yaml['figure']['palette'],
+                    order=sorted(tmp_performance_metric_df['intersection'].unique().tolist()),
+                    hue_order=getHueOrderList(config_yaml, performance_metric),
+                )
 
+                ax.set_title(config_yaml['figure']['title'][inflow])
+                ax.set_xlabel(config_yaml['figure']['x_axis']['label'])
+                ax.set_xticks(range(len(config_yaml['figure']['x_axis']['tick_labels'])))
+                ax.set_xticklabels(config_yaml['figure']['x_axis']['tick_labels'])
+                ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric])
+                ax.set_ylim(0, tmp_performance_metric_df[performance_metric].max() * 1.3)
+                ax.legend(title='')
 
-for inflow in performance_metric_df['inflow'].unique().tolist():
-    tmp_performance_metric_df = performance_metric_df[performance_metric_df['inflow'] == inflow]
+                fig.tight_layout()
 
-    # make hue_order_list
-    hue_list = tmp_performance_metric_df['method'].unique().tolist()
-    ideal_hue_order_list = ['SCOOT'] + [f"{num_phases}-phase MPC" for num_phases in [4, 8, 17]] + ['Macro DRL', 'Micro DRL']
-    hue_order_list = [method for method in ideal_hue_order_list if method in hue_list]
+                save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_bar_plots' / layout / inflow
+                save_dir_path.mkdir(parents=True, exist_ok=True)
+                fig.savefig(save_dir_path / f"{performance_metric}_bar.png", format='png')
 
-    for performance_metric in config_yaml['target']['performance_metrics']:
-        fig, ax = plt.subplots()
+                plt.close(fig)
+    
+    return
 
-        sns.barplot(
-            ax = ax,
-            data = tmp_performance_metric_df,
-            x = 'intersection',
-            hue = 'method',
-            y = performance_metric,
-            palette=config_yaml['figure']['palette'],
-            order=sorted(tmp_performance_metric_df['intersection'].unique().tolist()),
-            hue_order=hue_order_list,
-        )
-
-        ax.set_title(config_yaml['figure']['title'][inflow])
-        ax.set_xlabel(config_yaml['figure']['x_axis']['label'])
-        ax.set_xticks(range(len(config_yaml['figure']['x_axis']['tick_labels'])))
-        ax.set_xticklabels(config_yaml['figure']['x_axis']['tick_labels'])
-        ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric])
-        ax.set_ylim(0, tmp_performance_metric_df[performance_metric].max() * 1.3)
-        ax.legend(title='')
-
-        fig.tight_layout()
-
-        save_dir_path = save_base_dir_path / config_yaml['target']['layout'] / inflow
-        save_dir_path.mkdir(parents=True, exist_ok=True)
-
-        fig.savefig(save_dir_path / f"{performance_metric}_bar.png", format='png')
-
-        plt.close(fig)
-
-print('Finished!')
+if __name__ == "__main__":
+    main()
 
 
 

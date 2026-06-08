@@ -1,5 +1,7 @@
 target:
-  layout: 7-4-1-sb
+  layout: 
+    - 7-4-1
+    - 7-4-1-sb
   control_method:
     mpc:
       4-phase: false
@@ -16,6 +18,7 @@ target:
     delay_max,
     speed_avg,
     phase,
+    reward,
   ]
   seed:
     fix_flg: true
@@ -50,9 +53,10 @@ figure:
       queue_avg: Average Queue Length [m]
       queue_max: Maximum Queue Length [m]
       delay_avg: Average Delay Time [s]
-      delay_max: Maximum Delay Tiem [s]
+      delay_max: Maximum Delay Time [s]
       speed_avg: Average Vehicle Speed [km/h]
       phase: Number of Phase Changes 
+      reward: Total Reward
   palette: viridis # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
 
 
