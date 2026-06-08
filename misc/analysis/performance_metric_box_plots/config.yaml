@@ -31,22 +31,32 @@ target:
 
 figure:
   title:
-    queue_avg: 'Average Queue Length Comparison Across All Traffic Scenarios'
-    queue_max: 'Maximum Queue Length Comparison Across All Traffic Scenarios'
-    delay_avg: 'Average Delay Comparison Across All Traffic Scenarios'
-    delay_max: 'Maximum Delay Comparison Across All Traffic Scenarios'
-    speed_avg: 'Average Speed Comparison Across All Traffic Scenarios'
-    num_phase_changes: 'Number of Phase Changes Comparison Across All Traffic Scenarios'
-    reward: 'Total Reward Comparison Across All Traffic Scenarios'
+    queue_avg: Average Queue Length 
+    queue_max: Maximum Queue Length 
+    delay_avg: Average Delay 
+    delay_max: Maximum Delay 
+    speed_avg: Average Speed 
+    num_phase_changes: Number of Phase Changes 
+    reward: Total Reward 
+  x_axis:
+    label: 
+      scoot: SCOOT
+      mpc:
+        4-phase: 4-phase MPC
+        8-phase: 8-phase MPC
+        17-phase: 17-phase MPC
+      drl:
+        micro: Proposed DRL
+        macro: Baseline DRL
   y_axis:
     label: 
-      queue_avg: 'Average Queue Length [m]'
-      queue_max: 'Maximum Queue Length [m]'
-      delay_avg: 'Average Delay [s]'
-      delay_max: 'Maximum Delay [s]'
-      speed_avg: 'Average Speed [km/h]'
-      num_phase_changes: 'Number of Phase Changes'
-      reward: 'Total Reward'
+      queue_avg: Average Queue Length [m]
+      queue_max: Maximum Queue Length [m]
+      delay_avg: Average Delay [s]
+      delay_max: Maximum Delay [s]
+      speed_avg: Average Speed [km/h]
+      num_phase_changes: Number of Phase Changes
+      reward: Total Reward
 simulator:
   num_red_steps: 1            
   simulation_time: 500

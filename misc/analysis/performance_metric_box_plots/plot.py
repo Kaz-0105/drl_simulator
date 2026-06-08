@@ -75,7 +75,7 @@ def getPerformanceMetricDf(config_yaml):
                     # make performance_metric_map
                     performance_metric_map = {
                         'id': len(performance_metric_map_list) + 1,
-                        'method': f"{num_phases}-phase MPC",
+                        'method': config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"],
                         'layout': layout,
                         'inflow': simulator_dir_path.parent.name,
                         'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
@@ -112,7 +112,7 @@ def getPerformanceMetricDf(config_yaml):
                     # make performance_metric_map
                     performance_metric_map = {
                         'id': len(performance_metric_map_list) + 1,
-                        'method': 'SCOOT',
+                        'method': config_yaml['figure']['x_axis']['label']['scoot'],
                         'layout': layout,
                         'inflow': simulator_dir_path.parent.name,
                         'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
@@ -142,9 +142,9 @@ def getPerformanceMetricDf(config_yaml):
                 vehicle_state_info = method_config['state']['vehicle']
 
                 if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method_name = 'Micro DRL'
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['micro']
                 elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method_name = 'Macro DRL'
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['macro']
                 else:
                     continue
 
@@ -190,21 +190,36 @@ def getOrderList(config_yaml, performance_metric):
 
     if performance_metric != 'reward':
         if config_yaml['target']['control_method']['scoot']:
-            order_list.append('SCOOT')
+            order_list.append(config_yaml['figure']['x_axis']['label']['scoot'])
         
         for num_phases in [4, 8, 17]:
             if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
-                order_list.append(f"{num_phases}-phase MPC")
-
+                order_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
     if config_yaml['target']['control_method']['drl']['macro']:
-        order_list.append('Macro DRL')
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
 
     if config_yaml['target']['control_method']['drl']['micro']:
-        order_list.append('Micro DRL')
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['micro'])
     
     return order_list
 
+def getColorMap(config_yaml):
+    method_list = []
+    if config_yaml['target']['control_method']['scoot']:
+        method_list.append(config_yaml['figure']['x_axis']['label']['scoot'])
+    for num_phases in [4, 8, 17]:
+        if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+            method_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
+    if config_yaml['target']['control_method']['drl']['macro']:
+        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
+    if config_yaml['target']['control_method']['drl']['micro']:
+        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['micro'])
+    
+    color_list = sns.color_palette('Set2', n_colors=len(method_list))
+    return dict(zip(method_list, color_list))
+
 def plotFigure(config_yaml, performance_metric_df, save_dir_path):
+    color_map = getColorMap(config_yaml)
     for performance_metric in config_yaml['target']['performance_metrics']:
         fig, ax = plt.subplots()
         
@@ -217,7 +232,7 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
             data=performance_metric_df,
             hue='method',
             legend=False,
-            palette='Set2',
+            palette=color_map,
             width=0.5,
             linewidth=2.5,
             showmeans=True,
