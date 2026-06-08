@@ -12,9 +12,9 @@ figure:
   legend:
     title: DRL Method
     labels: 
-      macro: Macro DRL
-      micro: Micro DRL
-    ncol: 2
+      macro: Low-resolution DRL
+      micro: High-resolution DRL
+    ncol: 1
     loc: lower right
 
 simulator:
