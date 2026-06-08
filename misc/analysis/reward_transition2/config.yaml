@@ -12,8 +12,8 @@ figure:
   legend:
     title: DRL Method
     labels: 
-      macro: Low-resolution DRL
-      micro: High-resolution DRL
+      macro: Baseline (Low-resolution)
+      micro: Proposed (High-resolution)
     ncol: 1
     loc: lower right
 
