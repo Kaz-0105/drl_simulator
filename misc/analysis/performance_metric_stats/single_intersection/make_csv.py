@@ -88,6 +88,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'reward':
+                            pass
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -121,6 +123,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'reward':
+                            pass
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -162,6 +166,8 @@ def getPerformanceMetricDf(config_yaml):
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
                             performance_metric_map[performance_metric] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].dropna().mean()
+                        elif performance_metric == 'reward':
+                            performance_metric_map[performance_metric] = time_series_df['reward'].fillna(0).sum()
                         else:
                             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     
@@ -187,7 +193,7 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
                 'performance_metric': performance_metric,
                 'method': method,
                 'mean': tmp_performance_metric_df[performance_metric].mean(),
-                'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric == 'speed_avg' else tmp_performance_metric_df[performance_metric].max(),
+                'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric in ['speed_avg', 'reward'] else tmp_performance_metric_df[performance_metric].max(),
                 'std': tmp_performance_metric_df[performance_metric].std(),
             })
     performance_metric_stat_df = pd.DataFrame(
@@ -196,7 +202,7 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
     )
 
     # add improve_rate column
-    improve_rate_list = [0] * len(performance_metric_stat_df)
+    improve_rate_list = [None] * len(performance_metric_stat_df)
     scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == 'SCOOT'].copy()
     for _, scoot_stat_row in scoot_stat_df.iterrows():
         performance_metric = scoot_stat_row['performance_metric']
@@ -241,7 +247,7 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
                 if tmp_performance_metric_df.empty:
                     continue
                 for performance_metric in config_yaml['target']['performance_metrics']:
-                    if performance_metric == 'speed_avg':
+                    if performance_metric in ['speed_avg', 'reward']:
                         best_id = tmp_performance_metric_df[performance_metric].idxmax()
                     elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max']:
                         best_id = tmp_performance_metric_df[performance_metric].idxmin()

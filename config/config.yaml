@@ -1,8 +1,8 @@
 simulator:
   control_method : drl              # mpc, drl, scoot, scoot2
   seed: 1                           # random seed for vissim
-  layout_name : 7-4-1-sb               # layout folder name
-  inflow_name : main-minor        # inflow file name
+  layout_name : 7-4-1               # layout folder name
+  inflow_name : balanced_700        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -16,7 +16,7 @@ drl:
   simulation_type: train # train or test
   stop: 
     type: episode        # episode or interval
-    episode: 80
+    episode: 10
     interval: 100
   training:
     learning_rate: 1e-5        # learning rate for drl
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
@@ -66,15 +66,15 @@ drl:
     random:
       type: top_k               # normal, top_k, num_vehs
       top_k:
-        num_actions: 4
+        num_actions: 8
   reward: 
     type: waiting_vehicles      # waiting_vehicles, speedy_vehicles, throughput
     common:
-      gamma: 0.80
+      gamma: 0.95
     waiting_vehicles:
       bonus: 
         pass: 1.0               # bonus for passing through the intersection
-        movement: 0.3           # bonus for same movement as the previous step
+        movement: 0.1           # bonus for same movement as the previous step
       weight:
         type: queue_exponential # exponential, queue_exponential or null
         exponential:
@@ -162,7 +162,7 @@ mpc:
 scoot:
   initial_parameters:          
     cycle: 20                  # initial cycle time (step)
-    split: [5, 5, 5, 5]    # initial split for each phase (step)
+    split: [5, 5, 5, 5]        # initial split for each phase (step)
   change_steps:
     cycle: 1                   # change amount of cycle time (step)
     split: 

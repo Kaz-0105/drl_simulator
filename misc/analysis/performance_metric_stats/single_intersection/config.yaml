@@ -17,6 +17,7 @@ target:
     'delay_avg',
     'delay_max',
     'speed_avg',
+    'reward',
   ]
   seed:
     fix_flg: true
