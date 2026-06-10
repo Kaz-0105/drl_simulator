@@ -258,11 +258,6 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
             order=order_list,
             size=8,
         )
-
-      
-
-
-
         ax.set_title(config_yaml['figure']['title'][performance_metric])
         ax.set_xlabel('')
         for label in ax.get_xticklabels():
