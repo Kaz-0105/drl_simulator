@@ -1,25 +1,15 @@
 target:
   layout: 
-    - 7-4-1
     - 7-4-1-sb
   control_method:
     mpc:
       4-phase: false
       8-phase: false
-      17-phase: false
+      17-phase: true
     drl:
       micro: true
       macro: true
     scoot: true
-  performance_metrics: [
-    'queue_avg',
-    'queue_max',
-    'delay_avg',
-    'delay_max',
-    'speed_avg',
-    'num_phase_changes',
-    'reward'
-  ]
   seed:
     fix_flg: true
     fix_value: 1
@@ -30,14 +20,7 @@ target:
     17-phase: 10
 
 figure:
-  title:
-    queue_avg: Average Queue Length 
-    queue_max: Maximum Queue Length 
-    delay_avg: Average Delay 
-    delay_max: Maximum Delay 
-    speed_avg: Average Speed 
-    num_phase_changes: Number of Phase Changes 
-    reward: Total Reward 
+  title: Phase Distribution 
   x_axis:
     label: 
       scoot: SCOOT
@@ -49,14 +32,18 @@ figure:
         micro: Proposed DRL
         macro: Baseline DRL
   y_axis:
-    label: 
-      queue_avg: Average Queue Length [m]
-      queue_max: Maximum Queue Length [m]
-      delay_avg: Average Delay [s]
-      delay_max: Maximum Delay [s]
-      speed_avg: Average Speed [km/h]
-      num_phase_changes: Number of Phase Changes
-      reward: Total Reward
+    label: Phase Selection Ratio
+  legend:
+    title: Phase Category
+    labels:
+      type_1: Type 1
+      type_2: Type 2
+      type_3: Type 3
+      others: Others
+  bar:
+    width: 0.3
+  color_palette: muted # Set2, husl, pastels, deep, muted, bright, dark, colorblind
+
 simulator:
   num_red_steps: 1            
   simulation_time: 500
