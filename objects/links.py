@@ -120,6 +120,10 @@ class Links(Container):
                 continue
 
             if link.to_link.get('type') in ['main', 'link']:
+                # multiple intersection scenario 
+                if link.to_link.road.input_intersection is None:
+                    continue
+
                 link.intersection = link.to_link.road.input_intersection
                 link.intersection.connectors.add(link)
 
