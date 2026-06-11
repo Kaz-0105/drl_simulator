@@ -1,9 +1,9 @@
 simulator:
-  control_method : drl              # mpc, drl, scoot
+  control_method : scoot            # mpc, drl, scoot
   seed: 1                           # random seed for vissim
   layout_name : 9-4-1-c-1           # layout folder name
   inflow_name : balanced_700        # inflow file name
-  simulation_time: 1000              # simulation time for each simulation (seconds)
+  simulation_time: 1000             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
   max_workers: 7                    # the number of parallel workers
@@ -19,8 +19,8 @@ drl:
     episode: 10
     interval: 100
   training:
-    learning_rate: 1e-5        # learning rate for drl
-    threshold: 50              # the number of new data for each learning update
+    learning_rate: 1e-5          # learning rate for drl
+    threshold: 50                # the number of new data for each learning update
     batch:
       number: 20                 # batch number for learning
       size: 128                  # batch size for learning
