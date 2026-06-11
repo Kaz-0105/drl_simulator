@@ -20,7 +20,7 @@ target:
     17-phase: 10
 
 figure:
-  title: Phase Distribution 
+  title: 'Phase Distribution (Branch Length: 30m)'
   x_axis:
     label: 
       scoot: SCOOT
