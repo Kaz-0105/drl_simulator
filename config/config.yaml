@@ -1,8 +1,8 @@
 simulator:
-  control_method : scoot            # mpc, drl, scoot
+  control_method : drl            # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name : 9-4-1-c-1           # layout folder name
-  inflow_name : balanced_700        # inflow file name
+  layout_name : 9-4-1-c-7           # layout folder name
+  inflow_name : main-minor        # inflow file name
   simulation_time: 1000             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
