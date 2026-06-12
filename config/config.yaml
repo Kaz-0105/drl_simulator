@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
