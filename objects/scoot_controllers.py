@@ -6,6 +6,8 @@ import copy
 import pandas as pd
 
 class ScootControllers(Container):
+    INITIAL_FLOW_RATE = 0.2
+
     def __init__(self, network):
         super().__init__()
 
@@ -14,17 +16,38 @@ class ScootControllers(Container):
         self.shared_resources = network.shared_resources
         self.network = network
 
+        self._initProps()
         self._initElements()
         return
     
+    def _initProps(self):
+        self.max_saturation_map = None
+        return
+    
     def _initElements(self):
+        # set each scoot_controller
         for intersection_id, intersection in self.network.intersections.items(sorted_flg=True):
-            scoot_contoller = ScootController(
+            scoot_controller = ScootController(
                 scoot_controllers=self, 
                 intersection=intersection,
                 id=intersection_id
             )
-            self.add(scoot_contoller)
+            self.add(scoot_controller)
+
+        # set max_outflow_rate_map
+        self.max_outflow_rate_map = {}
+
+        for scoot_controller in self.getAll():
+            num_roads = scoot_controller.get('num_roads')
+
+            for road in scoot_controller.roads.getAll():
+                for route_id in range(1, num_roads):
+                    self.max_outflow_rate_map[(num_roads, road.get('type'), route_id, road.get('max_speed'))] = self.INITIAL_FLOW_RATE
+        
+        # set max_outflow_rate_map to each scoot_controller
+        for scoot_controller in self.getAll():
+            scoot_controller.set('max_outflow_rate_map', self.max_outflow_rate_map)
+
         return
     
     def update(self):
@@ -63,7 +86,7 @@ class ScootController(Object):
     GO_STRAIGHT_ID = 2
     TURN_RIGHT_ID = 3
 
-    INITIAL_FLOW_RATE = 0.5
+    INITIAL_FLOW_RATE = 0.2
     SPILLBACK_THRESHOLD = 0.8
 
     SATURATION_THRESHOLD_MAP = {
@@ -159,10 +182,17 @@ class ScootController(Object):
         # set time_step
         self.time_step = self.network.simulation.get('time_step')
 
+        # set phases_map
+        self.phases_map = None
+
+        # set num_roads
+        self.num_roads = None
+
         # initialize other properties
-        self.inflow_rate_record_map = {phase_id: pd.DataFrame(columns=['time', 'inflow_rate']) for phase_id in range(1, self.num_phases + 1)}
-        self.outflow_rate_record_map = {phase_id: pd.DataFrame(columns=['time', 'outflow_rate']) for phase_id in range(1, self.num_phases + 1)}
-        self.saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
+        self.inflow_rate_record_map = None
+        self.outflow_rate_record_map = None
+        self.saturation_map = None
+        self.max_outflow_rate_map = None
         self.blocked_info_map = {phase_id: {} for phase_id in range(1, self.num_phases + 1)}
         return
     
@@ -189,17 +219,23 @@ class ScootController(Object):
                 }
             else:
                 raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+            
+        # set num_roads
+        self.num_roads = self.roads.count()
 
-        # set max_outflow_rate_map 
-        self.max_outflow_rate_map = {}
-        for phase_id, road_list in self.PHASE_ROAD_LIST_MAP.items():
-            if phase_id in self.STRAIGHT_PHASE_LIST:
-                self.max_outflow_rate_map[(self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'straight')] = self.INITIAL_FLOW_RATE
-            elif phase_id in self.RIGHT_PHASE_LIST:
-                self.max_outflow_rate_map[(self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'right')] = self.INITIAL_FLOW_RATE
-            else:
-                raise NotImplementedError(f"Not supported phase id: {phase_id}")
+        # set phases_map
+        self.phases_map = {phase_id: [] for phase_id in range(1, self.num_phases + 1)}
+        phases_df = self.config.get('phases_df_map')[self.num_roads]
+        for _, phase_row in phases_df.iterrows():
+            for signal_group_order_id in range(1, self.num_roads + 1):
+                signal_group_id = int(phase_row[f"signal_group{signal_group_order_id}"])
+                road_id = (signal_group_id - 1) // (self.num_roads - 1) + 1
+                route_id = (signal_group_id - 1) % (self.num_roads - 1) + 1
+                self.phases_map[int(phase_row['phase_id'])].append((road_id, route_id))
         
+        self.inflow_rate_record_map = {(road_id, route_id): pd.DataFrame(columns=['time', 'inflow_rate']) for road_id in range(1, self.num_roads + 1) for route_id in range(1, self.num_roads)}
+        self.outflow_rate_record_map = {(road_id, route_id): pd.DataFrame(columns=['time', 'outflow_rate']) for road_id in range(1, self.num_roads + 1) for route_id in range(1, self.num_roads)}
+        self.saturation_map = {(road_id, route_id): 0.0 for road_id in range(1, self.num_roads + 1) for route_id in range(1, self.num_roads)}
         return
 
     def _updateTrafficInfo(self):
@@ -256,70 +292,79 @@ class ScootController(Object):
         if self.split_update_flg:
             return
         
-        # update inflow_rate_record_map and outflow_rate_record_map
-        inflow_rate_record = self.inflow_rate_record_map[self.current_phase]
-        inflow_rate = 0.0
-        for road_id in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
+        # update inflow_rate_record_map, outflow_rate_record_map, and max_outflow_rate_map
+        for road_id, route_id in self.phases_map[self.current_phase]:
+            # get inflow_rate_record
+            inflow_rate_record = self.inflow_rate_record_map[(road_id, route_id)]
+
+            # get inflow_rate
             road = self.roads[road_id]
             for data_collection_point in road.data_collection_points.getAll():
                 if data_collection_point.get('type') != 'input':
                     continue
 
-                tmp_inflow_rate = data_collection_point.getFlowRate(duration_step=self.params['cycle'] - self.change_steps['split']['normal'])
+                inflow_rate = data_collection_point.getFlowRate(duration_step=self.params['cycle'] - self.change_steps['split']['normal'])
+                break
             
+            # get turn_ratios
             turn_ratios = road.get('turn_ratios')
-            if self.current_phase in self.STRAIGHT_PHASE_LIST:
-                tmp_inflow_rate *= (turn_ratios[self.TURN_LEFT_ID] + turn_ratios[self.GO_STRAIGHT_ID]) / sum(turn_ratios.values()) 
-            elif self.current_phase in self.RIGHT_PHASE_LIST:
-                tmp_inflow_rate *= turn_ratios[self.TURN_RIGHT_ID] / sum(turn_ratios.values())
-            else:
-                raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
 
-            inflow_rate += tmp_inflow_rate
+            # add new record to inflow_rate_record
+            inflow_rate_record.loc[len(inflow_rate_record)] = {
+                'time': int(self.network.get('current_time')),
+                'inflow_rate': inflow_rate * turn_ratios[route_id] / sum(turn_ratios.values())
+            }
 
-        inflow_rate_record.loc[len(inflow_rate_record)] = {
-            'time': int(self.network.get('current_time')),
-            'inflow_rate': inflow_rate
-        }
+        for road_id, route_id in self.phases_map[self.current_phase]:
+            # get outflow_rate_record
+            outflow_rate_record = self.outflow_rate_record_map[(road_id, route_id)]
 
-        outflow_rate_record = self.outflow_rate_record_map[self.current_phase]
-        outflow_rate = 0.0
-        for road_id in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
+            # get outflow_rate
             road = self.roads[road_id]
-            tmp_outflow_rate = 0.0
+            outflow_rate = 0.0
             for data_collection_point in road.data_collection_points.getAll():
                 if data_collection_point.get('type') != 'intersection':
                     continue
 
-                tmp_outflow_rate += data_collection_point.getFlowRate(duration_step=self.params['split'][self.current_phase] - self.change_steps['split']['normal'])
+                if data_collection_point.get('route_id') != route_id:
+                    continue
 
-            outflow_rate += tmp_outflow_rate
+                outflow_rate += data_collection_point.getFlowRate(duration_step=self.params['split'][self.current_phase] - self.change_steps['split']['normal'])
 
-        outflow_rate_record.loc[len(outflow_rate_record)] = {
-            'time': int(self.network.get('current_time')),
-            'outflow_rate': outflow_rate
-        }
+            # add new record to outflow_rate_record
+            outflow_rate_record.loc[len(outflow_rate_record)] = {
+                'time': int(self.network.get('current_time')),
+                'outflow_rate': outflow_rate
+            }
+
+            # set new max_outflow_rate
+            self.max_outflow_rate_map[(self.num_roads, road.get('type'), route_id, road.get('max_speed'))] = max(self.max_outflow_rate_map[(self.num_roads, road.get('type'), route_id, road.get('max_speed'))], outflow_rate)
+
+        # update saturation_map
+        for road_id, route_id in self.phases_map[self.current_phase]:
+            # get road
+            road = self.roads[road_id]
+
+            # get inflow_rate and max_outflow_rate
+            inflow_rate = self.inflow_rate_record_map[(road_id, route_id)]['inflow_rate'].iloc[-1]
+            max_outflow_rate = self.max_outflow_rate_map[(self.num_roads, road.get('type'), route_id, road.get('max_speed'))]
+
+            # update saturation_map 
+            self.saturation_map[(road_id, route_id)] = inflow_rate * self.params['cycle'] / (max_outflow_rate * self.params['split'][self.current_phase])    
         
-        road_list = self.PHASE_ROAD_LIST_MAP[self.current_phase]
-        if self.current_phase in self.STRAIGHT_PHASE_LIST:
-            # update max_outflow_rate_map
-            tmp_keys = (self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'straight')
-            self.max_outflow_rate_map[tmp_keys] = max(self.max_outflow_rate_map[tmp_keys], outflow_rate)
-
-            # update saturation_map
-            self.saturation_map[self.current_phase] = inflow_rate * self.params['cycle'] / (self.max_outflow_rate_map[tmp_keys] * self.params['split'][self.current_phase])
-        
-        elif self.current_phase in self.RIGHT_PHASE_LIST:
-            # update max_outflow_rate_map
-            tmp_keys = (self.roads[road_list[0]].get('type'), self.roads[road_list[1]].get('type'), 'right')
-            self.max_outflow_rate_map[tmp_keys] = max(self.max_outflow_rate_map[tmp_keys], outflow_rate)
-
-            # update saturation_map
-            self.saturation_map[self.current_phase] = inflow_rate * self.params['cycle'] / (self.max_outflow_rate_map[tmp_keys] * self.params['split'][self.current_phase])
-        
-        else:
-            raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
         return 
+
+    def _getMaxSaturation(self, phase_id):
+        if phase_id in self.STRAIGHT_PHASE_LIST:
+            return max([self.saturation_map[(road_id, route_id)] for road_id, route_id in self.phases_map[phase_id]])
+        elif phase_id in self.RIGHT_PHASE_LIST:
+            max_saturation = 0.0
+            for road_id, route_id in self.phases_map[phase_id]:
+                if route_id == self.TURN_RIGHT_ID:
+                    max_saturation = max(max_saturation, self.saturation_map[(road_id, route_id)])
+            return max_saturation
+        else:
+            raise NotImplementedError(f"Not supported phase id: {phase_id}")
     
     def _updateSplit(self):
         if self.current_blocked_flg:
@@ -330,7 +375,7 @@ class ScootController(Object):
             self._incrementSplit(type='blocked')
             self._showInfo('blocked', 'next')
 
-        elif self.saturation_map[self.current_phase] < self.saturation_map[self.next_phase]:
+        elif self._getMaxSaturation(self.current_phase) < self._getMaxSaturation(self.next_phase):
             self._decrementSplit(type='normal')
 
         else:
@@ -379,12 +424,15 @@ class ScootController(Object):
         return
     
     def _updateCycle(self):
+        # get max_saturation_map
+        max_saturation_map = {phase_id: self._getMaxSaturation(phase_id) for phase_id in range(1, self.num_phases + 1)} 
+
         # get phase_change_map
         phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
         
         cumurative_change_steps = 0
         for phase_id in range(1, self.num_phases + 1):
-            if self.saturation_map[phase_id] > self.SATURATION_THRESHOLD_MAP['down']:
+            if max_saturation_map[phase_id] > self.SATURATION_THRESHOLD_MAP['down']:
                 continue
 
             change_steps = min(self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
@@ -396,9 +444,9 @@ class ScootController(Object):
                 phase_change_map[phase_id] = - change_steps
             cumurative_change_steps += phase_change_map[phase_id]
         
-        prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda x: self.saturation_map[x], reverse=True)
+        prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda phase_id: max_saturation_map[phase_id], reverse=True)
         for phase_id in prioritize_phase_list:
-            if self.saturation_map[phase_id] < self.SATURATION_THRESHOLD_MAP['up']:
+            if max_saturation_map[phase_id] < self.SATURATION_THRESHOLD_MAP['up']:
                 continue
 
             change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
