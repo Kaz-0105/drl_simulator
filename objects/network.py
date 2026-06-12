@@ -15,7 +15,7 @@ from objects.local_agents import LocalAgents
 from objects.mpc_controllers import MpcControllers
 from objects.bc_buffers import BcBuffers
 from objects.bc_agent import BcAgent
-from objects.scoot_controllers2 import ScootControllers
+from objects.scoot_controllers import ScootControllers
 
 import numpy as np
 import torch

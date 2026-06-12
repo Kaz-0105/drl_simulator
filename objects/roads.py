@@ -178,9 +178,6 @@ class Road(Object):
         self.speed_record_df = None
         self.num_vehs_record_list = []
         self.num_vehs_record_df = None
-
-        if self.network.get('control_method') == 'scoot':
-            self.effective_storage_length_map = None
         return
     
     def _connectObjects(self):

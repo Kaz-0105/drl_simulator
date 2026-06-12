@@ -56,10 +56,6 @@ class VehicleRoutingDecision(Object):
 
         # set num_routes_map (VehicleRoutingDecision._connectObjects())
         self.num_routes_map = None
-
-        # set effective_storage_length_map (VehicleRoutingDecision._connectObjects())
-        if self.network.get('control_method') == 'scoot':
-            self.effective_storage_length_map = None
         return
     
     def _connectObjects(self):
@@ -86,75 +82,12 @@ class VehicleRoutingDecision(Object):
         for vehicle_route in self.vehicle_routes.getAll():
             route_id = vehicle_route.get('route_id')
             vehicle_route.set('turn_ratio', self.turn_ratios[route_id] / self.num_routes_map[route_id] * lcm)
-        
-        # set effective_storage_length_map
-        if self.network.get('control_method') == 'scoot':
-            self._initEffectiveStorageLengthMap()
 
         # set travel_time_measurements (TravelTimeMeasurement._connectObjects())
         self.travel_time_measurements = TravelTimeMeasurements(self)
 
         # set delay_measurements (DelayMeasurement._connectObjects())
         self.delay_measurements = DelayMeasurements(self)
-
-        return
-    
-    def _initEffectiveStorageLengthMap(self):
-        effective_storage_length_map = {'left': 0.0, 'straight': 0.0, 'right': 0.0}
-
-        # 道路タイプで分岐
-        if self.road.get('type') == VehicleRoutingDecision.ROAD_TYPE_MAP[(1, 2)]:
-            # 車線数：分岐前1車線，分岐後2車線
-            # 進路：左車線は左折と直進，右車線は右折
-            
-            #　左車線について
-            before_branch_length = self.road.right_connector.get('from_pos')
-            after_branch_length = self.road.main_link.get('length') - before_branch_length
-
-            effective_storage_length_map['left'] += self.turn_ratios[1] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios[1] / (self.turn_ratios[1] + self.turn_ratios[2]) * after_branch_length
-            effective_storage_length_map['straight'] += self.turn_ratios[2] / (sum(self.turn_ratios.values())) * before_branch_length + self.turn_ratios[2] / (self.turn_ratios[1] + self.turn_ratios[2]) * after_branch_length
-            effective_storage_length_map['right'] += self.turn_ratios[3] / (sum(self.turn_ratios.values())) * before_branch_length
-
-            # 右車線について
-            branch_length = 0.0
-            branch_length += self.road.right_link.get('length')
-            branch_length += self.road.right_connector.get('length') 
-            branch_length -= self.road.right_connector.get('to_pos')
-            effective_storage_length_map['right'] += branch_length
-
-        elif self.road.get('type') == VehicleRoutingDecision.ROAD_TYPE_MAP[(2, 3)]:
-            # 車線数：分岐前2車線，分岐後3車線
-            # 進路：左車線は左折と直進，真ん中の車線は直進，右車線は右折
-
-            # 左車線について
-            main_link_length = self.road.main_link.get('length')
-            effective_storage_length_map['left'] += (self.turn_ratios[1] / (self.turn_ratios[1] + (self.turn_ratios[2] / 2))) *  main_link_length
-            effective_storage_length_map['straight'] += ((self.turn_ratios[2] / 2) / (self.turn_ratios[1] + (self.turn_ratios[2] / 2))) *  main_link_length
-
-            # 真ん中の車線について
-            before_branch_length = self.road.right_connector.get('from_pos')
-            after_branch_length = self.road.main_link.get('length') - before_branch_length
-            effective_storage_length_map['straight'] += ((self.turn_ratios[2] / 2) / (self.turn_ratios[3] + (self.turn_ratios[2] / 2))) * before_branch_length + after_branch_length
-            effective_storage_length_map['right'] += (self.turn_ratios[3] / (self.turn_ratios[3] + (self.turn_ratios[2] / 2))) * before_branch_length
-
-            # 右車線について
-            branch_length = 0.0
-            branch_length += self.road.right_link.get('length')
-            branch_length += self.road.right_connector.get('length') 
-            branch_length -= self.road.right_connector.get('to_pos')
-            effective_storage_length_map['right'] += branch_length
-        elif self.road.get('type') == VehicleRoutingDecision.ROAD_TYPE_MAP[(1, 1)]:
-            # 車線数：分岐前1車線，分岐後1車線
-            # 進路：左車線は左折と直進と右折
-
-            main_link_length = self.road.main_link.get('length')
-            effective_storage_length_map['left'] += self.turn_ratios['left'] / (sum(self.turn_ratios.values())) * main_link_length
-            effective_storage_length_map['straight'] += self.turn_ratios['straight'] / (sum(self.turn_ratios.values())) * main_link_length
-            effective_storage_length_map['right'] += self.turn_ratios['right'] / (sum(self.turn_ratios.values())) * main_link_length
-        else:
-            raise NotImplementedError(f"Not supported road type: {self.road.get('type')}")  
-
-        self.road.set('effective_storage_length_map', effective_storage_length_map)
         return
 
 class VehicleRoutes(Container):
