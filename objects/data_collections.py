@@ -65,6 +65,13 @@ class DataCollectionPoint(Object):
         
         return self.data_collection_measurement.get('flow_rate')
     
+    @property
+    def current_num_vehs(self):
+        if self.data_collection_measurement is None:
+            raise Exception(f"No single type data collection measurement found for DataCollectionPoint {self.id}, so current number of vehicles is not available")
+        
+        return self.data_collection_measurement.get('current_num_vehs')
+    
     def _initProps(self):
         self.id = self.com.AttValue('No')
 
@@ -175,6 +182,7 @@ class DataCollectionMeasurement(Object):
     @property
     def current_time(self):
         return self.network.simulation.get('current_time')
+    
     
     @property
     def time_step(self):

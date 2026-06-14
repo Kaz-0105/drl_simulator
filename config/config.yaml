@@ -1,8 +1,8 @@
 simulator:
-  control_method : drl            # mpc, drl, scoot
+  control_method : scoot            # mpc, drl, scoot
   seed: 1                           # random seed for vissim
   layout_name : 9-4-1-c-1           # layout folder name
-  inflow_name : main-minor        # inflow file name
+  inflow_name : balanced_700        # inflow file name
   simulation_time: 1000             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -48,9 +48,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: true
-      speed: true
-      route: true
+      position: false
+      speed: false
+      route: false
     lane:
       length: true
       type: true
@@ -164,11 +164,13 @@ scoot:
     cycle: 20                  # initial cycle time (step)
     split: [5, 5, 5, 5]        # initial split for each phase (step)
   change_steps:
-    cycle: 1                   # change amount of cycle time (step)
+    cycle: 2                   # change amount of cycle time (step)
     split: 
       normal: 1                # change amount of split for each phase when normal (step)
-      blocked: 2               # change amount of split for each phase when blocked (step)        
-  max_cycle: 60                # max cycle time (step)
+      blocked: 1               # change amount of split for each phase when blocked (step)    
+      over_queue: 1            # change amount of split for each phase when over queue (step)   
+      not_pass: 1              # change amount of split for each phase when not passing (step) 
+  max_cycle: 40                # max cycle time (step)
   min_split: 3                 # min split for each phase (step)
     
 save:
