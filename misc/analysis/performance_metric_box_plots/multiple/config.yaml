@@ -1,0 +1,180 @@
+target:
+  layout: 
+    - 9-4-1-c-1
+    - 9-4-1-c-2
+    - 9-4-1-c-3
+    - 9-4-1-c-4
+    - 9-4-1-c-5
+    - 9-4-1-c-6
+    - 9-4-1-c-7
+  control_method:
+    mpc:
+      4-phase: false
+      8-phase: false
+      17-phase: false
+    drl:
+      micro: true
+      macro: true
+    scoot: true
+  performance_metrics: [
+    'queue_avg',
+    'queue_max',
+    'delay_avg',
+    'delay_max',
+    'speed_avg',
+    'num_phase_changes',
+    'reward'
+  ]
+  seed:
+    fix_flg: true
+    fix_value: 1
+  delay_type: 1 # 1 or 2
+  signal_change_weight: 
+    4-phase: 12
+    8-phase: 10
+    17-phase: 10
+
+figure:
+  title:
+    queue_avg: Average Queue Length 
+    queue_max: Maximum Queue Length 
+    delay_avg: Average Delay 
+    delay_max: Maximum Delay 
+    speed_avg: Average Speed 
+    num_phase_changes: Number of Phase Changes 
+    reward: Total Reward 
+  x_axis:
+    label: 
+      scoot: SCOOT
+      mpc:
+        4-phase: 4-phase MPC
+        8-phase: 8-phase MPC
+        17-phase: 17-phase MPC
+      drl:
+        micro: Proposed DRL
+        macro: Baseline DRL
+  y_axis:
+    label: 
+      queue_avg: Average Queue Length [m]
+      queue_max: Maximum Queue Length [m]
+      delay_avg: Average Delay [s]
+      delay_max: Maximum Delay [s]
+      speed_avg: Average Speed [km/h]
+      num_phase_changes: Number of Phase Changes
+      reward: Total Reward
+simulator:
+  num_red_steps: 1            
+  simulation_time: 1000
+  time_step: 2
+
+mpc: 
+  horizon: 5
+  min_successive_steps: 4
+  num_max_changes: 1
+  remained_steps: 2
+  utilize_steps: 2
+  branch_gap: -3
+  objective_function:
+    type: waiting_vehicles
+    waiting_vehicles:
+      definition: 4
+      leader_detection:
+        type: multiple
+      queue_measurement:
+        type: ema
+        ema:
+          alpha: 0.3
+      range_type: separate
+    signal_change:
+      type: global
+
+scoot:
+  initial_parameters:          
+    cycle: 20                  # initial cycle time (step)
+    split: [5, 5, 5, 5]    # initial split for each phase (step)
+  change_steps:
+    cycle: 1                   # change amount of cycle time (step)
+    split: 
+      normal: 1                # change amount of split for each phase when normal (step)
+      blocked: 2               # change amount of split for each phase when blocked (step)        
+  max_cycle: 60                # max cycle time (step)
+  min_split: 3                 # min split for each phase (step)                
+
+drl:
+  architecture:
+    common:
+      activation_function:
+        leaky_relu:
+          alpha: 0.01
+        type: leaky_relu
+      initialization:
+        type: he
+    proto:
+      compression:
+        rate:
+          dueling: 1.0
+          intersection: 0.5
+          intersection_encoder: 5.0
+          lane: 1.0
+          lane_encoder: 5.0
+          lanes: 0.5
+          road: 1.0
+          road_encoder: 5.0
+          roads: 0.5
+          vehicle_encoder: 5.0
+          vehicles: 1.0
+        type: linear
+      hidden_layers:
+        number:
+          dueling: 2
+          intersection: 1
+          intersection_encoder: 2
+          lane: 1
+          lane_encoder: 2
+          lanes: 1
+          road: 1
+          road_encoder: 2
+          roads: 1
+          vehicle_encoder: 2
+          vehicles: 1
+    type: proto
+  duration_steps: 5
+  framework:
+    apex:
+      buffer:
+        file_capacity: 10000
+        size: 200000
+      td_steps: 1
+    type: apex
+  reward:
+    common:
+      gamma: 0.8
+    type: waiting_vehicles
+    waiting_vehicles:
+      bonus:
+        movement: 0.1
+        pass: 1.0
+      scaler:
+        tanh:
+          alpha: 3
+        tanh_linear:
+          alpha: 3
+        type: tanh_linear
+      weight:
+        exponential:
+          half: 50
+        type: queue_exponential
+  state:
+    intersection:
+      phase: true
+    lane:
+      length: true
+      num_vehicles: true
+      type: true
+    road:
+      delay: true
+      queue: true
+      route: true
+      inflow: true
+    vehicle:
+      number: 10

@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-root_dir_path = (Path(__file__).parent / '..' / '..' / '..').resolve()
+root_dir_path = (Path(__file__).parent / '..' / '..' / '..' / '..').resolve()
 sys.path.append(str(root_dir_path))
 
 import yaml
@@ -25,7 +25,7 @@ def main():
     performance_metric_df = getPerformanceMetricDf(config_yaml)
 
     # get save_dir_path
-    save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_box_plots'
+    save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_box_plots' / 'single'
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
     # plot figure
