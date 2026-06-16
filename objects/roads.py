@@ -130,6 +130,20 @@ class Road(Object):
         return self.queue_counters.get('max_queue_length')
     
     @property
+    def main_queue_length(self):
+        if self.main_link is None:
+            raise NotImplementedError("main_queue_length is only implemented for road with main_link.")
+        
+        return self.main_link.get('current_queue_length')
+    
+    @property
+    def right_queue_length(self):
+        if self.right_link is None:
+            raise NotImplementedError("right_queue_length is only implemented for road with right_link.")
+        
+        return self.right_link.get('current_queue_length')
+    
+    @property
     def average_delay(self):
         delays = []
         for delay_measurement in self.delay_measurements.getAll():

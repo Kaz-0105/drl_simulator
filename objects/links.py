@@ -185,6 +185,13 @@ class Link(Object):
             raise NotImplementedError(f"from_pos is only implemented for connector link. current link type: {self.get('type')}")
         
         return self.length_info['from_pos'] 
+    
+    @property
+    def current_queue_length(self):
+        if self.queue_counter is None:
+            raise NotImplementedError("current_queue_length is only implemented for link with queue_counter.")
+        
+        return self.queue_counter.get('current_queue_length')
 
     def _initProps(self, link_info):
         # set id and input_volume

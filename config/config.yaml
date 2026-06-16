@@ -164,13 +164,13 @@ scoot:
     cycle: 20                  # initial cycle time (step)
     split: [5, 5, 5, 5]        # initial split for each phase (step)
   change_steps:
-    cycle: 2                   # change amount of cycle time (step)
+    cycle: 1                   # change amount of cycle time (step)
     split: 
       normal: 1                # change amount of split for each phase when normal (step)
       blocked: 1               # change amount of split for each phase when blocked (step)    
-      over_queue: 1            # change amount of split for each phase when over queue (step)   
-      not_pass: 1              # change amount of split for each phase when not passing (step) 
-  max_cycle: 40                # max cycle time (step)
+      over_queue: 5           # change amount of split for each phase when over queue (step)   
+      not_pass: 5             # change amount of split for each phase when not passing (step) 
+  max_cycle: 30                # max cycle time (step)
   min_split: 3                 # min split for each phase (step)
     
 save:
