@@ -1,0 +1,16 @@
+change_steps:
+  cycle: 1
+  split:
+    blocked: 1
+    normal: 1
+    not_pass: 5
+    over_queue: 5
+initial_parameters:
+  cycle: 20
+  split:
+  - 5
+  - 5
+  - 5
+  - 5
+max_cycle: 30
+min_split: 3

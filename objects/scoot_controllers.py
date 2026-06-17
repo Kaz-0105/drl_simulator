@@ -391,15 +391,25 @@ class ScootController(Object):
                 for road_id in set([tmp_road_id for tmp_road_id, _ in self.phases_map[phase_id]]):
                     road = self.roads[road_id]
                     if road.get('type') == 1:
-                        if self.current_blocked_info_map[phase_id][road_id]:
-                            vehicles_df = road.get('vehicles_df')
-                            vehicles_df = vehicles_df[
-                                (vehicles_df['link_id'] == road.main_link.get('id')) &
-                                (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-                            ].sort_values(by='position', ascending=True).reset_index(drop=True)
-                            queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
-                        else:
-                            queue_length = road.get('main_queue_length')
+                        vehicles_df = road.get('vehicles_df')
+                        vehicles_df = vehicles_df[
+                            (vehicles_df['link_id'] == road.main_link.get('id')) &
+                            (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
+                        ].sort_values(by='position', ascending=True).reset_index(drop=True)
+                        queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
+
+                        if queue_length / self.branch_info_map[road_id]['length']['straight'] >= 0.5:
+                            queue_length = max(queue_length, road.get('main_queue_length'))
+
+                        # if self.current_blocked_info_map[phase_id][road_id]:
+                        #     vehicles_df = road.get('vehicles_df')
+                        #     vehicles_df = vehicles_df[
+                        #         (vehicles_df['link_id'] == road.main_link.get('id')) &
+                        #         (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
+                        #     ].sort_values(by='position', ascending=True).reset_index(drop=True)
+                        #     queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
+                        # else:
+                        #     queue_length = road.get('main_queue_length')
                         
                         self.current_max_queue_map[phase_id] = max(self.current_max_queue_map[phase_id], queue_length / road.get('length'))
                     else:
@@ -409,30 +419,43 @@ class ScootController(Object):
                 for road_id in set([tmp_road_id for tmp_road_id, route_id in self.phases_map[phase_id] if route_id == self.TURN_RIGHT_ID]):
                     road = self.roads[road_id]
                     if road.get('type') == 1:
-                        if len(self.blocked_info_map[phase_id].keys()) == 0:
-                            blocked_flg = self.current_blocked_info_map[phase_id][road_id]
+                        vehicles_df = road.get('vehicles_df')
+                        if any(vehicles_df['link_id'] == road.right_connector.get('id')):
+                            vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
+                            queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
+                        elif any(vehicles_df['link_id'] == road.right_link.get('id')):
+                            vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
+                            queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
                         else:
-                            blocked_flg = self.blocked_info_map[phase_id][road_id]
+                            queue_length = 0.0
+
+                        if queue_length / self.branch_info_map[road_id]['length']['right'] >= 0.5:
+                            queue_length = max(queue_length, road.get('right_queue_length'))
+
+                        # if len(self.blocked_info_map[phase_id].keys()) == 0:
+                        #     blocked_flg = self.current_blocked_info_map[phase_id][road_id]
+                        # else:
+                        #     blocked_flg = self.blocked_info_map[phase_id][road_id]
                 
-                        if blocked_flg:
-                            vehicles_df = road.get('vehicles_df')
-                            if any(vehicles_df['link_id'] == road.right_connector.get('id')):
-                                vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')]
-                                vehicles_df = vehicles_df.sort_values(by='position', ascending=True).reset_index(drop=True)
+                        # if blocked_flg:
+                        #     vehicles_df = road.get('vehicles_df')
+                        #     if any(vehicles_df['link_id'] == road.right_connector.get('id')):
+                        #         vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')]
+                        #         vehicles_df = vehicles_df.sort_values(by='position', ascending=True).reset_index(drop=True)
 
-                                queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
+                        #         queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
                             
-                            elif any(vehicles_df['link_id'] == road.right_link.get('id')):
-                                vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')]
-                                vehicles_df = vehicles_df.sort_values(by='position', ascending=True).reset_index(drop=True)
+                        #     elif any(vehicles_df['link_id'] == road.right_link.get('id')):
+                        #         vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')]
+                        #         vehicles_df = vehicles_df.sort_values(by='position', ascending=True).reset_index(drop=True)
                                 
-                                queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
+                        #         queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
                             
-                            else:
-                                queue_length = 0.0
+                        #     else:
+                        #         queue_length = 0.0
 
-                        else:
-                            queue_length = road.get('right_queue_length')
+                        # else:
+                        #     queue_length = road.get('right_queue_length')
                     
                         self.current_max_queue_map[phase_id] = max(self.current_max_queue_map[phase_id], queue_length / road.get('length'))
                     else:
@@ -442,6 +465,8 @@ class ScootController(Object):
             
             self.max_queue_map[phase_id] = max(self.max_queue_map[phase_id], self.current_max_queue_map[phase_id])
 
+        if self.id == 3:
+            print(f"p1: {self.current_max_queue_map[1]:.2f}, p2: {self.current_max_queue_map[2]:.2f}, p3: {self.current_max_queue_map[3]:.2f}, p4: {self.current_max_queue_map[4]:.2f}")
         # for phase_id in range(1, self.num_phases + 1):
         #     self.max_queue_map[phase_id] = 0.0
         #     for road_id, route_id in self.phases_map[phase_id]:
@@ -770,7 +795,7 @@ class ScootController(Object):
         self.params['cycle'] += cumulative_change_steps    
 
         # show update information
-        self._showInfo('update')
+        # self._showInfo('update')
 
         # update previous_params
         self.previous_params = copy.deepcopy(self.params)
