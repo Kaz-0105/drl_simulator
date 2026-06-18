@@ -55,53 +55,18 @@ class ScootControllers(Container):
     
 class ScootController(Object):
     PHASE_ORDER_LIST = [1, 3, 2, 4]
-
-    NORTH_ROAD_ID = 1
-    EAST_ROAD_ID = 2
-    SOUTH_ROAD_ID = 3
-    WEST_ROAD_ID = 4
-
-    PHASE_ROAD_LIST_MAP = {
-        1: [NORTH_ROAD_ID, SOUTH_ROAD_ID],
-        2: [EAST_ROAD_ID, WEST_ROAD_ID],
-        3: [NORTH_ROAD_ID, SOUTH_ROAD_ID],
-        4: [EAST_ROAD_ID, WEST_ROAD_ID],    
-    }
-
-    OPPOSITE_PHASE_MAP = {
-        1: 2,
-        2: 1,
-        3: 4,
-        4: 3,
-    }
-
-    SAME_DIRECTION_PHASE_MAP = {
-        1: 3,
-        2: 4,
-        3: 1,
-        4: 2,
-    }
-
     STRAIGHT_PHASE_LIST = [1, 2]
     RIGHT_PHASE_LIST = [3, 4]
 
     MIN_DISTANCE = 1.0
     INITIAL_VEHICLE_SIZE = 5.0
+    INITIAL_FLOW_RATE = 0.2
 
     TURN_LEFT_ID = 1
     GO_STRAIGHT_ID = 2
     TURN_RIGHT_ID = 3
 
-    INITIAL_FLOW_RATE = 0.2
-    SPILLBACK_THRESHOLD = 0.90
-
-    QUEUE_THRESHOLD = 0.5
-    SATURATION_THRESHOLD_MAP = {
-        'up': 1.0,
-        'down': 0.9,
-    }
-
-    PASS_DURATION = 2
+    SPILLBACK_QUEUE_THRESHOLD = 0.5
 
     def __init__(self, scoot_controllers, intersection, id):
         super().__init__()
@@ -124,50 +89,110 @@ class ScootController(Object):
     @property
     def first_partition(self):
         return self.remain_steps_info['split'][0]
+
+    @property
+    def second_partition(self):
+        return self.remain_steps_info['split'][1]
+
+    @property
+    def third_partition(self):
+        return self.remain_steps_info['split'][2]
+    
+    @property
+    def fourth_partition(self):
+        return self.remain_steps_info['split'][3]
+    
+    @property
+    def previous_partition(self):
+        return self.fourth_partition
     
     @property
     def previous_phase(self):
-        return self.remain_steps_info['split'][-1]['phase']['from']
+        return self.previous_partition['phase']['from']
 
     @property
     def current_phase(self):
-        return self.remain_steps_info['split'][0]['phase']['from']
+        return self.first_partition['phase']['from']
     
     @property
     def next_phase(self):
-        return self.remain_steps_info['split'][1]['phase']['from']
+        return self.second_partition['phase']['from']
 
     @property
     def cycle_update_flg(self):
         return self.remain_steps_info['cycle'] == 0
-    
+        
     @property
     def split_update_flg(self):
-        return self.current_blocked_flg or self.normal_split_update_flg or self.over_queue_flg
+        if self.first_partition['fixed']:
+            return False
         
+        return self.first_partition['steps'] <= self.change_steps['split']['normal']
+    
     @property
-    def normal_split_update_flg(self):
-        return self.first_partition['steps'] == self.change_steps['split']['normal'] and not self.first_partition['fixed']
+    def saturated_flg(self):
+        if not self.emergency_flg_map['queue']:
+            return False
 
-    @property
-    def current_blocked_flg(self):
-        return any(self.blocked_info_map[self.current_phase].values())
+        if self.current_split_changes_map['queue'] >= self.emergency_max_changes_map['queue']:
+            return False
+        
+        if self.first_partition['steps'] > self.change_steps['split']['normal'] + 1:
+            return False
+        
+        if self.first_partition['fixed']:
+            return False
+        
+        return self.current_max_queue_map[self.current_phase] > self.emergency_threshold_map['queue']['up']
     
     @property
-    def over_queue_flg(self):
-        return self.current_max_queue_map[self.current_phase] > self.QUEUE_THRESHOLD and self.current_max_queue_map[self.current_phase] >= self.current_max_queue_map[self.next_phase]
+    def sparse_flg(self):
+        if not self.emergency_flg_map['queue']:
+            return False
         
-    @property
-    def no_pass_flg(self):
-        for pass_flg_list in self.pass_map.values():
-            if not any(pass_flg_list):
-                return True
+        if self.current_split_changes_map['queue'] >= self.emergency_max_changes_map['queue']:
+            return False
         
-        return False
+        if self.first_partition['fixed']:
+            return False
+        
+        return self.current_max_queue_map[self.current_phase]  < self.emergency_threshold_map['queue']['down'] and any(queue > self.emergency_threshold_map['queue']['up'] for queue in self.current_max_queue_map.values())
     
     @property
-    def next_blocked_flg(self):
-        return self.current_phase in self.STRAIGHT_PHASE_LIST and any(self.blocked_info_map[self.next_phase].values())
+    def clear_flg(self):
+        if not self.emergency_flg_map['pass']:
+            return False
+        
+        if self.current_split_changes_map['pass'] >= self.emergency_max_changes_map['pass']:
+            return False
+        
+        if self.first_partition['fixed']:
+            return False
+        
+        for pass_list in self.road_pass_map.values():
+            if len(pass_list) < self.emergency_threshold_map['pass']:
+                return False
+            
+            if self.first_partition['steps'] + len(pass_list) == self.params['split'][self.current_phase]:
+                return False
+            
+            if any(pass_list):
+                return False
+               
+        return True
+    
+    @property
+    def blocked_flg(self):
+        if not self.emergency_flg_map['blocked']:
+            return False
+        
+        if self.current_split_changes_map['blocked'] >= self.emergency_max_changes_map['blocked']:
+            return False
+        
+        if self.first_partition['fixed']:
+            return False
+        
+        return self.blocked_map[self.current_phase]
 
     def _initProps(self, id):
         # set id and num_phases
@@ -201,8 +226,35 @@ class ScootController(Object):
             })
 
         self.change_steps = scoot_info['change_steps']
-        self.max_cycle = scoot_info['max_cycle']
-        self.min_split = scoot_info['min_split']
+        self.min_cycle = scoot_info['range']['cycle']['min']
+        self.max_cycle = scoot_info['range']['cycle']['max']
+        self.min_split = scoot_info['range']['split']['min']
+
+        self.normal_threshold_map = {}
+        self.normal_threshold_map['saturation'] = {
+            'up': scoot_info['normal']['saturation']['threshold']['up'],
+            'down': scoot_info['normal']['saturation']['threshold']['down'],
+        }
+
+        self.emergency_flg_map = {
+            'queue': scoot_info['emergency']['queue']['flg'],
+            'pass': scoot_info['emergency']['pass']['flg'],
+            'blocked': scoot_info['emergency']['blocked']['flg'],
+        }
+        
+        self.emergency_threshold_map = {}
+        if self.emergency_flg_map['queue']:
+            self.emergency_threshold_map['queue'] = {
+                'down': scoot_info['emergency']['queue']['threshold']['down'],
+                'up': scoot_info['emergency']['queue']['threshold']['up'],
+            }
+        if self.emergency_flg_map['pass']:
+            self.emergency_threshold_map['pass'] = scoot_info['emergency']['pass']['threshold']
+
+        self.emergency_max_changes_map = {}
+        for emergency_type in ['queue', 'pass', 'blocked']:
+            if self.emergency_flg_map[emergency_type]:
+                self.emergency_max_changes_map[emergency_type] = scoot_info['emergency'][emergency_type]['max_changes']
 
         # set time_step
         self.time_step = self.network.simulation.get('time_step')
@@ -218,16 +270,22 @@ class ScootController(Object):
         self.from_pos_map = None
         self.sig_pos_map = None
 
-        # initialize other properties
+        # set properties for signal parameter adjustment
         self.inflow_rate_record_map = None
         self.outflow_rate_record_map = None
-        self.saturation_map = None
         self.max_outflow_rate_map = None
-        self.current_blocked_info_map = {phase_id: {} for phase_id in range(1, self.num_phases + 1)}
-        self.blocked_info_map = {phase_id: {} for phase_id in range(1, self.num_phases + 1)}
+        self.saturation_map = None
+        self.phase_max_saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
+        self.phase_avg_saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
+        
+        # set properties for emergency signal parameter adjustment
+        self.current_split_changes_map = {type: 0 for type, flg in self.emergency_flg_map.items() if flg}
+        self.current_queue_map = None
         self.current_max_queue_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
         self.max_queue_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
-        self.pass_map = None
+        self.blocked_map = {phase_id: False for phase_id in range(1, self.num_phases + 1)}
+        self.road_pass_map = None
+
         return
     
     def _connectObjects(self, intersection):
@@ -287,207 +345,111 @@ class ScootController(Object):
         self.outflow_rate_record_map = {(road_id, route_id): pd.DataFrame(columns=['time', 'outflow_rate']) for road_id in range(1, self.num_roads + 1) for route_id in range(1, self.num_roads)}
         self.saturation_map = {(road_id, route_id): 0.0 for road_id in range(1, self.num_roads + 1) for route_id in range(1, self.num_roads)}
         
-        self.pass_map = {}
+        self.current_queue_map = {}
+        for road_id, road in self.roads.items():
+            if road.get('type') == 1:
+                self.current_queue_map[road_id] = {'straight': 0.0, 'right': 0.0}
+            else:
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+
+        self.road_pass_map = {}
         for road_id, _ in self.phases_map[self.current_phase]:
-            if road_id not in self.pass_map.keys():
-                self.pass_map[road_id] = deque(maxlen=self.PASS_DURATION)
+            if road_id not in self.road_pass_map.keys():
+                self.road_pass_map[road_id] = deque(maxlen=self.emergency_threshold_map['pass'])
         return
+    
+    def _updateQueueInfo(self):
+        for road_id, road in self.roads.items():
+            if road.get('type') == 1:
+                vehicles_df = road.get('vehicles_df')
+                vehicles_df = vehicles_df[
+                    (vehicles_df['link_id'] == road.main_link.get('id')) &
+                    (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
+                ].sort_values(by='position', ascending=True).reset_index(drop=True)
+                queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
 
-    def _updateTrafficInfo(self):
-        # udpate blocked_info_map, current_blocked_info_map
-        for phase_id in range(1, self.num_phases + 1):
-            if phase_id in self.STRAIGHT_PHASE_LIST:
-                for road_id in set([tmp_road_id for tmp_road_id, _ in self.phases_map[phase_id]]):
-                    road = self.roads[road_id]    
-                    if road.get('type') == 1:
-                        vehicles_df = road.get('vehicles_df')
-                        vehicle_size = vehicles_df['length'].mean() if not vehicles_df.empty else self.INITIAL_VEHICLE_SIZE
+                if queue_length / self.branch_info_map[road_id]['length']['straight'] >= self.SPILLBACK_QUEUE_THRESHOLD:
+                    queue_length = max(queue_length, road.get('max_queue_length'))
 
-                        num_vehs = vehicles_df[vehicles_df['link_id'].isin([road.right_link.get('id'), road.right_connector.get('id')])].shape[0]
-                        
-                        self.current_blocked_info_map[phase_id][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['right'] * self.SPILLBACK_THRESHOLD
-                        
-                    else:
-                        raise NotImplementedError(f"Not supported road type: {road.get('type')}")
-            
-            elif phase_id in self.RIGHT_PHASE_LIST:
-                for road_id in set([tmp_road_id for tmp_road_id, route_id in self.phases_map[phase_id] if route_id == self.TURN_RIGHT_ID]):
-                    road = self.roads[road_id]
-                    if road.get('type') == 1:
-                        vehicles_df = road.get('vehicles_df')
-                        vehicle_size = vehicles_df['length'].mean() if not vehicles_df.empty else self.INITIAL_VEHICLE_SIZE
+                self.current_queue_map[road_id]['straight'] = queue_length
 
-                        num_vehs = vehicles_df[
-                            (vehicles_df['link_id'] == road.main_link.get('id')) &
-                            (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-                        ].shape[0]
-                        self.current_blocked_info_map[phase_id][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
-                    else:
-                        raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+                vehicles_df = road.get('vehicles_df')
+                if any(vehicles_df['link_id'] == road.right_connector.get('id')):
+                    vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
+                    queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
+                elif any(vehicles_df['link_id'] == road.right_link.get('id')):
+                    vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
+                    queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
+                else:
+                    queue_length = 0.0
+                
+                if queue_length / self.branch_info_map[road_id]['length']['right'] >= self.SPILLBACK_QUEUE_THRESHOLD:
+                    queue_length = max(queue_length, road.get('max_queue_length'))
+                
+                self.current_queue_map[road_id]['right'] = queue_length
 
             else:
-                raise NotImplementedError(f"Not supported phase id: {phase_id}")
-            
-        if self.current_phase in self.STRAIGHT_PHASE_LIST:
-            self.blocked_info_map[self.current_phase] = copy.deepcopy(self.current_blocked_info_map[self.current_phase])
-            
-            if len(self.blocked_info_map[self.SAME_DIRECTION_PHASE_MAP[self.current_phase]].keys()) == 0:
-                self.blocked_info_map[self.SAME_DIRECTION_PHASE_MAP[self.current_phase]] = copy.deepcopy(self.current_blocked_info_map[self.SAME_DIRECTION_PHASE_MAP[self.current_phase]])
-        
-        # self.blocked_info_map[self.current_phase] = {}
+                raise NotImplementedError(f"Not supported road type: {road.get('type')}")
 
-        # if self.current_phase in self.STRAIGHT_PHASE_LIST:
-        #     for road_id, road in self.roads.items():
-        #         if road.get('type') == 1:
-        #             if road_id not in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
-        #                 continue
-
-        #             vehicles_df = road.get('vehicles_df')
-        #             vehicle_size = vehicles_df['length'].mean()
-
-        #             num_vehs = vehicles_df[vehicles_df['link_id'].isin([road.right_link.get('id'), road.right_connector.get('id')])].shape[0]
-        #             self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['right'] * self.SPILLBACK_THRESHOLD
-        #         else:
-        #             raise NotImplementedError(f"Not supported road type: {road.get('type')}")
-
-        # elif self.current_phase in self.RIGHT_PHASE_LIST:
-        #     for road_id, road in self.roads.items():
-        #         if road.get('type') == 1:
-        #             if road_id in self.PHASE_ROAD_LIST_MAP[self.current_phase]:
-        #                 vehicles_df = road.get('vehicles_df')
-        #                 vehicle_size = vehicles_df['length'].mean()
-
-        #                 num_vehs = vehicles_df[
-        #                     (vehicles_df['link_id'] == road.main_link.get('id')) &
-        #                     (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-        #                 ].shape[0]
-
-        #                 self.blocked_info_map[self.current_phase][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
-                    
-        #             elif road_id in self.PHASE_ROAD_LIST_MAP[self.OPPOSITE_PHASE_MAP[self.current_phase]]:
-        #                 if road_id in self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]] and self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id]:
-        #                     continue
-
-        #                 vehicles_df = road.get('vehicles_df')
-        #                 vehicle_size = vehicles_df['length'].mean()
-
-        #                 num_vehs = vehicles_df[
-        #                     (vehicles_df['link_id'] == road.main_link.get('id')) &
-        #                     (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-        #                 ].shape[0]
-
-        #                 self.blocked_info_map[self.OPPOSITE_PHASE_MAP[self.current_phase]][road_id] = num_vehs * (vehicle_size + self.MIN_DISTANCE) >= self.branch_info_map[road_id]['length']['straight'] * self.SPILLBACK_THRESHOLD
-        #             else:
-        #                 raise NotImplementedError(f"Road id {road_id} is not included in current phase {self.current_phase} and opposite phase {self.OPPOSITE_PHASE_MAP[self.current_phase]}")
-        #         else:
-        #             raise NotImplementedError(f"Not supported road type: {road.get('type')}")
-        # else:
-        #     raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
-        
-        # update max_queue_map, current_max_queue_map
         for phase_id in range(1, self.num_phases + 1):
             self.current_max_queue_map[phase_id] = 0.0
+
             if phase_id in self.STRAIGHT_PHASE_LIST:
-                for road_id in set([tmp_road_id for tmp_road_id, _ in self.phases_map[phase_id]]):
-                    road = self.roads[road_id]
-                    if road.get('type') == 1:
-                        vehicles_df = road.get('vehicles_df')
-                        vehicles_df = vehicles_df[
-                            (vehicles_df['link_id'] == road.main_link.get('id')) &
-                            (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-                        ].sort_values(by='position', ascending=True).reset_index(drop=True)
-                        queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
-
-                        if queue_length / self.branch_info_map[road_id]['length']['straight'] >= 0.5:
-                            queue_length = max(queue_length, road.get('main_queue_length'))
-
-                        # if self.current_blocked_info_map[phase_id][road_id]:
-                        #     vehicles_df = road.get('vehicles_df')
-                        #     vehicles_df = vehicles_df[
-                        #         (vehicles_df['link_id'] == road.main_link.get('id')) &
-                        #         (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
-                        #     ].sort_values(by='position', ascending=True).reset_index(drop=True)
-                        #     queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
-                        # else:
-                        #     queue_length = road.get('main_queue_length')
-                        
-                        self.current_max_queue_map[phase_id] = max(self.current_max_queue_map[phase_id], queue_length / road.get('length'))
-                    else:
-                        raise NotImplementedError(f"Not supported road type: {road.get('type')}")
-
+                road_set = set([road_id for road_id, _ in self.phases_map[phase_id]])
             elif phase_id in self.RIGHT_PHASE_LIST:
-                for road_id in set([tmp_road_id for tmp_road_id, route_id in self.phases_map[phase_id] if route_id == self.TURN_RIGHT_ID]):
-                    road = self.roads[road_id]
-                    if road.get('type') == 1:
-                        vehicles_df = road.get('vehicles_df')
-                        if any(vehicles_df['link_id'] == road.right_connector.get('id')):
-                            vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
-                            queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
-                        elif any(vehicles_df['link_id'] == road.right_link.get('id')):
-                            vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
-                            queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
-                        else:
-                            queue_length = 0.0
+                road_set = set([road_id for road_id, route_id in self.phases_map[phase_id] if route_id == self.TURN_RIGHT_ID])
+            else:
+                raise NotImplementedError(f"Not supported phase id: {phase_id}")
 
-                        if queue_length / self.branch_info_map[road_id]['length']['right'] >= 0.5:
-                            queue_length = max(queue_length, road.get('right_queue_length'))
-
-                        # if len(self.blocked_info_map[phase_id].keys()) == 0:
-                        #     blocked_flg = self.current_blocked_info_map[phase_id][road_id]
-                        # else:
-                        #     blocked_flg = self.blocked_info_map[phase_id][road_id]
-                
-                        # if blocked_flg:
-                        #     vehicles_df = road.get('vehicles_df')
-                        #     if any(vehicles_df['link_id'] == road.right_connector.get('id')):
-                        #         vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')]
-                        #         vehicles_df = vehicles_df.sort_values(by='position', ascending=True).reset_index(drop=True)
-
-                        #         queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
-                            
-                        #     elif any(vehicles_df['link_id'] == road.right_link.get('id')):
-                        #         vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')]
-                        #         vehicles_df = vehicles_df.sort_values(by='position', ascending=True).reset_index(drop=True)
-                                
-                        #         queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
-                            
-                        #     else:
-                        #         queue_length = 0.0
-
-                        # else:
-                        #     queue_length = road.get('right_queue_length')
-                    
-                        self.current_max_queue_map[phase_id] = max(self.current_max_queue_map[phase_id], queue_length / road.get('length'))
+            for road_id in road_set:
+                road = self.roads[road_id]
+                if road.get('type') == 1:
+                    if phase_id in self.STRAIGHT_PHASE_LIST:
+                        self.current_max_queue_map[phase_id] = max(
+                            self.current_max_queue_map[phase_id],
+                            self.current_queue_map[road_id]['straight'] / road.get('length')
+                        )  
+                    elif phase_id in self.RIGHT_PHASE_LIST:
+                        self.current_max_queue_map[phase_id] = max(
+                            self.current_max_queue_map[phase_id],
+                            self.current_queue_map[road_id]['right'] / road.get('length')
+                        )
                     else:
-                        raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+                        raise NotImplementedError(f"Not supported phase id: {phase_id}")
+                else:
+                    raise NotImplementedError(f"Not supported road type: {road.get('type')}")
+                
+            self.max_queue_map[phase_id] = max(self.max_queue_map[phase_id], self.current_max_queue_map[phase_id])
+        return
+    
+    def _updateBlockedInfo(self):
+        for phase_id in range(1, self.num_phases + 1):
+            self.blocked_map[phase_id] = False  
+            if phase_id in self.STRAIGHT_PHASE_LIST:
+                road_set = set([road_id for road_id, _ in self.phases_map[phase_id]])
+            elif phase_id in self.RIGHT_PHASE_LIST:
+                road_set = set([road_id for road_id, route_id in self.phases_map[phase_id] if route_id == self.TURN_RIGHT_ID])
             else:
                 raise NotImplementedError(f"Not supported phase id: {phase_id}")
             
-            self.max_queue_map[phase_id] = max(self.max_queue_map[phase_id], self.current_max_queue_map[phase_id])
-
-        if self.id == 3:
-            print(f"p1: {self.current_max_queue_map[1]:.2f}, p2: {self.current_max_queue_map[2]:.2f}, p3: {self.current_max_queue_map[3]:.2f}, p4: {self.current_max_queue_map[4]:.2f}")
-        # for phase_id in range(1, self.num_phases + 1):
-        #     self.max_queue_map[phase_id] = 0.0
-        #     for road_id, route_id in self.phases_map[phase_id]:
-        #         road = self.roads[road_id]
-
-        #         if road.get('type') == 1:
-        #             if phase_id in self.RIGHT_PHASE_LIST and route_id == self.TURN_LEFT_ID:
-        #                 continue
-
-        #             if route_id in [self.TURN_LEFT_ID, self.GO_STRAIGHT_ID]:
-        #                 queue_length = road.get('main_queue_length')
-        #             elif route_id == self.TURN_RIGHT_ID:
-        #                 queue_length = road.get('right_queue_length')
-        #             else:
-        #                 raise NotImplementedError(f"Not supported route id: {route_id}")
-                    
-        #             self.max_queue_map[phase_id] = max(self.max_queue_map[phase_id], queue_length / road.get('length'))
-        #         else:
-        #             raise NotImplementedError(f"Not supported road type: {road.get('type')}")
-        
-        # update pass_map
+            for road_id in road_set:
+                road = self.roads[road_id]
+                if road.get('type') == 1:
+                    if phase_id in self.STRAIGHT_PHASE_LIST:
+                        tmp_blocked_flg = self.current_queue_map[road_id]['right'] >= self.branch_info_map[road_id]['length']['right']
+                        tmp_blocked_flg = tmp_blocked_flg and self.current_queue_map[road_id]['straight'] <= self.branch_info_map[road_id]['length']['straight'] / 2
+                        self.blocked_map[phase_id] = self.blocked_map[phase_id] or tmp_blocked_flg
+                    elif phase_id in self.RIGHT_PHASE_LIST:
+                        tmp_blocked_flg = self.current_queue_map[road_id]['straight'] >= self.branch_info_map[road_id]['length']['straight']
+                        tmp_blocked_flg = tmp_blocked_flg and self.current_queue_map[road_id]['right'] <= self.branch_info_map[road_id]['length']['right'] / 2
+                        self.blocked_map[phase_id] = self.blocked_map[phase_id] or tmp_blocked_flg
+                    else:
+                        raise NotImplementedError(f"Not supported phase id: {phase_id}")
+                else:
+                    raise NotImplementedError(f"Not supported road type: {road.get('type')}")                
+        return
+    
+    def _updatePassInfo(self):
         if self.current_phase in self.STRAIGHT_PHASE_LIST:
             for road_id in set([tmp_road_id for tmp_road_id, _ in self.phases_map[self.current_phase]]):
                 road = self.roads[road_id]
@@ -503,7 +465,7 @@ class ScootController(Object):
                         pass_flg = True
                         break
                 
-                self.pass_map[road_id].append(pass_flg)
+                self.road_pass_map[road_id].append(pass_flg)
         elif self.current_phase in self.RIGHT_PHASE_LIST:
             for road_id in set([tmp_road_id for tmp_road_id, route_id in self.phases_map[self.current_phase] if route_id == self.TURN_RIGHT_ID]):
                 road = self.roads[road_id]
@@ -519,14 +481,14 @@ class ScootController(Object):
                         pass_flg = True
                         break
                 
-                self.pass_map[road_id].append(pass_flg)
+                self.road_pass_map[road_id].append(pass_flg)
         else:
             raise NotImplementedError(f"Not supported phase id: {self.current_phase}")
         
-        if not self.normal_split_update_flg:
-            return
-        
-        # update inflow_rate_record_map, outflow_rate_record_map, and max_outflow_rate_map
+        return
+    
+    def _updateFlowRateInfo(self):
+        # update inflow_rate_record_map
         for road_id, route_id in self.phases_map[self.current_phase]:
             # get inflow_rate_record
             inflow_rate_record = self.inflow_rate_record_map[(road_id, route_id)]
@@ -549,6 +511,7 @@ class ScootController(Object):
                 'inflow_rate': inflow_rate * turn_ratios[route_id] / sum(turn_ratios.values())
             }
 
+        # update outflow_rate_record_map and max_outflow_rate_map
         for road_id, route_id in self.phases_map[self.current_phase]:
             # get outflow_rate_record
             outflow_rate_record = self.outflow_rate_record_map[(road_id, route_id)]
@@ -587,6 +550,9 @@ class ScootController(Object):
             else:
                 self.max_outflow_rate_map[tmp_key][self.params['split'][self.current_phase]] = max(self.INITIAL_FLOW_RATE, outflow_rate)
 
+        return
+    
+    def _updateSaturationInfo(self):
         # update saturation_map
         for road_id, route_id in self.phases_map[self.current_phase]:
             # get road
@@ -599,101 +565,97 @@ class ScootController(Object):
             # update saturation_map 
             self.saturation_map[(road_id, route_id)] = inflow_rate * self.params['cycle'] / (max_outflow_rate * self.params['split'][self.current_phase])    
         
-        return 
+        # update phase_max_saturation_map and phase_avg_saturation_map
+        self.phase_max_saturation_map = {}
+        for phase_id in range(1, self.num_phases + 1):
+            if phase_id in self.STRAIGHT_PHASE_LIST:
+                self.phase_max_saturation_map[phase_id] = max([self.saturation_map[(road_id, route_id)] for road_id, route_id in self.phases_map[phase_id]])
+            elif phase_id in self.RIGHT_PHASE_LIST:
+                max_saturation = 0.0
+                for road_id, route_id in self.phases_map[phase_id]:
+                    if route_id == self.TURN_RIGHT_ID:
+                        max_saturation = max(max_saturation, self.saturation_map[(road_id, route_id)])
+                self.phase_max_saturation_map[phase_id] = max_saturation
+            else:
+                raise NotImplementedError(f"Not supported phase id: {phase_id}")
+            
+        self.phase_avg_saturation_map = {}
+        for phase_id in range(1, self.num_phases + 1):
+            if phase_id in self.STRAIGHT_PHASE_LIST:
+                self.phase_avg_saturation_map[phase_id] = sum([self.saturation_map[(road_id, route_id)] for road_id, route_id in self.phases_map[phase_id]]) / len(self.phases_map[phase_id])
+            elif phase_id in self.RIGHT_PHASE_LIST:
+                saturation_list = []
+                for road_id, route_id in self.phases_map[phase_id]:
+                    if route_id == self.TURN_RIGHT_ID:
+                        saturation_list.append(self.saturation_map[(road_id, route_id)])
+                self.phase_avg_saturation_map[phase_id] = sum(saturation_list) / len(saturation_list) if len(saturation_list) > 0 else 0.0
+            else:
+                raise NotImplementedError(f"Not supported phase id: {phase_id}")
+        return
 
-    def _getMaxSaturation(self, phase_id):
-        if phase_id in self.STRAIGHT_PHASE_LIST:
-            return max([self.saturation_map[(road_id, route_id)] for road_id, route_id in self.phases_map[phase_id]])
-        elif phase_id in self.RIGHT_PHASE_LIST:
-            max_saturation = 0.0
-            for road_id, route_id in self.phases_map[phase_id]:
-                if route_id == self.TURN_RIGHT_ID:
-                    max_saturation = max(max_saturation, self.saturation_map[(road_id, route_id)])
-            return max_saturation
-        else:
-            raise NotImplementedError(f"Not supported phase id: {phase_id}")
+    def _updateTrafficInfo(self):
+        # update queue information
+        self._updateQueueInfo()
+
+        # update blocked information
+        self._updateBlockedInfo()
         
-    def _getAvgSaturation(self, phase_id):
-        if phase_id in self.STRAIGHT_PHASE_LIST:
-            return sum([self.saturation_map[(road_id, route_id)] for road_id, route_id in self.phases_map[phase_id]]) / len(self.phases_map[phase_id])
-        elif phase_id in self.RIGHT_PHASE_LIST:
-            saturation_list = []
-            for road_id, route_id in self.phases_map[phase_id]:
-                if route_id == self.TURN_RIGHT_ID:
-                    saturation_list.append(self.saturation_map[(road_id, route_id)])
-            return sum(saturation_list) / len(saturation_list) if len(saturation_list) > 0 else 0.0
-        else:
-            raise NotImplementedError(f"Not supported phase id: {phase_id}")
+        # update vehicle passing information
+        self._updatePassInfo()
+        
+        if not self.split_update_flg:
+            return
+        
+        # update flow rate information
+        self._updateFlowRateInfo()
+        
+        # update saturation information
+        self._updateSaturationInfo()
+        return 
     
     def _updateSplit(self):
-        # if self.current_blocked_flg:
-        #     self._decrementSplit(type='blocked')
-        #     self._showInfo('blocked', 'current')
-
-        # elif self.over_queue_flg:
-        #     self._decrementSplit(type='over_queue')
-        #     self._showInfo('over_queue')
-
-        # elif not any(self.pass_map[self.current_phase]):
-        #     self._decrementSplit(type='not_pass')
-        #     self._showInfo('not_pass')
-            
-        # elif self.normal_split_update_flg:
-        #     if self.max_queue_map[self.current_phase] > self.QUEUE_THRESHOLD:
-        #         self._incrementSplit('normal')
-            
-        #     elif self.next_blocked_flg:
-        #         self._incrementSplit(type='blocked')
-        #         self._showInfo('blocked', 'next')
-
-        #     elif self._getAvgSaturation(self.current_phase) > self._getAvgSaturation(self.next_phase):
-        #         self._incrementSplit('normal')
-
-        #     else:
-        #         self._decrementSplit('normal')
-
-        # else:
-        #     raise NotImplementedError(f"Not supported split update type")
-
-        if self.normal_split_update_flg:
-            if self.max_queue_map[self.current_phase] > self.QUEUE_THRESHOLD and self.max_queue_map[self.current_phase] > self.max_queue_map[self.next_phase]:
-                self._incrementSplit('normal')
-
-            elif self.max_queue_map[self.next_phase] > self.QUEUE_THRESHOLD and self.max_queue_map[self.next_phase] > self.max_queue_map[self.current_phase]:
-                self._decrementSplit('normal')
-
+        if self.split_update_flg:
+            if self.phase_avg_saturation_map[self.current_phase] > self.phase_avg_saturation_map[self.next_phase]:
+                self._incrementSplit()
             else:
-                if self._getAvgSaturation(self.current_phase) > self._getAvgSaturation(self.next_phase):
-                    self._incrementSplit('normal')
-                else:
-                    self._decrementSplit('normal')
+                self._decrementSplit()
 
-        elif self.over_queue_flg:
-            self._incrementSplit(type='over_queue')
-        
-        elif self.no_pass_flg:
-            self._decrementSplit(type='not_pass')
+            return
 
+        # emergency split update
         
+        if self.saturated_flg:
+            self._incrementSplit()
+            self.current_split_changes_map['queue'] += 1
+
+        elif self.sparse_flg:
+            self._decrementSplit()
+            self.current_split_changes_map['queue'] += 1
+        
+        elif self.clear_flg:
+            self._decrementSplit()
+            self.current_split_changes_map['pass'] += 1
+
+        elif self.blocked_flg:
+            self._decrementSplit()
+            self.current_split_changes_map['blocked'] += 1
+
+        else:
+            raise NotImplementedError('Not supported split update type')
         
         return
     
-    def _decrementSplit(self, type):
-        if type == 'normal':
+    def _decrementSplit(self):
+        if self.split_update_flg:
             change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
-        elif type == 'blocked':
-            change_steps = min(self.change_steps['split']['blocked'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
-        elif type == 'over_queue':
-            change_steps = min(self.change_steps['split']['over_queue'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
-        elif type == 'not_pass':
-            change_steps = min(self.change_steps['split']['not_pass'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
+        elif self.sparse_flg or self.clear_flg or self.blocked_flg:
+            change_steps = min(self.change_steps['split']['emergency'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
         else:
-            raise NotImplementedError(f"Not supported type: {type}")
+            raise NotImplementedError('Not supported split update type')
         
         if change_steps <= 0: return
 
-        # not change fixed property if only blocked_flg is true
-        if self.first_partition['steps'] - change_steps <= self.change_steps['split']['normal']:
+        if self.split_update_flg:
             self.first_partition['fixed'] = True
         self.first_partition['steps'] -= change_steps
 
@@ -703,73 +665,50 @@ class ScootController(Object):
         self.signal_controller.deletePhases(type='end', steps=change_steps)
         return
     
-    def _incrementSplit(self, type):
-        if type == 'normal':
-            change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.next_phase] - self.min_split)
-        elif type == 'blocked':
-            change_steps = min(self.change_steps['split']['blocked'], self.params['split'][self.next_phase] - self.min_split)
-        elif type == 'over_queue':
-            change_steps = min(self.change_steps['split']['over_queue'], self.params['split'][self.next_phase] - self.min_split)
+    def _incrementSplit(self):
+        # get change_steps
+        if self.split_update_flg:
+            change_steps = self.change_steps['split']['normal']
+        elif self.saturated_flg:
+            change_steps = self.change_steps['split']['emergency']
         else:
-            raise NotImplementedError(f"Not supported type: {type}")
+            raise NotImplementedError('Not supported split update type')
         
-        if change_steps <= 0: return
+        # get change_steps_list
+        change_steps_list = []
+        for partition_id in range(0, self.num_phases - 1):
+            partition = self.remain_steps_info['split'][partition_id]
+            if len(change_steps_list) == 0 or sum(change_steps_list) < change_steps:
+                change_steps_list.append(min(
+                    change_steps - sum(change_steps_list), 
+                    self.params['split'][partition['phase']['to']] - self.min_split
+                ))
+            else:
+                change_steps_list.append(0)
 
-        self.first_partition['fixed'] = True
-        self.first_partition['steps'] += change_steps
+        # update fix_flg
+        if self.split_update_flg:
+            self.first_partition['fixed'] = True
+        
+        # skip update if no change happens
+        if sum(change_steps_list) <= 0: return
 
-        self.params['split'][self.current_phase] += change_steps
-        self.params['split'][self.next_phase] -= change_steps
+        for partition_id in range(0, self.num_phases - 1):
+            # update partition
+            partition = self.remain_steps_info['split'][partition_id]
+            partition['steps'] += sum(change_steps_list[partition_id:])
 
-        self.signal_controller.setPhases([self.current_phase] * change_steps)
+            # update split parameters except for current phase
+            self.params['split'][partition['phase']['to']] -= change_steps_list[partition_id]
+        
+        # update split parameter for current phase
+        self.params['split'][self.current_phase] += sum(change_steps_list)
+        self.signal_controller.setPhases([self.current_phase] * sum(change_steps_list))
         return
     
     def _updateCycle(self):
         # get phase_change_map
-        phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
-        cumurative_change_steps = 0
-
-        max_saturation_map = {phase_id: self._getMaxSaturation(phase_id) for phase_id in range(1, self.num_phases + 1)} 
-        for phase_id in range(1, self.num_phases + 1):
-            # if not self.max_queue_map[phase_id] < self.QUEUE_THRESHOLD:
-            #     continue
-
-            if max_saturation_map[phase_id] > self.SATURATION_THRESHOLD_MAP['down']:
-                continue
-
-            change_steps = min(self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
-            if change_steps <= 0: continue
-
-            if self.first_partition['phase']['from'] == phase_id:
-                phase_change_map[phase_id] = - min(change_steps, self.first_partition['steps'])
-            else:
-                phase_change_map[phase_id] = - change_steps
-            cumurative_change_steps += phase_change_map[phase_id]
-
-        # prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda phase_id: self.max_queue_map[phase_id], reverse=True)
-        # for phase_id in prioritize_phase_list:
-        #     if self.max_queue_map[phase_id] < self.QUEUE_THRESHOLD:
-        #         continue
-
-        #     change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
-        #     if change_steps <= 0: continue
-
-        #     phase_change_map[phase_id] = change_steps
-        #     cumurative_change_steps += phase_change_map[phase_id]
-        
-        prioritize_phase_list = sorted(range(1, self.num_phases + 1), key=lambda phase_id: max_saturation_map[phase_id], reverse=True)
-        for phase_id in prioritize_phase_list:
-            # if not self.max_queue_map[phase_id] < self.QUEUE_THRESHOLD:
-            #     continue
-
-            if max_saturation_map[phase_id] < self.SATURATION_THRESHOLD_MAP['up']:
-                continue
-
-            change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
-            if change_steps <= 0: continue
-
-            phase_change_map[phase_id] = change_steps
-            cumurative_change_steps += phase_change_map[phase_id]
+        phase_change_map = self._getPhaseChangeMap()
 
         # update split information
         cumulative_change_steps = 0
@@ -795,11 +734,41 @@ class ScootController(Object):
         self.params['cycle'] += cumulative_change_steps    
 
         # show update information
-        # self._showInfo('update')
+        self._showInfo('update')
 
         # update previous_params
         self.previous_params = copy.deepcopy(self.params)
         return
+    
+    def _getPhaseChangeMap(self):
+        phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
+        cumurative_change_steps = 0
+        
+        saturation_phase_list = sorted(range(1, self.num_phases + 1), key=lambda phase_id: self.phase_max_saturation_map[phase_id], reverse=True)
+        for phase_id in reversed(saturation_phase_list):
+            if not (self.phase_max_saturation_map[phase_id] < self.normal_threshold_map['saturation']['down']):
+                continue
+
+            change_steps = min(self.params['cycle'] + cumurative_change_steps - self.min_cycle, self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
+            if change_steps <= 0: continue
+
+            if self.first_partition['phase']['from'] == phase_id:
+                change_steps = min(change_steps, self.first_partition['steps'])
+            
+            phase_change_map[phase_id] = - change_steps
+            cumurative_change_steps += phase_change_map[phase_id]
+        
+
+        for phase_id in saturation_phase_list:
+            if not (self.phase_max_saturation_map[phase_id] > self.normal_threshold_map['saturation']['up']):
+                continue
+
+            change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
+            if change_steps <= 0: continue
+
+            phase_change_map[phase_id] = change_steps
+            cumurative_change_steps += phase_change_map[phase_id]
+        return phase_change_map
 
     def _proceedOneStep(self):
         # update split information
@@ -809,19 +778,21 @@ class ScootController(Object):
             last_partition['fixed'] = False
             self.remain_steps_info['split'].append(last_partition)
 
-            self.pass_map = {}
+            self.road_pass_map = {}
             if self.current_phase in self.STRAIGHT_PHASE_LIST:
                 for road_id, _ in self.phases_map[self.current_phase]:
-                    if road_id not in self.pass_map.keys():
-                        self.pass_map[road_id] = deque(maxlen=self.PASS_DURATION)
+                    if road_id not in self.road_pass_map.keys():
+                        self.road_pass_map[road_id] = deque(maxlen=self.emergency_threshold_map['pass'])
             
             elif self.current_phase in self.RIGHT_PHASE_LIST:
                 for road_id, route_id in self.phases_map[self.current_phase]:
                     if route_id == self.TURN_LEFT_ID:
                         continue
 
-                    if road_id not in self.pass_map.keys():
-                        self.pass_map[road_id] = deque(maxlen=self.PASS_DURATION)
+                    if road_id not in self.road_pass_map.keys():
+                        self.road_pass_map[road_id] = deque(maxlen=self.emergency_threshold_map['pass'])
+
+            self.current_split_changes_map = {type: 0 for type, flg in self.emergency_flg_map.items() if flg}
 
             self.signal_controller.setPhases([self.first_partition['phase']['from']] * self.first_partition['steps'])
         
@@ -837,7 +808,7 @@ class ScootController(Object):
         self.remain_steps_info['cycle'] -= 1
         return
 
-    def _showInfo(self, type, option=None):
+    def _showInfo(self, type):
         print('==============================================')
         if type == 'update':
             print('status: update parameters')
@@ -852,26 +823,6 @@ class ScootController(Object):
             print(f"cycle: {self.params['cycle']} steps")
             for phase_id in self.PHASE_ORDER_LIST:
                 print(f"phase {phase_id}: {self.params['split'][phase_id]} steps")
-        
-        elif type == 'blocked' and option == 'current':
-            print('status: blocked in current phase')
-            print(f"intersection id: {self.id}")
-            print(f"current_phase: {self.current_phase}")
-        
-        elif type == 'blocked' and option == 'next':
-            print('status: blocked in next phase')
-            print(f"intersection id: {self.id}")
-            print(f"current_phase: {self.current_phase}")
-        
-        elif type == 'over_queue':
-            print('status: over queue threshold in next phase')
-            print(f"intersection id: {self.id}")
-            print(f"current_phase: {self.current_phase}")
-
-        elif type == 'not_pass':
-            print('status: not passing in current phase')
-            print(f"intersection id: {self.id}")
-            print(f"current_phase: {self.current_phase}")
 
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -890,7 +841,7 @@ class ScootController(Object):
             return
         
         # update split
-        if self.split_update_flg:
+        if self.split_update_flg or self.saturated_flg or self.sparse_flg or self.clear_flg or self.blocked_flg:
             self._updateSplit()
         
         # proceed one step
