@@ -83,17 +83,52 @@ mpc:
     signal_change:
       type: global
 
+# scoot:
+#   initial_parameters:          
+#     cycle: 20                  # initial cycle time (step)
+#     split: [5, 5, 5, 5]    # initial split for each phase (step)
+#   change_steps:
+#     cycle: 1                   # change amount of cycle time (step)
+#     split: 
+#       normal: 1                # change amount of split for each phase when normal (step)
+#       blocked: 2               # change amount of split for each phase when blocked (step)        
+#   max_cycle: 60                # max cycle time (step)
+#   min_split: 3                 # min split for each phase (step)      
+
 scoot:
   initial_parameters:          
-    cycle: 20                  # initial cycle time (step)
-    split: [5, 5, 5, 5]    # initial split for each phase (step)
+    cycle: 40                      # initial cycle time (step)
+    split: [10, 10, 10, 10]        # initial split for each phase (step)
+  range:
+    cycle: 
+      min: 20
+      max: 60
+    split: 
+      min: 4
   change_steps:
     cycle: 1                   # change amount of cycle time (step)
     split: 
       normal: 1                # change amount of split for each phase when normal (step)
-      blocked: 2               # change amount of split for each phase when blocked (step)        
-  max_cycle: 60                # max cycle time (step)
-  min_split: 3                 # min split for each phase (step)                
+      emergency: 1             # change amount of split for each phase when emergency (step) 
+  normal:
+    saturation:
+      threshold:
+        up: 1.1
+        down: 0.9
+  emergency:
+    queue:
+      flg: true
+      threshold: 
+        up: 0.5               # relative queue length which the split is incremented above
+        down: 0.2               # relative queue length which the split is decremented below
+      max_changes: 3           # number of split changes allowed for each split
+    pass:
+      flg: true
+      threshold: 2             # steps that is allowed to continue without vehicle passing the intersection
+      max_changes: 3           # number of split changes allowed for each split
+    blocked:
+      flg: true
+      max_changes: 3           # number of split changes allowed for each split
 
 drl:
   architecture:
