@@ -1,16 +1,37 @@
 change_steps:
   cycle: 1
   split:
-    blocked: 1
+    emergency: 1
     normal: 1
-    not_pass: 5
-    over_queue: 5
+emergency:
+  blocked:
+    flg: true
+    max_changes: 3
+  pass:
+    flg: true
+    max_changes: 3
+    threshold: 2
+  queue:
+    flg: true
+    max_changes: 3
+    threshold:
+      down: 0.2
+      up: 0.5
 initial_parameters:
-  cycle: 20
+  cycle: 40
   split:
-  - 5
-  - 5
-  - 5
-  - 5
-max_cycle: 30
-min_split: 3
+  - 10
+  - 10
+  - 10
+  - 10
+normal:
+  saturation:
+    threshold:
+      down: 0.9
+      up: 1.1
+range:
+  cycle:
+    max: 60
+    min: 20
+  split:
+    min: 4
