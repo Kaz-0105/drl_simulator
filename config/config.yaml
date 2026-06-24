@@ -1,8 +1,8 @@
 simulator:
   control_method : scoot            # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name : 7-4-1-sb            # layout folder name
-  inflow_name : balanced_500        # inflow file name
+  layout_name : 7-4-1-sb      # layout folder name
+  inflow_name : main-minor        # inflow file name
   simulation_time: 500              # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -161,8 +161,8 @@ mpc:
 
 scoot:
   initial_parameters:          
-    cycle: 40                      # initial cycle time (step)
-    split: [10, 10, 10, 10]        # initial split for each phase (step)
+    cycle: 20                      # initial cycle time (step)
+    split: [5, 5, 5, 5]        # initial split for each phase (step)
   range:
     cycle: 
       min: 20
@@ -177,8 +177,8 @@ scoot:
   normal:
     saturation:
       threshold:
-        up: 1.1
-        down: 1.0
+        up: 1.2
+        down: 0.8
   emergency:
     queue:
       flg: true

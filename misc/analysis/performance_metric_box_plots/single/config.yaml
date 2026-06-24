@@ -97,8 +97,8 @@ mpc:
 
 scoot:
   initial_parameters:          
-    cycle: 40                      # initial cycle time (step)
-    split: [10, 10, 10, 10]        # initial split for each phase (step)
+    cycle: 20                      # initial cycle time (step)
+    split: [5, 5, 5, 5]        # initial split for each phase (step)
   range:
     cycle: 
       min: 20
@@ -113,8 +113,8 @@ scoot:
   normal:
     saturation:
       threshold:
-        up: 1.1
-        down: 0.9
+        up: 1.2
+        down: 0.8
   emergency:
     queue:
       flg: true

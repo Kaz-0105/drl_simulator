@@ -14,6 +14,7 @@ import torch
 
 
 class Vissim(Common):
+    WAIT_TIME = 60  # seconds
     def __init__(self, root_dir_path):
         super().__init__()
 
@@ -66,13 +67,15 @@ class Vissim(Common):
             self.config.update()
 
         # set com object
+        retry_count = 0
         while True:
             try:
                 self.com = win32com.client.Dispatch('Vissim.Vissim')
                 break
             except Exception as e:
-                self._showInfo('fail_com_connection')
-                time.sleep(1)
+                retry_count += 1
+                self._showInfo('com', retry_count)
+                time.sleep(self.WAIT_TIME)
         
         # load network and layout
         self.com.LoadNet(self.layout_file_path_map['inpx'])
@@ -92,9 +95,9 @@ class Vissim(Common):
             self.config_change_handler.stop()
         return
     
-    def _showInfo(self, type):
-        if type == 'fail_com_connection':
-            print('status: fail to connect to vissim com interface. retrying...')
+    def _showInfo(self, type, value=None):
+        if type == 'com':
+            print(f'status: fail to connect to vissim com interface. retrying... (attempt {value})')
         else:
             raise NotImplementedError(f"Not supported info type: {type}")
         return
