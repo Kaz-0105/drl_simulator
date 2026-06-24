@@ -1,11 +1,9 @@
 venv/
+data/
+.vscode/
 *.db
 *.err
 *.avi
 **/__pycache__/
 **/network.results/
-/buffers/
-/backup/
-*.zip
-data/drl
-.vscode/
+
