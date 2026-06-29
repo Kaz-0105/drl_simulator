@@ -72,7 +72,7 @@ class SignalController(Object):
             self.future_phase_ids = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
         elif simulation_info['control_method'] == 'scoot':
             scoot_info = self.config.get('scoot_info')
-            self.future_phase_ids = deque(maxlen=scoot_info['range']['cycle']['max'] - 3 * scoot_info['range']['split']['min'])
+            self.future_phase_ids = deque(maxlen=scoot_info['limits']['cycle']['max'] - 3 * scoot_info['limits']['split']['min'])
         else:
             raise NotImplementedError(f"Not supported control method: {simulation_info['control_method']}")
 
@@ -329,7 +329,7 @@ class SignalGroup(Object):
             self.future_signal_colors = deque(maxlen=mpc_info['remained_steps'] + mpc_info['utilize_steps'])
         elif simulatior_info['control_method'] == 'scoot':
             scoot_info = self.config.get('scoot_info')
-            self.future_signal_colors = deque(maxlen=scoot_info['range']['cycle']['max'] - 3 * scoot_info['range']['split']['min'])
+            self.future_signal_colors = deque(maxlen=scoot_info['limits']['cycle']['max'] - 3 * scoot_info['limits']['split']['min'])
         else:
             raise NotImplementedError(f"Not supported control method: {simulatior_info['control_method']}")
         

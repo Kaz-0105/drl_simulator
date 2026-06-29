@@ -101,10 +101,10 @@ scoot:
     split: [5, 5, 5, 5]        # initial split for each phase (step)
   range:
     cycle: 
-      min: 20
+      min: 12
       max: 60
     split: 
-      min: 4
+      min: 3
   change_steps:
     cycle: 1                   # change amount of cycle time (step)
     split: 
@@ -113,8 +113,8 @@ scoot:
   normal:
     saturation:
       threshold:
-        up: 1.2
-        down: 0.8
+        up: 1.1
+        down: 0.9
   emergency:
     queue:
       flg: true

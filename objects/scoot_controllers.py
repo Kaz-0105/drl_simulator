@@ -19,7 +19,7 @@ class ScootControllers(Container):
         return
     
     def _initProps(self):
-        self.max_saturation_map = None
+        self.max_outflow_rate_map = None
         return
     
     def _initElements(self):
@@ -58,15 +58,9 @@ class ScootController(Object):
     STRAIGHT_PHASE_LIST = [1, 2]
     RIGHT_PHASE_LIST = [3, 4]
 
-    MIN_DISTANCE = 1.0
-    INITIAL_VEHICLE_SIZE = 5.0
-    INITIAL_FLOW_RATE = 0.2
-
     TURN_LEFT_ID = 1
     GO_STRAIGHT_ID = 2
     TURN_RIGHT_ID = 3
-
-    SPILLBACK_QUEUE_THRESHOLD = 0.5
 
     def __init__(self, scoot_controllers, intersection, id):
         super().__init__()
@@ -79,7 +73,6 @@ class ScootController(Object):
 
         self._initProps(id)
         self._connectObjects(intersection)
-        self._showInfo('initial')
         return
     
     @property
@@ -119,58 +112,71 @@ class ScootController(Object):
         return self.second_partition['phase']['from']
 
     @property
-    def cycle_update_flg(self):
+    def cycle_change_flg(self):
         return self.remain_steps_info['cycle'] == 0
-        
-    @property
-    def split_update_flg(self):
-        if self.first_partition['fixed']:
-            return False
-        
-        return self.first_partition['steps'] <= self.change_steps['split']['normal']
     
     @property
-    def saturated_flg(self):
-        if not self.emergency_flg_map['queue']:
+    def fixed_flg(self):
+        return self.current_split_changes_map['saturation'] >= self.max_change_steps_map['split']['saturation'] or self.first_partition['steps'] <= 0
+
+    @property
+    def split_change_flg(self):
+        if self.first_partition['steps'] > self.max_change_steps_map['split']['saturation']:
+            return False
+        
+        return True
+    
+    @property
+    def over_queue_flg(self):
+        if not self.emergency_flg_map['split']['queue']:
+            return False
+        
+        if self.first_partition['steps'] > self.max_change_steps_map['split']['saturation'] + 1:
+            return False
+        
+        if self.current_split_changes_map['queue'] >= self.max_change_steps_map['split']['queue']:
             return False
 
-        if self.current_split_changes_map['queue'] >= self.emergency_max_changes_map['queue']:
+        if not self.current_max_queue_map[self.current_phase] > self.thresholds_map['split']['queue']['up']:
             return False
         
-        if self.first_partition['steps'] > self.change_steps['split']['normal'] + 1:
+        if not self.current_max_queue_map[self.current_phase] > 0.8 * max([queue for phase, queue in self.current_max_queue_map.items() if phase != self.current_phase]):
             return False
         
-        if self.first_partition['fixed']:
-            return False
-        
-        return self.current_max_queue_map[self.current_phase] > self.emergency_threshold_map['queue']['up']
+        return True
     
     @property
-    def sparse_flg(self):
-        if not self.emergency_flg_map['queue']:
+    def sparse_queue_flg(self):
+        if not self.emergency_flg_map['split']['queue']:
             return False
         
-        if self.current_split_changes_map['queue'] >= self.emergency_max_changes_map['queue']:
+        if self.first_partition['steps'] > self.max_change_steps_map['split']['queue']:
             return False
         
-        if self.first_partition['fixed']:
+        if self.current_split_changes_map['queue'] >= self.max_change_steps_map['split']['queue']:
             return False
         
-        return self.current_max_queue_map[self.current_phase]  < self.emergency_threshold_map['queue']['down'] and any(queue > self.emergency_threshold_map['queue']['up'] for queue in self.current_max_queue_map.values())
+        if not self.current_max_queue_map[self.current_phase] < self.thresholds_map['split']['queue']['down']:
+            return False
+        
+        if not any(queue > self.thresholds_map['split']['queue']['up'] for phase, queue in self.current_max_queue_map.items() if phase != self.current_phase):
+            return False
+        
+        return True
     
     @property
-    def clear_flg(self):
-        if not self.emergency_flg_map['pass']:
+    def no_pass_flg(self):
+        if not self.emergency_flg_map['split']['pass']:
             return False
         
-        if self.current_split_changes_map['pass'] >= self.emergency_max_changes_map['pass']:
+        if self.first_partition['steps'] > self.max_change_steps_map['split']['pass']:
             return False
         
-        if self.first_partition['fixed']:
+        if self.current_split_changes_map['pass'] >= self.max_change_steps_map['split']['pass']:
             return False
         
         for pass_list in self.road_pass_map.values():
-            if len(pass_list) < self.emergency_threshold_map['pass']:
+            if len(pass_list) < self.thresholds_map['split']['pass']:
                 return False
             
             if self.first_partition['steps'] + len(pass_list) == self.params['split'][self.current_phase]:
@@ -183,16 +189,19 @@ class ScootController(Object):
     
     @property
     def blocked_flg(self):
-        if not self.emergency_flg_map['blocked']:
+        if not self.emergency_flg_map['split']['blocked']:
             return False
         
-        if self.current_split_changes_map['blocked'] >= self.emergency_max_changes_map['blocked']:
+        if self.first_partition['steps'] > self.max_change_steps_map['split']['blocked']:
             return False
         
-        if self.first_partition['fixed']:
+        if self.current_split_changes_map['blocked'] >= self.max_change_steps_map['split']['blocked']:
             return False
         
-        return self.blocked_map[self.current_phase]
+        if not self.blocked_map[self.current_phase]:
+            return False
+        
+        return True
 
     def _initProps(self, id):
         # set id and num_phases
@@ -201,12 +210,9 @@ class ScootController(Object):
 
         # set params, remain_steps_info, change_steps, and thresholds
         scoot_info = self.config.get('scoot_info')
-        self.params = {
-            'cycle': scoot_info['initial_parameters']['cycle'],
-            'split': {
-                phase_id: scoot_info['initial_parameters']['split'][phase_id - 1] for phase_id in range(1, self.num_phases + 1)
-            }
-        }
+        self.params = {}
+        self.params['split'] = {phase_id: scoot_info['initial']['split'][phase_id - 1] for phase_id in range(1, self.num_phases + 1)}
+        self.params['cycle'] = sum(self.params['split'].values())
         self.previous_params = copy.deepcopy(self.params)
 
         self.remain_steps_info = {
@@ -222,39 +228,66 @@ class ScootController(Object):
                     'to': self.PHASE_ORDER_LIST[(id + 1) % self.num_phases]
                 },
                 'steps': sum_steps,
-                'fixed': False
             })
 
-        self.change_steps = scoot_info['change_steps']
-        self.min_cycle = scoot_info['range']['cycle']['min']
-        self.max_cycle = scoot_info['range']['cycle']['max']
-        self.min_split = scoot_info['range']['split']['min']
-
-        self.normal_threshold_map = {}
-        self.normal_threshold_map['saturation'] = {
-            'up': scoot_info['normal']['saturation']['threshold']['up'],
-            'down': scoot_info['normal']['saturation']['threshold']['down'],
-        }
-
-        self.emergency_flg_map = {
-            'queue': scoot_info['emergency']['queue']['flg'],
-            'pass': scoot_info['emergency']['pass']['flg'],
-            'blocked': scoot_info['emergency']['blocked']['flg'],
-        }
+        self.limits_map = copy.deepcopy(scoot_info['limits'])
+        if sum(self.params['split'].values()) < self.limits_map['cycle']['min']:
+            raise ValueError(f"Initial cycle time is less than the minimum cycle time: {sum(self.params['split'].values())} < {self.limits_map['cycle']['min']}")
         
-        self.emergency_threshold_map = {}
-        if self.emergency_flg_map['queue']:
-            self.emergency_threshold_map['queue'] = {
-                'down': scoot_info['emergency']['queue']['threshold']['down'],
-                'up': scoot_info['emergency']['queue']['threshold']['up'],
-            }
-        if self.emergency_flg_map['pass']:
-            self.emergency_threshold_map['pass'] = scoot_info['emergency']['pass']['threshold']
+        # set thresholds_map, emergency_flg_map, and emergency_max_changes_map
+        self.thresholds_map = {}
+        self.max_change_steps_map = {}
+        self.emergency_flg_map = {}
 
-        self.emergency_max_changes_map = {}
-        for emergency_type in ['queue', 'pass', 'blocked']:
-            if self.emergency_flg_map[emergency_type]:
-                self.emergency_max_changes_map[emergency_type] = scoot_info['emergency'][emergency_type]['max_changes']
+        self.thresholds_map['split'] = {}
+        self.thresholds_map['split']['saturation'] = {
+            'up': scoot_info['adjustment']['split']['normal']['saturation']['threshold']['up'],
+            'down': scoot_info['adjustment']['split']['normal']['saturation']['threshold']['down'],
+        }
+        self.max_change_steps_map['split'] = {}
+        self.max_change_steps_map['split']['saturation'] = scoot_info['adjustment']['split']['normal']['saturation']['max']
+
+        self.emergency_flg_map['split'] = {
+            'queue': scoot_info['adjustment']['split']['emergency']['queue']['flg'],
+            'pass': scoot_info['adjustment']['split']['emergency']['pass']['flg'],
+            'blocked': scoot_info['adjustment']['split']['emergency']['blocked']['flg'],
+        }
+
+        if self.emergency_flg_map['split']['queue']:
+            self.thresholds_map['split']['queue'] = {
+                'up': scoot_info['adjustment']['split']['emergency']['queue']['threshold']['up'],
+                'down': scoot_info['adjustment']['split']['emergency']['queue']['threshold']['down'],
+            }
+            self.max_change_steps_map['split']['queue'] = scoot_info['adjustment']['split']['emergency']['queue']['max']
+
+        if self.emergency_flg_map['split']['pass']:
+            self.thresholds_map['split']['pass'] = scoot_info['adjustment']['split']['emergency']['pass']['threshold']
+            self.max_change_steps_map['split']['pass'] = scoot_info['adjustment']['split']['emergency']['pass']['max']
+        
+        if self.emergency_flg_map['split']['blocked']:
+            self.max_change_steps_map['split']['blocked'] = scoot_info['adjustment']['split']['emergency']['blocked']['max']
+
+        self.thresholds_map['cycle'] = {}
+        self.thresholds_map['cycle']['saturation'] = {
+            'up': scoot_info['adjustment']['cycle']['normal']['saturation']['threshold']['up'],
+            'down': scoot_info['adjustment']['cycle']['normal']['saturation']['threshold']['down'],
+        }
+        self.max_change_steps_map['cycle'] = {}
+        self.max_change_steps_map['cycle']['saturation'] = scoot_info['adjustment']['cycle']['normal']['saturation']['max']
+
+        self.emergency_flg_map['cycle'] = {}
+        self.emergency_flg_map['cycle']['queue'] = scoot_info['adjustment']['cycle']['emergency']['queue']['flg']
+
+        if self.emergency_flg_map['cycle']['queue']:
+            self.thresholds_map['cycle']['queue'] = {
+                'up': scoot_info['adjustment']['cycle']['emergency']['queue']['threshold']['up'],
+                'down': scoot_info['adjustment']['cycle']['emergency']['queue']['threshold']['down'],
+            }
+            self.max_change_steps_map['cycle']['queue'] = scoot_info['adjustment']['cycle']['emergency']['queue']['max']
+
+        # set constants
+        self.spillback_length = scoot_info['constants']['spillback_length']
+        self.initial_flow_rate = scoot_info['constants']['flow_rate']
 
         # set time_step
         self.time_step = self.network.simulation.get('time_step')
@@ -279,13 +312,13 @@ class ScootController(Object):
         self.phase_avg_saturation_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
         
         # set properties for emergency signal parameter adjustment
-        self.current_split_changes_map = {type: 0 for type, flg in self.emergency_flg_map.items() if flg}
+        self.current_split_changes_map = {type: 0 for type, flg in self.emergency_flg_map['split'].items() if flg}
+        self.current_split_changes_map['saturation'] = 0
         self.current_queue_map = None
         self.current_max_queue_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
         self.max_queue_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
         self.blocked_map = {phase_id: False for phase_id in range(1, self.num_phases + 1)}
         self.road_pass_map = None
-
         return
     
     def _connectObjects(self, intersection):
@@ -355,7 +388,7 @@ class ScootController(Object):
         self.road_pass_map = {}
         for road_id, _ in self.phases_map[self.current_phase]:
             if road_id not in self.road_pass_map.keys():
-                self.road_pass_map[road_id] = deque(maxlen=self.emergency_threshold_map['pass'])
+                self.road_pass_map[road_id] = deque(maxlen=self.thresholds_map['split']['pass'])
         return
     
     def _updateQueueInfo(self):
@@ -368,7 +401,7 @@ class ScootController(Object):
                 ].sort_values(by='position', ascending=True).reset_index(drop=True)
                 queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
 
-                if queue_length / self.branch_info_map[road_id]['length']['straight'] >= self.SPILLBACK_QUEUE_THRESHOLD:
+                if queue_length / self.branch_info_map[road_id]['length']['straight'] >= self.spillback_length:
                     queue_length = max(queue_length, road.get('max_queue_length'))
 
                 self.current_queue_map[road_id]['straight'] = queue_length
@@ -383,7 +416,7 @@ class ScootController(Object):
                 else:
                     queue_length = 0.0
                 
-                if queue_length / self.branch_info_map[road_id]['length']['right'] >= self.SPILLBACK_QUEUE_THRESHOLD:
+                if queue_length / self.branch_info_map[road_id]['length']['right'] >= self.spillback_length:
                     queue_length = max(queue_length, road.get('max_queue_length'))
                 
                 self.current_queue_map[road_id]['right'] = queue_length
@@ -418,8 +451,10 @@ class ScootController(Object):
                         raise NotImplementedError(f"Not supported phase id: {phase_id}")
                 else:
                     raise NotImplementedError(f"Not supported road type: {road.get('type')}")
-                
+
+            # exponential moving average for max_queue_map
             self.max_queue_map[phase_id] = max(self.max_queue_map[phase_id], self.current_max_queue_map[phase_id])
+    
         return
     
     def _updateBlockedInfo(self):
@@ -499,7 +534,7 @@ class ScootController(Object):
                 if data_collection_point.get('type') != 'input':
                     continue
 
-                inflow_rate = data_collection_point.getFlowRate(duration_step=self.params['cycle'] - self.change_steps['split']['normal'])
+                inflow_rate = data_collection_point.getFlowRate(duration_step=self.params['cycle'] - 1)
                 break
             
             # get turn_ratios
@@ -526,7 +561,7 @@ class ScootController(Object):
                 if data_collection_point.get('route_id') != route_id:
                     continue
 
-                outflow_rate += data_collection_point.getFlowRate(duration_step=self.params['split'][self.current_phase] - self.change_steps['split']['normal'])
+                outflow_rate += data_collection_point.getFlowRate(duration_step=self.params['split'][self.current_phase] - 1)
 
             # add new record to outflow_rate_record
             outflow_rate_record.loc[len(outflow_rate_record)] = {
@@ -548,7 +583,11 @@ class ScootController(Object):
                         self.max_outflow_rate_map[tmp_key][self.params['split'][self.current_phase]]
                     )
             else:
-                self.max_outflow_rate_map[tmp_key][self.params['split'][self.current_phase]] = max(self.INITIAL_FLOW_RATE, outflow_rate)
+                num_steps_list = sorted([num_steps for num_steps in self.max_outflow_rate_map[tmp_key].keys() if num_steps < self.params['split'][self.current_phase]])
+                if len(num_steps_list) > 0:
+                    self.max_outflow_rate_map[tmp_key][self.params['split'][self.current_phase]] = max(self.max_outflow_rate_map[tmp_key][num_steps_list[-1]], outflow_rate)
+                else:
+                    self.max_outflow_rate_map[tmp_key][self.params['split'][self.current_phase]] = max(self.initial_flow_rate, outflow_rate)
 
         return
     
@@ -603,7 +642,7 @@ class ScootController(Object):
         # update vehicle passing information
         self._updatePassInfo()
         
-        if not self.split_update_flg:
+        if not (self.split_change_flg or self.over_queue_flg or self.sparse_queue_flg or self.no_pass_flg or self.blocked_flg):
             return
         
         # update flow rate information
@@ -614,31 +653,39 @@ class ScootController(Object):
         return 
     
     def _updateSplit(self):
-        if self.split_update_flg:
+        if self.split_change_flg:
             if self.phase_avg_saturation_map[self.current_phase] > self.phase_avg_saturation_map[self.next_phase]:
                 self._incrementSplit()
             else:
                 self._decrementSplit()
 
+            self.current_split_changes_map['saturation'] += 1
             return
 
-        # emergency split update
-        
-        if self.saturated_flg:
+        # emergency split update        
+        if self.over_queue_flg:
+            if self.id == 3:
+                print('Over Queue')
             self._incrementSplit()
             self.current_split_changes_map['queue'] += 1
 
-        elif self.sparse_flg:
+        elif self.blocked_flg:
+            if self.id == 3:
+                print('Blocked')
+            self._decrementSplit()
+            self.current_split_changes_map['blocked'] += 1
+
+        elif self.sparse_queue_flg:
+            if self.id == 3:
+                print('Sparse')
             self._decrementSplit()
             self.current_split_changes_map['queue'] += 1
         
-        elif self.clear_flg:
+        elif self.no_pass_flg:
+            if self.id == 3:
+                print('Clear')
             self._decrementSplit()
             self.current_split_changes_map['pass'] += 1
-
-        elif self.blocked_flg:
-            self._decrementSplit()
-            self.current_split_changes_map['blocked'] += 1
 
         else:
             raise NotImplementedError('Not supported split update type')
@@ -646,64 +693,90 @@ class ScootController(Object):
         return
     
     def _decrementSplit(self):
-        if self.split_update_flg:
-            change_steps = min(self.change_steps['split']['normal'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
-        elif self.sparse_flg or self.clear_flg or self.blocked_flg:
-            change_steps = min(self.change_steps['split']['emergency'], self.params['split'][self.current_phase] - self.min_split, self.first_partition['steps'])
-        else:
-            raise NotImplementedError('Not supported split update type')
+        if self.first_partition['steps'] <= 0:
+            return
         
-        if change_steps <= 0: return
+        if self.params['split'][self.current_phase] <= self.limits_map['split']['min']:
+            return
+        
+        # get increment_phase_id
+        increment_phase_id = None
+        for partition_id in range(self.num_phases - 1):
+            partition = self.remain_steps_info['split'][partition_id]
 
-        if self.split_update_flg:
-            self.first_partition['fixed'] = True
-        self.first_partition['steps'] -= change_steps
+            if self.current_max_queue_map[partition['phase']['to']] <= self.thresholds_map['split']['queue']['up']:
+                continue
 
-        self.params['split'][self.current_phase] -= change_steps
-        self.params['split'][self.next_phase] += change_steps
+            if increment_phase_id is None or self.current_max_queue_map[partition['phase']['to']] > self.current_max_queue_map[increment_phase_id]:
+                increment_phase_id = partition['phase']['to']
+        
+        if increment_phase_id is None:
+            for partition_id in range(self.num_phases - 1):
+                partition = self.remain_steps_info['split'][partition_id]
 
-        self.signal_controller.deletePhases(type='end', steps=change_steps)
+                if increment_phase_id is None or self.phase_max_saturation_map[partition['phase']['to']] > self.phase_max_saturation_map[increment_phase_id]:
+                    increment_phase_id = partition['phase']['to']
+
+        # update split parameter for current phase and increment phase
+        self.params['split'][self.current_phase] -= 1
+        self.params['split'][increment_phase_id] += 1
+
+        # update partition information
+        for partition_id in range(self.num_phases - 1):
+            partition = self.remain_steps_info['split'][partition_id]
+
+            if partition['phase']['from'] == increment_phase_id:
+                break
+
+            partition['steps'] -= 1
+
+        # update signal_controller
+        self.signal_controller.deletePhases(type='end', steps=1)
         return
     
     def _incrementSplit(self):
-        # get change_steps
-        if self.split_update_flg:
-            change_steps = self.change_steps['split']['normal']
-        elif self.saturated_flg:
-            change_steps = self.change_steps['split']['emergency']
-        else:
-            raise NotImplementedError('Not supported split update type')
-        
-        # get change_steps_list
-        change_steps_list = []
-        for partition_id in range(0, self.num_phases - 1):
+        # get decrement_phase_id
+        decrement_phase_id = None
+
+        for partition_id in range(self.num_phases - 1):
             partition = self.remain_steps_info['split'][partition_id]
-            if len(change_steps_list) == 0 or sum(change_steps_list) < change_steps:
-                change_steps_list.append(min(
-                    change_steps - sum(change_steps_list), 
-                    self.params['split'][partition['phase']['to']] - self.min_split
-                ))
-            else:
-                change_steps_list.append(0)
+            if self.params['split'][partition['phase']['to']] <= self.limits_map['split']['min']:
+                continue
 
-        # update fix_flg
-        if self.split_update_flg:
-            self.first_partition['fixed'] = True
+            if self.current_max_queue_map[partition['phase']['to']] >= self.thresholds_map['split']['queue']['down']:
+                continue
+
+            if decrement_phase_id is None or self.current_max_queue_map[partition['phase']['to']] < self.current_max_queue_map[decrement_phase_id]:
+                decrement_phase_id = partition['phase']['to']
         
-        # skip update if no change happens
-        if sum(change_steps_list) <= 0: return
+        if decrement_phase_id is None:
+            for partition_id in range(self.num_phases - 1):
+                partition = self.remain_steps_info['split'][partition_id]
+                if self.params['split'][partition['phase']['to']] <= self.limits_map['split']['min']:
+                    continue
 
-        for partition_id in range(0, self.num_phases - 1):
-            # update partition
+                if decrement_phase_id is None or self.phase_max_saturation_map[partition['phase']['to']] < self.phase_max_saturation_map[decrement_phase_id]:
+                    decrement_phase_id = partition['phase']['to']
+        
+        if decrement_phase_id is None:
+            return
+        
+        # update split parameter for current phase and decrement phase
+        self.params['split'][self.current_phase] += 1
+        self.params['split'][decrement_phase_id] -= 1
+
+        # update partition information
+        for partition_id in range(self.num_phases - 1):
             partition = self.remain_steps_info['split'][partition_id]
-            partition['steps'] += sum(change_steps_list[partition_id:])
 
-            # update split parameters except for current phase
-            self.params['split'][partition['phase']['to']] -= change_steps_list[partition_id]
-        
-        # update split parameter for current phase
-        self.params['split'][self.current_phase] += sum(change_steps_list)
-        self.signal_controller.setPhases([self.current_phase] * sum(change_steps_list))
+            if partition['phase']['from'] == decrement_phase_id:
+                break
+
+            partition['steps'] += 1
+
+        # update signal_controller
+        self.signal_controller.setPhases([self.current_phase])
+
         return
     
     def _updateCycle(self):
@@ -720,9 +793,6 @@ class ScootController(Object):
 
             if partition_id != 0:
                 continue
-
-            if partition['steps'] <= self.change_steps['split']['normal']:
-                partition['fixed'] = True
             
             if phase_change_map[partition['phase']['from']] > 0:
                 self.signal_controller.setPhases([partition['phase']['from']] * phase_change_map[partition['phase']['from']])
@@ -741,15 +811,72 @@ class ScootController(Object):
         return
     
     def _getPhaseChangeMap(self):
+        phase_change_flg_map = {phase_id: False for phase_id in range(1, self.num_phases + 1)}
         phase_change_map = {phase_id: 0 for phase_id in range(1, self.num_phases + 1)}
         cumurative_change_steps = 0
+
+        for phase_id in range(1, self.num_phases + 1):
+            tmp_queue = self.current_max_queue_map[phase_id] if self.current_phase != phase_id else self.max_queue_map[phase_id]
+
+            if tmp_queue <= self.thresholds_map['cycle']['queue']['up']:
+                continue
+
+            if tmp_queue <= 0.8 * max([queue for phase_id, queue in self.current_max_queue_map.items() if phase_id != self.current_phase]):
+                continue
+
+            phase_change_flg_map[phase_id] = True
+
+            change_steps = min(
+                self.limits_map['cycle']['max'] - self.params['cycle'] - cumurative_change_steps, 
+                self.max_change_steps_map['cycle']['queue']
+            )
+            if change_steps <= 0: continue
+
+            phase_change_map[phase_id] = change_steps
+            cumurative_change_steps += phase_change_map[phase_id]
+
+        for phase_id in range(1, self.num_phases + 1):
+            if phase_change_flg_map[phase_id]:
+                continue
+
+            tmp_queue = self.current_max_queue_map[phase_id] if self.current_phase != phase_id else self.max_queue_map[phase_id]
+
+            if tmp_queue >= self.thresholds_map['cycle']['queue']['down']:
+                continue
+
+            if tmp_queue >= max([queue for phase_id, queue in self.current_max_queue_map.items() if phase_id != self.current_phase]):
+                continue
+
+            phase_change_flg_map[phase_id] = True
+
+            change_steps = min(
+                self.params['cycle'] + cumurative_change_steps - self.limits_map['cycle']['min'], 
+                self.max_change_steps_map['cycle']['queue'], 
+                self.params['split'][phase_id] - self.limits_map['split']['min']
+            )
+            if change_steps <= 0: continue
+
+            if self.first_partition['phase']['from'] == phase_id:
+                change_steps = min(change_steps, self.first_partition['steps'])
+
+            phase_change_map[phase_id] = - change_steps
+            cumurative_change_steps += phase_change_map[phase_id]
         
         saturation_phase_list = sorted(range(1, self.num_phases + 1), key=lambda phase_id: self.phase_max_saturation_map[phase_id], reverse=True)
         for phase_id in reversed(saturation_phase_list):
-            if not (self.phase_max_saturation_map[phase_id] < self.normal_threshold_map['saturation']['down']):
+            if phase_change_flg_map[phase_id]:
                 continue
 
-            change_steps = min(self.params['cycle'] + cumurative_change_steps - self.min_cycle, self.change_steps['cycle'], self.params['split'][phase_id] - self.min_split)
+            if self.phase_max_saturation_map[phase_id] >= self.thresholds_map['cycle']['saturation']['down']:
+                continue
+            
+            phase_change_flg_map[phase_id] = True
+
+            change_steps = min(
+                self.params['cycle'] + cumurative_change_steps - self.limits_map['cycle']['min'], 
+                self.max_change_steps_map['cycle']['saturation'], 
+                self.params['split'][phase_id] - self.limits_map['split']['min']
+            )
             if change_steps <= 0: continue
 
             if self.first_partition['phase']['from'] == phase_id:
@@ -757,17 +884,25 @@ class ScootController(Object):
             
             phase_change_map[phase_id] = - change_steps
             cumurative_change_steps += phase_change_map[phase_id]
-        
 
         for phase_id in saturation_phase_list:
-            if not (self.phase_max_saturation_map[phase_id] > self.normal_threshold_map['saturation']['up']):
+            if phase_change_flg_map[phase_id]:
                 continue
 
-            change_steps = min(self.max_cycle - self.params['cycle'] - cumurative_change_steps, self.change_steps['cycle'])
+            if self.phase_max_saturation_map[phase_id] <= self.thresholds_map['cycle']['saturation']['up']:
+                continue
+
+            phase_change_flg_map[phase_id] = True
+
+            change_steps = min(
+                self.limits_map['cycle']['max'] - self.params['cycle'] - cumurative_change_steps, 
+                self.max_change_steps_map['cycle']['saturation']
+            )
             if change_steps <= 0: continue
 
             phase_change_map[phase_id] = change_steps
             cumurative_change_steps += phase_change_map[phase_id]
+
         return phase_change_map
 
     def _proceedOneStep(self):
@@ -775,14 +910,13 @@ class ScootController(Object):
         if self.first_partition['steps'] == 0:
             last_partition = self.remain_steps_info['split'].popleft()
             last_partition['steps'] = self.params['cycle']
-            last_partition['fixed'] = False
             self.remain_steps_info['split'].append(last_partition)
 
             self.road_pass_map = {}
             if self.current_phase in self.STRAIGHT_PHASE_LIST:
                 for road_id, _ in self.phases_map[self.current_phase]:
                     if road_id not in self.road_pass_map.keys():
-                        self.road_pass_map[road_id] = deque(maxlen=self.emergency_threshold_map['pass'])
+                        self.road_pass_map[road_id] = deque(maxlen=self.thresholds_map['split']['pass'])
             
             elif self.current_phase in self.RIGHT_PHASE_LIST:
                 for road_id, route_id in self.phases_map[self.current_phase]:
@@ -790,9 +924,10 @@ class ScootController(Object):
                         continue
 
                     if road_id not in self.road_pass_map.keys():
-                        self.road_pass_map[road_id] = deque(maxlen=self.emergency_threshold_map['pass'])
+                        self.road_pass_map[road_id] = deque(maxlen=self.thresholds_map['split']['pass'])
 
-            self.current_split_changes_map = {type: 0 for type, flg in self.emergency_flg_map.items() if flg}
+            self.current_split_changes_map = {type: 0 for type, flg in self.emergency_flg_map['split'].items() if flg}
+            self.current_split_changes_map['saturation'] = 0
 
             self.signal_controller.setPhases([self.first_partition['phase']['from']] * self.first_partition['steps'])
         
@@ -802,7 +937,6 @@ class ScootController(Object):
         # update cycle information
         if self.remain_steps_info['cycle'] == 0:
             self.remain_steps_info['cycle'] = self.params['cycle']
-
             self.max_queue_map = {phase_id: 0.0 for phase_id in range(1, self.num_phases + 1)}
 
         self.remain_steps_info['cycle'] -= 1
@@ -816,13 +950,6 @@ class ScootController(Object):
             print(f"cycle: {self.previous_params['cycle']} -> {self.params['cycle']} steps")
             for phase_id in self.PHASE_ORDER_LIST:
                 print(f"phase {phase_id}: {self.previous_params['split'][phase_id]} -> {self.params['split'][phase_id]} steps")
-            
-        elif type == 'initial':
-            print('status: setup scoot controller')
-            print(f"intersection id: {self.id}")
-            print(f"cycle: {self.params['cycle']} steps")
-            for phase_id in self.PHASE_ORDER_LIST:
-                print(f"phase {phase_id}: {self.params['split'][phase_id]} steps")
 
         else:
             raise NotImplementedError(f"Not supported type: {type}")
@@ -832,16 +959,16 @@ class ScootController(Object):
         self._updateTrafficInfo()
 
         # update cycle
-        if self.cycle_update_flg:
+        if self.cycle_change_flg:
             self._updateCycle()
         
         # if cycle adjustment leads first_partition to be fixed, proceed one step without split adjustment and return
-        if self.first_partition['fixed']:
+        if self.fixed_flg:
             self._proceedOneStep()
             return
         
         # update split
-        if self.split_update_flg or self.saturated_flg or self.sparse_flg or self.clear_flg or self.blocked_flg:
+        if self.split_change_flg or self.over_queue_flg or self.sparse_queue_flg or self.no_pass_flg or self.blocked_flg:
             self._updateSplit()
         
         # proceed one step

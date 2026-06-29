@@ -18,12 +18,12 @@ emergency:
       down: 0.2
       up: 0.5
 initial_parameters:
-  cycle: 40
+  cycle: 20
   split:
-  - 10
-  - 10
-  - 10
-  - 10
+  - 5
+  - 5
+  - 5
+  - 5
 normal:
   saturation:
     threshold:
@@ -34,4 +34,4 @@ range:
     max: 60
     min: 20
   split:
-    min: 3
+    min: 4
