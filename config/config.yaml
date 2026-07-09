@@ -1,8 +1,8 @@
 simulator:
-  control_method : scoot            # mpc, drl, scoot
+  control_method : drl              # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name : 9-4-1-c-1      # layout folder name
-  inflow_name : balanced_700        # inflow file name
+  layout_name: 9-4-1-c-1            # layout name
+  inflow_name: balanced_800         # inflow name
   simulation_time: 1000             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -14,6 +14,7 @@ simulator:
 
 drl:
   simulation_type: test # train or test
+  num_phases: 4 # 4, 8, or 17
   stop: 
     type: episode        # episode or interval
     episode: 10
@@ -165,7 +166,7 @@ scoot:
   limits:
     cycle: 
       max: 60
-      min: 25
+      min: 20
     split:
       min: 4
   adjustment:
@@ -208,6 +209,7 @@ scoot:
   constants:
     spillback_length: 0.8 # distance considered as spillback at the branching point (relative to the after-branch lane length) 
     flow_rate: 0.2        # initial max flow rate for each movement [veh/s]
+
 save:
   common:
     performance_metrics:        

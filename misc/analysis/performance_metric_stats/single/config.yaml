@@ -66,40 +66,90 @@ mpc:
 #   max_cycle: 60                # max cycle time (step)
 #   min_split: 3                 # min split for each phase (step)   
 
+# scoot:
+#   initial_parameters:          
+#     cycle: 40                      # initial cycle time (step)
+#     split: [10, 10, 10, 10]        # initial split for each phase (step)
+#   range:
+#     cycle: 
+#       min: 20
+#       max: 60
+#     split: 
+#       min: 4
+#   change_steps:
+#     cycle: 1                   # change amount of cycle time (step)
+#     split: 
+#       normal: 1                # change amount of split for each phase when normal (step)
+#       emergency: 1             # change amount of split for each phase when emergency (step) 
+#   normal:
+#     saturation:
+#       threshold:
+#         up: 1.1
+#         down: 0.9
+#   emergency:
+#     queue:
+#       flg: true
+#       threshold: 
+#         up: 0.5               # relative queue length which the split is incremented above
+#         down: 0.2               # relative queue length which the split is decremented below
+#       max_changes: 3           # number of split changes allowed for each split
+#     pass:
+#       flg: true
+#       threshold: 2             # steps that is allowed to continue without vehicle passing the intersection
+#       max_changes: 3           # number of split changes allowed for each split
+#     blocked:
+#       flg: true
+#       max_changes: 3           # number of split changes allowed for each split
+
 scoot:
-  initial_parameters:          
-    cycle: 40                      # initial cycle time (step)
-    split: [10, 10, 10, 10]        # initial split for each phase (step)
-  range:
+  initial:
+    split: [10, 5, 10, 5]        # initial split for each phase (step)
+  limits:
     cycle: 
-      min: 20
       max: 60
-    split: 
+      min: 20
+    split:
       min: 4
-  change_steps:
-    cycle: 1                   # change amount of cycle time (step)
-    split: 
-      normal: 1                # change amount of split for each phase when normal (step)
-      emergency: 1             # change amount of split for each phase when emergency (step) 
-  normal:
-    saturation:
-      threshold:
-        up: 1.1
-        down: 0.9
-  emergency:
-    queue:
-      flg: true
-      threshold: 
-        up: 0.5               # relative queue length which the split is incremented above
-        down: 0.2               # relative queue length which the split is decremented below
-      max_changes: 3           # number of split changes allowed for each split
-    pass:
-      flg: true
-      threshold: 2             # steps that is allowed to continue without vehicle passing the intersection
-      max_changes: 3           # number of split changes allowed for each split
-    blocked:
-      flg: true
-      max_changes: 3           # number of split changes allowed for each split
+  adjustment:
+    split:
+      normal:
+        saturation:
+          threshold:
+            up: 0.8
+            down: 0.7
+          max: 1
+      emergency:
+        priority: [queue, blocked, pass]
+        queue:
+          flg: true
+          threshold:
+            up: 0.5               # relative queue length which the split is incremented above
+            down: 0.2             # relative queue length which the split is decremented below
+          max: 3                  # number of split changes allowed for each split
+        pass:
+          flg: true
+          threshold: 2            # steps that is allowed to continue without vehicle passing the intersection
+          max: 3                  # number of split changes allowed for each split
+        blocked:
+          flg: true
+          max: 3                  # number of split changes allowed for each split
+    cycle:
+      normal: 
+        saturation:
+          threshold:
+            up: 0.8
+            down: 0.7
+          max: 1
+      emergency:
+        queue:
+          flg: true
+          threshold: 
+            up: 0.5               # relative queue length which the split is incremented above
+            down: 0.2             # relative queue length which the split is decremented below
+          max: 2                  # maximum steps that the cycle time is incremented or decremented
+  constants:
+    spillback_length: 0.8 # distance considered as spillback at the branching point (relative to the after-branch lane length) 
+    flow_rate: 0.2        # initial max flow rate for each movement [veh/s]
 
 drl:
   architecture:

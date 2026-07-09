@@ -77,3 +77,4 @@ state:
     position: false
     route: false
     speed: false
+num_phases: 17

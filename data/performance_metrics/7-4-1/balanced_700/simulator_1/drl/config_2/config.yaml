@@ -1,5 +1,6 @@
 action:
   random_type: 1
+num_phases: 17
 architecture:
   common:
     activation_function:

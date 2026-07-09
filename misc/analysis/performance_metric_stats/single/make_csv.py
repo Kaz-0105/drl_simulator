@@ -26,7 +26,7 @@ def main():
     performance_metric_stat_df = getPerformanceMetricStatDf(performance_metric_df, config_yaml)
 
     # get save_dir_path
-    save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_stats' / 'single_intersection'
+    save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_stats' / 'single'
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
     performance_metric_stat_df[['mean', 'worst', 'std', 'improve_rate']] = performance_metric_stat_df[['mean', 'worst', 'std', 'improve_rate']].round(2)
@@ -236,6 +236,7 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
         performance_metric: {method: 0 for method in performance_metric_stat_df['method'].unique().tolist()}
         for performance_metric in config_yaml['target']['performance_metrics']
     }
+    scoot_best_scenario_map = {performance_metric: [] for performance_metric in config_yaml['target']['performance_metrics']}
     for layout in performance_metric_df['layout'].unique().tolist():
         for inflow in performance_metric_df['inflow'].unique().tolist():
             for intersection_id in performance_metric_df['intersection'].unique().tolist():
@@ -255,6 +256,12 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
                         raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     best_method = tmp_performance_metric_df.loc[best_id, 'method']
                     best_count_map[performance_metric][best_method] += 1
+                    if best_method == 'SCOOT':
+                        scoot_best_scenario_map[performance_metric].append({
+                            'layout': layout,
+                            'inflow': inflow,
+                            'intersection': intersection_id,
+                        })
 
     num_best_list = [0] * len(performance_metric_stat_df)
     for id, stat_row in performance_metric_stat_df.iterrows():
@@ -263,6 +270,17 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
         num_best_list[id] = best_count_map[performance_metric][method]
 
     performance_metric_stat_df['num_best'] = num_best_list
+
+
+    # print scoot_best_scenario_map
+    for performance_metric, best_scenario_list in scoot_best_scenario_map.items():
+        print(f"Performance Metric: {performance_metric}")
+        if not best_scenario_list:
+            print("  SCOOT was not the best in any scenario.")
+        else:
+            for scenario in best_scenario_list:
+                print(f"  Layout: {scenario['layout']}, Inflow: {scenario['inflow']}, Intersection: {scenario['intersection']}")
+        print()
 
     return performance_metric_stat_df
 

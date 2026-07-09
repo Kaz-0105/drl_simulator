@@ -394,31 +394,45 @@ class ScootController(Object):
     def _updateQueueInfo(self):
         for road_id, road in self.roads.items():
             if road.get('type') == 1:
+                # get tmp_queue_length from last vehicle position
                 vehicles_df = road.get('vehicles_df')
                 vehicles_df = vehicles_df[
                     (vehicles_df['link_id'] == road.main_link.get('id')) &
                     (vehicles_df['position'] >= self.branch_info_map[road_id]['pos'])
                 ].sort_values(by='position', ascending=True).reset_index(drop=True)
-                queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
+                tmp_queue_length = 0.0 if vehicles_df.empty else self.sig_pos_map[road_id]['straight'] - vehicles_df.iloc[0]['position']
 
-                if queue_length / self.branch_info_map[road_id]['length']['straight'] >= self.spillback_length:
-                    queue_length = max(queue_length, road.get('max_queue_length'))
+                # get queue_length
+                if road.main_link.get('current_queue_length') <= self.branch_info_map[road_id]['length']['straight']:
+                    queue_length = road.main_link.get('current_queue_length')
+                elif tmp_queue_length / self.branch_info_map[road_id]['length']['straight'] >= self.spillback_length:
+                    queue_length = road.main_link.get('current_queue_length')
+                else:
+                    queue_length = tmp_queue_length
 
+                # set queue_length to current_queue_map
                 self.current_queue_map[road_id]['straight'] = queue_length
 
+                # get tmp_queue_length from last vehicle position
                 vehicles_df = road.get('vehicles_df')
                 if any(vehicles_df['link_id'] == road.right_connector.get('id')):
                     vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_connector.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
-                    queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
+                    tmp_queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_connector'] + vehicles_df.iloc[0]['position'])
                 elif any(vehicles_df['link_id'] == road.right_link.get('id')):
                     vehicles_df = vehicles_df[vehicles_df['link_id'] == road.right_link.get('id')].sort_values(by='position', ascending=True).reset_index(drop=True)
-                    queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
+                    tmp_queue_length = self.sig_pos_map[road_id]['right'] - (self.from_pos_map[road_id]['right_link'] + vehicles_df.iloc[0]['position'])
                 else:
-                    queue_length = 0.0
-                
-                if queue_length / self.branch_info_map[road_id]['length']['right'] >= self.spillback_length:
-                    queue_length = max(queue_length, road.get('max_queue_length'))
-                
+                    tmp_queue_length = 0.0
+
+                # get queue_length
+                if road.right_link.get('current_queue_length') <= self.branch_info_map[road_id]['length']['right']:
+                    queue_length = road.right_link.get('current_queue_length')
+                elif tmp_queue_length / self.branch_info_map[road_id]['length']['right'] >= self.spillback_length:
+                    queue_length = road.right_link.get('current_queue_length')
+                else:
+                    queue_length = tmp_queue_length
+
+                # set queue_length to current_queue_map
                 self.current_queue_map[road_id]['right'] = queue_length
 
             else:

@@ -190,6 +190,7 @@ def getPerformanceMetricDf(config_yaml):
     performance_metric_df = performance_metric_df.reset_index()
     performance_metric_df['id'] = range(1, len(performance_metric_df) + 1)
     performance_metric_df = performance_metric_df[['id', 'method', 'layout', 'inflow', 'count'] + config_yaml['target']['performance_metrics']]
+    performance_metric_df.to_csv(root_dir_path / 'data' / 'analysis' / 'performance_metric_box_plots' / 'multiple' / 'performance_metric_df.csv', index=False)
     return performance_metric_df
 
 def getOrderList(config_yaml, performance_metric):

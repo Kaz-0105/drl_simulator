@@ -107,3 +107,4 @@ training:
   norm_clip: 1.0
   threshold: 50
   weight_decay: 0.0
+num_phases: 17

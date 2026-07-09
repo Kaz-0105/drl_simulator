@@ -193,6 +193,8 @@ class LocalAgent(Object):
 
         # set other drl information
         drl_info = self.config.get('drl_info')
+        self.simulation_type = drl_info['simulation_type']
+        self.num_phases = drl_info['num_phases']
         self.duration_steps = drl_info['duration_steps']
         self.td_steps = drl_info['framework']['apex']['td_steps']
         self.update_interval = drl_info['framework']['apex']['local_agent']['update_interval']
@@ -701,7 +703,13 @@ class LocalAgent(Object):
 
             with torch.no_grad():
                 action_values = self.model(self.current_state)
-            action = torch.argmax(action_values).item() + 1
+
+            if self.simulation_type == 'train':
+                action = torch.argmax(action_values).item() + 1
+            elif self.simulation_type == 'test':
+                action = torch.argmax(action_values[:, :self.num_phases]).item() + 1
+            else:
+                raise NotImplementedError(f"Not supported simulation_type: {self.simulation_type}")
 
             end_time = time.time()
             self.calc_time_record_list.append({'time': self.current_time, 'calc_time': end_time - start_time})

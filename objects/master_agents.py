@@ -242,6 +242,7 @@ class MasterAgent(Object):
         drl_info = copy.deepcopy(self.config.get('drl_info'))
 
         drl_info.pop('simulation_type')
+        drl_info.pop('num_phases')
         drl_info.pop('stop')
         drl_info.pop('training')
         drl_info.pop('data_augmentation')
