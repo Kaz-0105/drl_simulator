@@ -141,13 +141,19 @@ def getPerformanceMetricDf(config_yaml):
 
                 vehicle_state_info = method_config['state']['vehicle']
 
-                if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method_name = config_yaml['figure']['x_axis']['label']['drl']['micro']
-                elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+                if all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
                     method_name = config_yaml['figure']['x_axis']['label']['drl']['macro']
+                
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 4:
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['4-phase']
+                
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 17:
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['proposed']
+
                 else:
                     continue
-
+                
+                del method_config['num_phases']
                 del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
 
                 if method_config != config_yaml['drl']:
@@ -198,8 +204,11 @@ def getOrderList(config_yaml, performance_metric):
     if config_yaml['target']['control_method']['drl']['macro']:
         order_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
 
-    if config_yaml['target']['control_method']['drl']['micro']:
-        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['micro'])
+    if config_yaml['target']['control_method']['drl']['4-phase']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['4-phase'])
+
+    if config_yaml['target']['control_method']['drl']['proposed']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['proposed'])
     
     return order_list
 
@@ -212,8 +221,10 @@ def getColorMap(config_yaml):
             method_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
     if config_yaml['target']['control_method']['drl']['macro']:
         method_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
-    if config_yaml['target']['control_method']['drl']['micro']:
-        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['micro'])
+    if config_yaml['target']['control_method']['drl']['4-phase']:
+        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['4-phase'])
+    if config_yaml['target']['control_method']['drl']['proposed']:
+        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['proposed'])
     
     color_list = sns.color_palette('Set2', n_colors=len(method_list))
     return dict(zip(method_list, color_list))

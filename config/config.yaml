@@ -1,7 +1,7 @@
 simulator:
   control_method : drl              # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name: 9-4-1-c-1            # layout name
+  layout_name: 9-4-1-c-7-sb         # layout name
   inflow_name: balanced_800         # inflow name
   simulation_time: 1000             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)

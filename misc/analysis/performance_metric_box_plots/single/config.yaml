@@ -8,8 +8,9 @@ target:
       8-phase: false
       17-phase: false
     drl:
-      micro: true
       macro: true
+      4-phase: true
+      proposed: true
     scoot: true
   performance_metrics: [
     'queue_avg',
@@ -46,8 +47,9 @@ figure:
         8-phase: 8-phase MPC
         17-phase: 17-phase MPC
       drl:
-        micro: Proposed DRL
-        macro: Baseline DRL
+        macro: State Ablation
+        4-phase: Action Ablation
+        proposed: Proposed DRL
   y_axis:
     label: 
       queue_avg: Average Queue Length [m]
