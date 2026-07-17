@@ -12,14 +12,13 @@ target:
       4-phase: true
       proposed: true
     scoot: true
-  performance_metrics: [
-    'queue_avg',
-    'queue_max',
-    'delay_avg',
-    'delay_max',
-    'speed_avg',
-    'reward',
-  ]
+  performance_metrics: 
+    queue_avg: true
+    queue_max: false
+    delay_avg: false
+    delay_max: false
+    speed_avg: true
+    reward: true
   seed:
     fix_flg: true
     fix_value: 1
@@ -29,17 +28,31 @@ target:
     17-phase: 10
   delay_type: 1 # 1 or 2
 
-name:
-  method:
-    mpc:
-      4-phase: 4-Phase MPC
-      8-phase: 8-Phase MPC
-      17-phase: 17-Phase MPC
-    drl:
-      macro: Macro-State DRL
-      4-phase: 4-Phase DRL
-      proposed: Proposed DRL
-    scoot: SCOOT
+figure:
+  title:
+    label: Comparison of Best Performance Counts
+  x_axis:
+    label:
+      mpc:
+        4-phase: 4-phase MPC
+        8-phase: 8-phase MPC
+        17-phase: 17-phase MPC
+      drl:
+        macro: State Ablation
+        4-phase: Action Ablation
+        proposed: Proposed DRL
+      scoot: SCOOT
+  y_axis:
+    label: Number of Best Performances
+  legend:
+    label:
+      queue_avg: Queue Length
+      queue_max: Maximum Queue Length [m]
+      delay_avg: Delay
+      delay_max: Maximum Delay [s]
+      speed_avg: Speed
+      reward: Reward
+  color_palette: muted
 
 simulator:
   num_red_steps: 1            

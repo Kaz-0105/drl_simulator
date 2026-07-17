@@ -1,7 +1,19 @@
 target:
-  layout:
-    - 7-4-1 
-    - 7-4-1-sb
+  layout: 
+    - 9-4-1-c-1
+    - 9-4-1-c-1-sb
+    - 9-4-1-c-2
+    - 9-4-1-c-2-sb
+    - 9-4-1-c-3
+    - 9-4-1-c-3-sb
+    - 9-4-1-c-4
+    - 9-4-1-c-4-sb
+    - 9-4-1-c-5
+    - 9-4-1-c-5-sb
+    - 9-4-1-c-6
+    - 9-4-1-c-6-sb
+    - 9-4-1-c-7
+    - 9-4-1-c-7-sb
   control_method:
     mpc:
       4-phase: false
@@ -12,38 +24,51 @@ target:
       4-phase: true
       proposed: true
     scoot: true
-  performance_metrics: [
-    'queue_avg',
-    'queue_max',
-    'delay_avg',
-    'delay_max',
-    'speed_avg',
-    'reward',
-  ]
+  performance_metrics: 
+    queue_avg: true
+    queue_max: false
+    delay_avg: false
+    delay_max: false
+    speed_avg: true
+    reward: true
   seed:
     fix_flg: true
     fix_value: 1
+  delay_type: 1 # 1 or 2
   signal_change_weight: 
     4-phase: 12
     8-phase: 10
     17-phase: 10
-  delay_type: 1 # 1 or 2
 
-name:
-  method:
-    mpc:
-      4-phase: 4-Phase MPC
-      8-phase: 8-Phase MPC
-      17-phase: 17-Phase MPC
-    drl:
-      macro: Macro-State DRL
-      4-phase: 4-Phase DRL
-      proposed: Proposed DRL
-    scoot: SCOOT
+figure:
+  title:
+    label: Comparison of Best Performance Counts
+  x_axis:
+    label:
+      mpc:
+        4-phase: 4-Phase MPC
+        8-phase: 8-Phase MPC
+        17-phase: 17-Phase MPC
+      drl:
+        macro: Macro-State DRL
+        4-phase: 4-Phase DRL
+        proposed: Proposed DRL
+      scoot: SCOOT
+  y_axis:
+    label: Number of Best Performances
+  legend:
+    label:
+      queue_avg: Queue Length
+      queue_max: Maximum Queue Length
+      delay_avg: Delay
+      delay_max: Maximum Delay
+      speed_avg: Speed
+      reward: Reward
+  color_palette: muted
 
 simulator:
   num_red_steps: 1            
-  simulation_time: 500
+  simulation_time: 1000
   time_step: 2
 
 mpc: 
@@ -116,6 +141,7 @@ scoot:
   constants:
     spillback_length: 0.8 # distance considered as spillback at the branching point (relative to the after-branch lane length) 
     flow_rate: 0.2        # initial max flow rate for each movement [veh/s]
+
 
 drl:
   architecture:

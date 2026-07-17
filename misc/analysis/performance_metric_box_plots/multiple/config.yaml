@@ -55,12 +55,12 @@ figure:
     label: 
       scoot: SCOOT
       mpc:
-        4-phase: 4-phase MPC
-        8-phase: 8-phase MPC
-        17-phase: 17-phase MPC
+        4-phase: 4-Phase MPC
+        8-phase: 8-Phase MPC
+        17-phase: 17-Phase MPC
       drl:
-        macro: State Ablation
-        4-phase: Action Ablation
+        macro: Macro-State DRL
+        4-phase: 4-Phase DRL
         proposed: Proposed DRL
   y_axis:
     label: 
@@ -71,6 +71,41 @@ figure:
       speed_avg: Average Speed [km/h]
       num_phase_changes: Number of Phase Changes
       reward: Total Reward
+  legend:
+    title: Branch Length
+    label:
+      1: 50 m
+      2: 30 m
+    ncol: 2
+  boxplot:
+    color:
+      palette: Set2
+  stripplot:
+    color:
+      group:
+        - id: 1
+          color_id: 1
+          layout: 
+            - 9-4-1-c-1
+            - 9-4-1-c-2
+            - 9-4-1-c-3
+            - 9-4-1-c-4
+            - 9-4-1-c-5
+            - 9-4-1-c-6
+            - 9-4-1-c-7
+        - id: 2
+          color_id: 4
+          layout: 
+            - 9-4-1-c-1-sb
+            - 9-4-1-c-2-sb
+            - 9-4-1-c-3-sb
+            - 9-4-1-c-4-sb
+            - 9-4-1-c-5-sb
+            - 9-4-1-c-6-sb
+            - 9-4-1-c-7-sb
+      palette: muted
+    alpha: 0.6
+
 simulator:
   num_red_steps: 1            
   simulation_time: 1000

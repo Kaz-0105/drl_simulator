@@ -1,20 +1,22 @@
 target:
   method:
     macro: true
-    micro: true
+    proposed: true
 
 figure:
-  title: Learning Progress of the Proposed Method and the Baseline
+  title: Learning Progress Comparison
   x_axis:
     label: Training Episode
   y_axis:
-    label: Average Total Reward
+    label: 
+      total_reward: Avg. Total Reward
+      difference: Reward Diff.
   legend:
-    title: Method
+    title: ''
     labels: 
-      macro: Baseline (Low-resolution)
-      micro: Proposed (High-resolution)
-    ncol: 1
+      macro: Macro-State DRL
+      proposed: Proposed DRL
+    ncol: 2
     loc: lower right
 
 simulator:

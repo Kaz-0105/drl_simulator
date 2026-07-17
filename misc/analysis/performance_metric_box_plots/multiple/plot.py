@@ -221,33 +221,49 @@ def getOrderList(config_yaml, performance_metric):
     
     return order_list
 
-def getColorMap(config_yaml):
-    method_list = []
-    if config_yaml['target']['control_method']['scoot']:
-        method_list.append(config_yaml['figure']['x_axis']['label']['scoot'])
+def getColorMap(config_yaml, figure_type):
+    if figure_type == 'boxplot':
+        method_list = []
+        if config_yaml['target']['control_method']['scoot']:
+            method_list.append(config_yaml['figure']['x_axis']['label']['scoot'])
+        for num_phases in [4, 8, 17]:
+            if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+                method_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
+        if config_yaml['target']['control_method']['drl']['macro']:
+            method_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
+        if config_yaml['target']['control_method']['drl']['4-phase']:
+            method_list.append(config_yaml['figure']['x_axis']['label']['drl']['4-phase'])
+        if config_yaml['target']['control_method']['drl']['proposed']:
+            method_list.append(config_yaml['figure']['x_axis']['label']['drl']['proposed'])
+        
+        color_list = sns.color_palette(config_yaml['figure']['boxplot']['color']['palette'], n_colors=len(method_list))
+        return dict(zip(method_list, color_list))
 
-    for num_phases in [4, 8, 17]:
-        if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
-            method_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
+    elif figure_type == 'stripplot':
+        color_map = {}
+        color_list = sns.color_palette(config_yaml['figure']['stripplot']['color']['palette'], n_colors=max([group['color_id'] for group in config_yaml['figure']['stripplot']['color']['group']]))
+        for group_id, group in enumerate(config_yaml['figure']['stripplot']['color']['group']):
+            color_map[config_yaml['figure']['legend']['label'][group['id']]] = color_list[group['color_id'] - 1]
+        return color_map
 
-    if config_yaml['target']['control_method']['drl']['macro']:
-        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
-
-    if config_yaml['target']['control_method']['drl']['4-phase']:
-        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['4-phase'])
-
-    if config_yaml['target']['control_method']['drl']['proposed']:
-        method_list.append(config_yaml['figure']['x_axis']['label']['drl']['proposed'])
-    
-    color_list = sns.color_palette('Set2', n_colors=len(method_list))
-    return dict(zip(method_list, color_list))
+    else:
+        raise NotImplementedError(f"Not supported figure type: {figure_type}")
 
 def plotFigure(config_yaml, performance_metric_df, save_dir_path):
-    color_map = getColorMap(config_yaml)
+    # get layout_group_map
+    layout_group_map = {}
+    for group in config_yaml['figure']['stripplot']['color']['group']:
+        for layout in group['layout']:
+            layout_group_map[layout] = config_yaml['figure']['legend']['label'][group['id']]
+    
+    if len(layout_group_map) != len(config_yaml['target']['layout']):
+        raise ValueError(f"Invalid layout group setting for stripplot. The number of groups must match the number of layouts. layout_group_map: {layout_group_map}, target_layout: {config_yaml['target']['layout']}")
+
+    # set group column for performance_metric_df
+    performance_metric_df['group'] = performance_metric_df['layout'].map(layout_group_map)
+
     for performance_metric in config_yaml['target']['performance_metrics']:
         fig, ax = plt.subplots()
-        
-        order_list = getOrderList(config_yaml, performance_metric)
         
         sns.boxplot(
             ax=ax,
@@ -256,19 +272,20 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
             data=performance_metric_df,
             hue='method',
             legend=False,
-            palette=color_map,
+            palette=getColorMap(config_yaml, 'boxplot'),
+            # palette=['#f5f5f5'] * len(getOrderList(config_yaml, performance_metric)),
             width=0.5,
             linewidth=2.5,
             showmeans=True,
             meanprops={
-                "marker": "o",           # 形をダイヤ(D)や丸(o)に変更（三角より目立ちます）
-                "markerfacecolor": "white", # 中の色を白抜きにすると、箱の色の上でも見やすい
-                "markeredgecolor": "black", # 縁取りを黒にしてハッキリさせる
-                "markersize": 10,        # サイズを大きく（デフォルトはかなり小さいです）
-                "markeredgewidth": 2     # 縁取りの線の太さ
+                'marker': 'o',           # 形をダイヤ(D)や丸(o)に変更（三角より目立ちます）
+                'markerfacecolor': 'white', # 中の色を白抜きにすると、箱の色の上でも見やすい
+                'markeredgecolor': 'black', # 縁取りを黒にしてハッキリさせる
+                'markersize': 10,        # サイズを大きく（デフォルトはかなり小さいです）
+                'markeredgewidth': 2     # 縁取りの線の太さ
             },
             showfliers=False,
-            order=order_list,
+            order=getOrderList(config_yaml, performance_metric),
         )
 
         sns.stripplot(
@@ -276,10 +293,11 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
             x='method',
             y=performance_metric,
             data=performance_metric_df,
-            color='black',
-            alpha=0.4,
+            hue='group',
+            palette=getColorMap(config_yaml, 'stripplot'),
+            alpha=config_yaml['figure']['stripplot']['alpha'],
             jitter=True,
-            order=order_list,
+            order=getOrderList(config_yaml, performance_metric),
             size=8,
         )
         ax.set_title(config_yaml['figure']['title'][performance_metric])
@@ -287,7 +305,9 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
         for label in ax.get_xticklabels():
             label.set_fontweight('bold')
         ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric], fontweight='bold')
-        ax.set_ylim(bottom=0)
+        ax.set_ylim(bottom=0, top=performance_metric_df[performance_metric].max() * 1.2)
+
+        ax.legend(title=config_yaml['figure']['legend']['title'], ncol=config_yaml['figure']['legend']['ncol'])
 
         fig.tight_layout()
         fig.savefig(save_dir_path / f"{performance_metric}.png", format='png')

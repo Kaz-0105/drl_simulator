@@ -1,14 +1,30 @@
 target:
   layout: 
+    - 7-4-1
     - 7-4-1-sb
+    # - 9-4-1-c-1
+    # - 9-4-1-c-1-sb
+    # - 9-4-1-c-2
+    # - 9-4-1-c-2-sb
+    # - 9-4-1-c-3
+    # - 9-4-1-c-3-sb
+    # - 9-4-1-c-4
+    # - 9-4-1-c-4-sb
+    # - 9-4-1-c-5
+    # - 9-4-1-c-5-sb
+    # - 9-4-1-c-6
+    # - 9-4-1-c-6-sb
+    # - 9-4-1-c-7
+    # - 9-4-1-c-7-sb
   control_method:
     mpc:
       4-phase: false
       8-phase: false
       17-phase: true
     drl:
-      micro: true
       macro: true
+      4-phase: true
+      proposed: true
     scoot: true
   seed:
     fix_flg: true
@@ -20,17 +36,18 @@ target:
     17-phase: 10
 
 figure:
-  title: 'Phase Distribution (Branch Length: 30m)'
+  title: Phase Distribution
   x_axis:
     label: 
       scoot: SCOOT
       mpc:
-        4-phase: 4-phase MPC
-        8-phase: 8-phase MPC
-        17-phase: 17-phase MPC
+        4-phase: 4-Phase MPC
+        8-phase: 8-Phase MPC
+        17-phase: 17-Phase MPC
       drl:
-        micro: Proposed DRL
-        macro: Baseline DRL
+        macro: Macro-State DRL
+        4-phase: 4-Phase DRL
+        proposed: Proposed DRL
   y_axis:
     label: Phase Selection Ratio
   legend:
@@ -71,16 +88,54 @@ mpc:
       type: global
 
 scoot:
-  initial_parameters:          
-    cycle: 20                  # initial cycle time (step)
-    split: [5, 5, 5, 5]    # initial split for each phase (step)
-  change_steps:
-    cycle: 1                   # change amount of cycle time (step)
-    split: 
-      normal: 1                # change amount of split for each phase when normal (step)
-      blocked: 2               # change amount of split for each phase when blocked (step)        
-  max_cycle: 60                # max cycle time (step)
-  min_split: 3                 # min split for each phase (step)                
+  initial:
+    split: [10, 5, 10, 5]        # initial split for each phase (step)
+  limits:
+    cycle: 
+      max: 60
+      min: 20
+    split:
+      min: 4
+  adjustment:
+    split:
+      normal:
+        saturation:
+          threshold:
+            up: 0.8
+            down: 0.7
+          max: 1
+      emergency:
+        priority: [queue, blocked, pass]
+        queue:
+          flg: true
+          threshold:
+            up: 0.5               # relative queue length which the split is incremented above
+            down: 0.2             # relative queue length which the split is decremented below
+          max: 3                  # number of split changes allowed for each split
+        pass:
+          flg: true
+          threshold: 2            # steps that is allowed to continue without vehicle passing the intersection
+          max: 3                  # number of split changes allowed for each split
+        blocked:
+          flg: true
+          max: 3                  # number of split changes allowed for each split
+    cycle:
+      normal: 
+        saturation:
+          threshold:
+            up: 0.8
+            down: 0.7
+          max: 1
+      emergency:
+        queue:
+          flg: true
+          threshold: 
+            up: 0.5               # relative queue length which the split is incremented above
+            down: 0.2             # relative queue length which the split is decremented below
+          max: 2                  # maximum steps that the cycle time is incremented or decremented
+  constants:
+    spillback_length: 0.8 # distance considered as spillback at the branching point (relative to the after-branch lane length) 
+    flow_rate: 0.2        # initial max flow rate for each movement [veh/s]
 
 drl:
   architecture:

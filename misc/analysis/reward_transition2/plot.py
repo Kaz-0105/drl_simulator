@@ -78,7 +78,7 @@ def getSessionDf(config_info, method):
             target_config_info['state']['vehicle'] = {}
             target_config_info['state']['vehicle']['number'] = number
         
-        elif method == 'micro':
+        elif method == 'proposed':
             if target_config_info['state']['vehicle']['number'] != config_info['drl']['state']['vehicle']['number']:
                 continue
             number = target_config_info['state']['vehicle'].pop('number')
@@ -117,28 +117,59 @@ def plotRewardTransition(figure_info, session_df_map, save_dir_path):
     x_min = session_df['episode'].min()
     x_max = session_df['episode'].max()
 
-    fig, ax = plt.subplots()
+    fig, (ax1, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 1]})
+    
+    # Top plot: Reward transition for each method
     sns.lineplot(
         data=session_df,
         x='episode',
         y='total_reward',
         hue='method_label',
-        ax=ax,
+        ax=ax1,
         marker='o',
+        linewidth=2,
+        markersize=6
     )
-    ax.set_title(figure_info['title'])
-    ax.set_xlabel(figure_info['x_axis']['label'])
-    ax.set_ylabel(figure_info['y_axis']['label'])
-    ax.set_xlim(x_min - 1, x_max + 1)
-    ax.set_ylim(y_min - 5, y_max + 5)
+    ax1.set_title(figure_info['title'], pad=10)
+    # 💡 上下のグラフでX軸が同じなので、上のX軸ラベルは省略してスッキリさせます
+    ax1.set_xlabel('') 
+    ax1.set_ylabel(figure_info['y_axis']['label']['total_reward'], fontweight='bold')
+    ax1.set_xlim(x_min - 0.5, x_max + 0.5)
+    ax1.set_ylim(y_min - 5, y_max + 5)
+    ax1.grid(True, alpha=0.3, linestyle='--')
 
-    ax.legend(
+    ax1.legend(
         title=figure_info['legend']['title'],
         ncol=figure_info['legend']['ncol'],
         loc=figure_info['legend']['loc'],
+        frameon=True
     )
+    
+    # Bottom plot: Difference between methods
+    methods = list(session_df_map.keys())
+    if len(methods) == 2:
+        method1, method2 = methods[0], methods[1]
+        df1 = session_df[session_df['method'] == method1].sort_values('episode').reset_index(drop=True)
+        df2 = session_df[session_df['method'] == method2].sort_values('episode').reset_index(drop=True)
+        
+        diff_df = df1[['episode']].copy()
+        diff_df['reward_difference'] = - df1['total_reward'].values + df2['total_reward'].values
+        
+        # 💡 差のグラフも全体のトーンに合わせて綺麗にプロット
+        ax2.plot(diff_df['episode'], diff_df['reward_difference'], color='#555555', marker='o', linewidth=1.5, markersize=5)
+        ax2.set_title('')
+        ax2.set_xlabel(figure_info['x_axis']['label'], fontweight='bold')
+        ax2.set_ylabel(figure_info['y_axis']['label']['difference'], fontweight='bold')
+        ax2.set_xlim(x_min - 0.5, x_max + 0.5)
+        
+        ax2.axhline(y=0, color='r', linestyle='--', alpha=0.6, linewidth=1.2)
+        ax2.grid(True, alpha=0.3, linestyle='--')
+
+        ax2.set_ylim(diff_df['reward_difference'].min() - 5, diff_df['reward_difference'].max() + 5)
+
     fig.tight_layout()
-    plt.savefig(save_dir_path / f'reward_transition.png')
+    plt.savefig(save_dir_path / f'reward_transition.png', dpi=300) # 💡 論文用に300dpiの高解像度で保存
+    plt.close(fig) # メモリ解放のためクローズを追加
     return
 
 if __name__ == "__main__":

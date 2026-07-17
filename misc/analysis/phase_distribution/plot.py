@@ -88,8 +88,7 @@ def getPhaseDistributionDf(config_yaml):
                     # make phase_distribution_map
                     phase_distribution_map = {
                         'id': len(phase_distribution_map_list) + 1,
-                        'method': f"mpc_{num_phases}",
-                        'method_label': config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"],
+                        'method': config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"],
                     }
                     with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                         time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
@@ -120,8 +119,7 @@ def getPhaseDistributionDf(config_yaml):
                     # make phase_distribution_map
                     phase_distribution_map = {
                         'id': len(phase_distribution_map_list) + 1,
-                        'method': 'scoot',
-                        'method_label': config_yaml['figure']['x_axis']['label']['scoot'],
+                        'method': config_yaml['figure']['x_axis']['label']['scoot'],
                     }
                     with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                         time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
@@ -144,15 +142,19 @@ def getPhaseDistributionDf(config_yaml):
 
                 vehicle_state_info = method_config['state']['vehicle']
 
-                if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method = 'drl_micro'
-                    method_label = config_yaml['figure']['x_axis']['label']['drl']['micro']
-                elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method = 'drl_macro'
-                    method_label = config_yaml['figure']['x_axis']['label']['drl']['macro']
+                if all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+                    method = config_yaml['figure']['x_axis']['label']['drl']['macro']
+                
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 4:
+                    method = config_yaml['figure']['x_axis']['label']['drl']['4-phase']
+                
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 17:
+                    method = config_yaml['figure']['x_axis']['label']['drl']['proposed']
+                
                 else:
                     continue
-
+                
+                del method_config['num_phases']
                 del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
 
                 if method_config != config_yaml['drl']:
@@ -163,7 +165,6 @@ def getPhaseDistributionDf(config_yaml):
                     phase_distribution_map = {
                         'id': len(phase_distribution_map_list) + 1,
                         'method': method,
-                        'method_label': method_label,
                     }
                     with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                         time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
@@ -180,28 +181,40 @@ def getPhaseDistributionDf(config_yaml):
     phase_columns = [f"type_{phase_type}" for phase_type in [1, 2, 3]] + ['others']
     phase_distribution_df = pd.DataFrame(
         phase_distribution_map_list, 
-        columns=['id', 'method', 'method_label'] + phase_columns,
+        columns=['id', 'method'] + phase_columns,
     )
 
     # group by method
-    phase_distribution_df = phase_distribution_df.groupby(['method', 'method_label'])[phase_columns].sum().reset_index()
+    phase_distribution_df = phase_distribution_df.groupby(['method'])[phase_columns].sum().reset_index()
     
     # change count to ratio
     phase_distribution_df[phase_columns] = phase_distribution_df[phase_columns].div(phase_distribution_df[phase_columns].sum(axis=1), axis=0)
     
-    # method sort
-    method_order = [
-        'scoot',
-        'mpc_4',
-        'mpc_8',
-        'mpc_17',
-        'drl_macro',
-        'drl_micro',
-    ]
-    phase_distribution_df['method'] = pd.Categorical(phase_distribution_df['method'], categories=method_order, ordered=True)
+    # sort by method
+    phase_distribution_df['method'] = pd.Categorical(phase_distribution_df['method'], categories=getMethodOrder(config_yaml), ordered=True)
     phase_distribution_df = phase_distribution_df.sort_values('method').reset_index(drop=True)
 
     return phase_distribution_df
+
+def getMethodOrder(config_yaml):
+    order_list = []
+    if config_yaml['target']['control_method']['scoot']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['scoot'])
+    
+    for num_phases in [4, 8, 17]:
+        if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+            order_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
+    
+    if config_yaml['target']['control_method']['drl']['4-phase']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['4-phase'])
+        
+    if config_yaml['target']['control_method']['drl']['macro']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
+    
+    if config_yaml['target']['control_method']['drl']['proposed']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['proposed'])
+
+    return order_list
 
 def getColorMap(phase_columns, config_yaml):
     color_list = sns.color_palette(config_yaml['figure']['color_palette'], n_colors=len(phase_columns))
@@ -230,7 +243,7 @@ def plotFigure(config_yaml, phase_distribution_df, save_dir_path):
             label=config_yaml['figure']['legend']['labels'][phase_type],
             width=config_yaml['figure']['bar']['width'],              
             color=color_map[phase_type],       
-            edgecolor='white',
+            edgecolor='black',
         )
         bars_list.append(bars)   
 
@@ -262,6 +275,13 @@ def plotFigure(config_yaml, phase_distribution_df, save_dir_path):
                 linestyle='--',
                 color='gray',
             )
+        
+        ax.plot(
+            [x1, x2], 
+            [1, 1], 
+            linestyle='--',
+            color='gray',
+        )
 
     # set values to bars
     for bars in bars_list:
@@ -288,18 +308,18 @@ def plotFigure(config_yaml, phase_distribution_df, save_dir_path):
     for label in ax.get_xticklabels():
         label.set_fontweight('bold')
     
-    ax.set_ylabel(config_yaml['figure']['y_axis']['label'])
+    ax.set_ylabel(config_yaml['figure']['y_axis']['label'], fontweight='bold')
 
     # set x-ticks and x-tick labels
     ax.set_xticks(x_positions)
-    ax.set_xticklabels(phase_distribution_df['method_label'])
+    ax.set_xticklabels(phase_distribution_df['method'])
 
     # set x-limits and y-limits
     ax.set_xlim(-0.5, len(phase_distribution_df['method']) - 1 + 0.5)
-    ax.set_ylim(0, 1)
+    ax.set_ylim(-0.1, 1.1)
  
 
-    sns.despine(ax=ax, top=True, right=True, left=False, bottom=False)
+    # sns.despine(ax=ax, top=True, right=True, left=False, bottom=False)
 
     ax.legend(
         title=config_yaml['figure']['legend']['title'],

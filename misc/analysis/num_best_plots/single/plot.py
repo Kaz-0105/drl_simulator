@@ -7,7 +7,16 @@ import pandas as pd
 import yaml
 import re
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from libs.figure_config import init_figure_config
+
+
 def main():
+    # reflect figure configuration
+    init_figure_config()
+
     # get config_yaml
     config_file_path = Path(__file__).parent / 'config.yaml'
     with open(config_file_path, 'r', encoding='utf-8') as f:
@@ -16,15 +25,15 @@ def main():
     # get performance_metric_df
     performance_metric_df = getPerformanceMetricDf(config_yaml)
 
+    # get performance_metric_stat_df
+    performance_metric_stat_df = getPerformanceMetricStatDf(performance_metric_df, config_yaml)
+
     # get save_dir_path
-    save_dir_path = root_dir_path / 'data' / 'analysis' / 'performance_metric_stats' / 'single'
+    save_dir_path = root_dir_path / 'data' / 'analysis' / 'num_best_plots' / 'single'
     save_dir_path.mkdir(parents=True, exist_ok=True)
-
-    # get and save performance_metric_stat_df
-    saveStats(performance_metric_df, config_yaml, save_dir_path)
-
-    # get and save performance_metric_outlier_df
-    saveOutliers(performance_metric_df, config_yaml, save_dir_path)
+    
+    # plot num_best
+    plotNumBest(performance_metric_stat_df, config_yaml, save_dir_path)
     return
 
 def getPerformanceMetricDf(config_yaml):
@@ -112,7 +121,10 @@ def getPerformanceMetricDf(config_yaml):
                     }
                     with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                         time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
-                    for performance_metric in config_yaml['target']['performance_metrics']:
+                    for performance_metric, flg in config_yaml['target']['performance_metrics'].items():
+                        if not flg:
+                            continue
+
                         if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
@@ -133,13 +145,13 @@ def getPerformanceMetricDf(config_yaml):
                 vehicle_state_info = method_config['state']['vehicle']
 
                 if all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method_name = config_yaml['name']['method']['drl']['macro']
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['macro']
 
                 elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 4:
-                    method_name = config_yaml['name']['method']['drl']['4-phase']
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['4-phase']
                 
                 elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 17:
-                    method_name = config_yaml['name']['method']['drl']['proposed']
+                    method_name = config_yaml['figure']['x_axis']['label']['drl']['proposed']
                 
                 else:
                     continue
@@ -161,7 +173,10 @@ def getPerformanceMetricDf(config_yaml):
                     }
                     with open(intersection_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
                         time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
-                    for performance_metric in config_yaml['target']['performance_metrics']:
+                    for performance_metric, flg in config_yaml['target']['performance_metrics'].items():
+                        if not flg:
+                            continue
+
                         if performance_metric in ['queue_avg', 'queue_max', 'delay_max', 'speed_avg']:
                             performance_metric_map[performance_metric] = time_series_df[performance_metric].dropna().mean()
                         elif performance_metric == 'delay_avg':
@@ -176,18 +191,21 @@ def getPerformanceMetricDf(config_yaml):
 
     performance_metric_df = pd.DataFrame(
         performance_metric_map_list, 
-        columns=['id', 'method', 'layout', 'inflow', 'intersection'] + config_yaml['target']['performance_metrics']
+        columns=['id', 'method', 'layout', 'inflow', 'intersection'] + [performance_metric for performance_metric, flg in config_yaml['target']['performance_metrics'].items() if flg]
     )
     return performance_metric_df
 
-def saveStats(performance_metric_df, config_yaml, save_dir_path):
+def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
     # make performance_metric_stat_df
     performance_metric_stat_map_list = []
     for method in performance_metric_df['method'].unique().tolist():
         tmp_performance_metric_df = performance_metric_df[performance_metric_df['method'] == method]
         if tmp_performance_metric_df.empty:
             continue
-        for performance_metric in config_yaml['target']['performance_metrics']:
+        for performance_metric, flg in config_yaml['target']['performance_metrics'].items():
+            if not flg:
+                continue
+
             performance_metric_stat_map_list.append({
                 'id': len(performance_metric_stat_map_list) + 1,
                 'performance_metric': performance_metric,
@@ -195,23 +213,19 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
                 'mean': tmp_performance_metric_df[performance_metric].mean(),
                 'worst': tmp_performance_metric_df[performance_metric].min() if performance_metric in ['speed_avg', 'reward'] else tmp_performance_metric_df[performance_metric].max(),
                 'std': tmp_performance_metric_df[performance_metric].std(),
-                'q1': tmp_performance_metric_df[performance_metric].quantile(0.25),
-                'q2': tmp_performance_metric_df[performance_metric].quantile(0.5),
-                'q3': tmp_performance_metric_df[performance_metric].quantile(0.75),
-                'iqr': tmp_performance_metric_df[performance_metric].quantile(0.75) - tmp_performance_metric_df[performance_metric].quantile(0.25),
             })
     performance_metric_stat_df = pd.DataFrame(
         performance_metric_stat_map_list, 
-        columns=['id', 'performance_metric', 'method', 'mean', 'worst', 'std', 'q1', 'q2', 'q3', 'iqr']
+        columns=['id', 'performance_metric', 'method', 'mean', 'worst', 'std']
     )
 
     # add improve_rate column
     improve_rate_list = [None] * len(performance_metric_stat_df)
-    scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == config_yaml['name']['method']['scoot']].copy()
+    scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == config_yaml['figure']['x_axis']['label']['scoot']].copy()
     for _, scoot_stat_row in scoot_stat_df.iterrows():
         performance_metric = scoot_stat_row['performance_metric']
         reference_value = scoot_stat_row['mean']
-        for method in config_yaml['name']['method']['mpc'].values():
+        for method in config_yaml['figure']['x_axis']['label']['mpc'].values():
             target_stat_row = performance_metric_stat_df[
                 (performance_metric_stat_df['method'] == method) &
                 (performance_metric_stat_df['performance_metric'] == performance_metric)
@@ -222,7 +236,7 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
             target_value = target_stat_row['mean'].values[0]
             improve_rate_list[target_id - 1] = (target_value - reference_value) / reference_value * 100
         
-        for method in config_yaml['name']['method']['drl'].values():
+        for method in config_yaml['figure']['x_axis']['label']['drl'].values():
             target_stat_row = performance_metric_stat_df[
                 (performance_metric_stat_df['method'] == method) &
                 (performance_metric_stat_df['performance_metric'] == performance_metric)
@@ -238,9 +252,8 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
     # add num_best column
     best_count_map = {
         performance_metric: {method: 0 for method in performance_metric_stat_df['method'].unique().tolist()}
-        for performance_metric in config_yaml['target']['performance_metrics']
+        for performance_metric, flg in config_yaml['target']['performance_metrics'].items() if flg
     }
-    action_best_scenario_map = {performance_metric: [] for performance_metric in config_yaml['target']['performance_metrics']}
     for layout in performance_metric_df['layout'].unique().tolist():
         for inflow in performance_metric_df['inflow'].unique().tolist():
             for intersection_id in performance_metric_df['intersection'].unique().tolist():
@@ -252,7 +265,10 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
                 if tmp_performance_metric_df.empty:
                     continue
 
-                for performance_metric in config_yaml['target']['performance_metrics']:
+                for performance_metric, flg in config_yaml['target']['performance_metrics'].items():
+                    if not flg:
+                        continue
+
                     if performance_metric in ['speed_avg', 'reward']:
                         best_id = tmp_performance_metric_df[performance_metric].idxmax()
                     elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max']:
@@ -261,100 +277,75 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
                         raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
                     best_method = tmp_performance_metric_df.loc[best_id, 'method']
                     best_count_map[performance_metric][best_method] += 1
-                
-                    if best_method == config_yaml['name']['method']['drl']['4-phase']:
-                        action_best_scenario_map[performance_metric].append({
-                            'layout': layout,
-                            'inflow': inflow,
-                            'intersection': intersection_id,
-                            '4-phase': tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['4-phase']].iloc[0][performance_metric],
-                            'proposed': tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']].iloc[0][performance_metric] if not tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']].empty else None,
-                        })
 
     num_best_list = [0] * len(performance_metric_stat_df)
     for id, stat_row in performance_metric_stat_df.iterrows():
         performance_metric = stat_row['performance_metric']
         method = stat_row['method']
         num_best_list[id] = best_count_map[performance_metric][method]
-    
+
     performance_metric_stat_df['num_best'] = num_best_list
 
-    # add num_outlier column
-    outlier_count_list = [0] * len(performance_metric_stat_df)
-    for id, stat_row in performance_metric_stat_df.iterrows():
-        performance_metric = stat_row['performance_metric']
-        method = stat_row['method']
+    return performance_metric_stat_df
 
-        if performance_metric in ['speed_avg', 'reward']:
-            lower_bound = stat_row['q1'] - 1.5 * stat_row['iqr']
-            outlier_count = len(performance_metric_df[
-                (performance_metric_df['method'] == method) & 
-                (performance_metric_df[performance_metric] < lower_bound)
-            ])
-        elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max']:
-            upper_bound = stat_row['q3'] + 1.5 * stat_row['iqr']
-            outlier_count = len(performance_metric_df[
-                (performance_metric_df['method'] == method) & 
-                (performance_metric_df[performance_metric] > upper_bound)
-            ])
-        else:
-            raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+def plotNumBest(performance_metric_stat_df, config_yaml, save_dir_path):
+    # rename performance_metric column
+    performance_metric_list = []
+    for _, performance_metric_stat_row in performance_metric_stat_df.iterrows():
+        performance_metric_list.append(config_yaml['figure']['legend']['label'][performance_metric_stat_row['performance_metric']])
+    performance_metric_stat_df['performance_metric'] = performance_metric_list
 
-        outlier_count_list[id] = outlier_count
+    fig, ax = plt.subplots()
     
-    performance_metric_stat_df['num_outliers'] = outlier_count_list
+    sns.barplot(
+        ax=ax,
+        data=performance_metric_stat_df,
+        x='method',
+        y='num_best',
+        hue='performance_metric',
+        order=getOrderList(config_yaml),
+        palette=getColorMap(config_yaml),
+        edgecolor='black',
+        linewidth=1.5,
+    )
+    
+    ax.set_xlabel('')
+    ax.set_ylabel(config_yaml['figure']['y_axis']['label'])
+    ax.set_ylim(bottom=-3)
+    ax.set_title(config_yaml['figure']['title']['label'])
+    ax.legend(title='')
 
-
-    # print action_best_scenario_map
-    for performance_metric, best_scenario_list in action_best_scenario_map.items():
-        print(f"Performance Metric: {performance_metric}")
-        if not best_scenario_list:
-            print("  4-Phase was not the best in any scenario.")
-        else:
-            for scenario in best_scenario_list:
-                print(f"  Layout: {scenario['layout']}, Inflow: {scenario['inflow']}, Intersection: {scenario['intersection']}, 4-Phase {scenario['4-phase']:.2f}, Proposed {scenario['proposed']:.2f}")
-        print()
-
-    performance_metric_stat_df[['mean', 'worst', 'std', 'q1', 'q2', 'q3', 'iqr', 'improve_rate']] = performance_metric_stat_df[['mean', 'worst', 'std', 'q1', 'q2', 'q3', 'iqr', 'improve_rate']].round(2)
-    performance_metric_stat_df.to_csv(save_dir_path / 'performance_metric_stat.csv', index=False, encoding='utf-8')
+    fig.tight_layout()
+    fig.savefig(save_dir_path / 'num_best_plot.png')
+    plt.close(fig)
     return
 
-def saveOutliers(performance_metric_df, config_yaml, save_dir_path):
-    performance_metric_outlier_df_map = {}
-    for method in performance_metric_df['method'].unique().tolist():
-        tmp_performance_metric_df = performance_metric_df[performance_metric_df['method'] == method]
-        if tmp_performance_metric_df.empty: continue
+def getOrderList(config_yaml):
+    order_list = []
+    if config_yaml['target']['control_method']['scoot']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['scoot'])
 
-        for performance_metric in config_yaml['target']['performance_metrics']:
-            q1 = tmp_performance_metric_df[performance_metric].quantile(0.25)
-            q3 = tmp_performance_metric_df[performance_metric].quantile(0.75)
-            iqr = q3 - q1
-            lower_bound = q1 - 1.5 * iqr
-            upper_bound = q3 + 1.5 * iqr
+    for num_phases in[4, 8, 17]:
+        if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
+            order_list.append(config_yaml['figure']['x_axis']['label']['mpc'][f"{num_phases}-phase"])
+    
+    if config_yaml['target']['control_method']['drl']['macro']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['macro'])
+    
+    if config_yaml['target']['control_method']['drl']['4-phase']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['4-phase'])
 
-            if performance_metric in ['speed_avg', 'reward']:
-                tmp_performance_metric_outlier_df = tmp_performance_metric_df[tmp_performance_metric_df[performance_metric] < lower_bound]
-                tmp_performance_metric_outlier_df = tmp_performance_metric_outlier_df.reset_index(drop=True)
-            elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max']:
-                tmp_performance_metric_outlier_df = tmp_performance_metric_df[tmp_performance_metric_df[performance_metric] > upper_bound]
-                tmp_performance_metric_outlier_df = tmp_performance_metric_outlier_df.reset_index(drop=True)    
-            else:
-                raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
+    if config_yaml['target']['control_method']['drl']['proposed']:
+        order_list.append(config_yaml['figure']['x_axis']['label']['drl']['proposed'])
 
-            if performance_metric in performance_metric_outlier_df_map:
-                performance_metric_outlier_df_map[performance_metric] = pd.concat([performance_metric_outlier_df_map[performance_metric], tmp_performance_metric_outlier_df], ignore_index=True)
-            else:
-                performance_metric_outlier_df_map[performance_metric] = tmp_performance_metric_outlier_df
+    return order_list
 
-    for performance_metric, performance_metric_outlier_df in performance_metric_outlier_df_map.items():     
-        tmp_save_dir_path = save_dir_path / 'outliers' / performance_metric
-        tmp_save_dir_path.mkdir(parents=True, exist_ok=True)
+def getColorMap(config_yaml):
+    performance_metric_list = [config_yaml['figure']['legend']['label'][performance_metric] for performance_metric, flg in config_yaml['target']['performance_metrics'].items() if flg]
+    color_list = sns.color_palette(config_yaml['figure']['color_palette'], n_colors=len(performance_metric_list))
+    color_map = {performance_metric: color_list[i] for i, performance_metric in enumerate(performance_metric_list)}
+    return color_map
 
-        performance_metric_outlier_df['value'] = performance_metric_outlier_df[performance_metric].round(2)
-        performance_metric_outlier_df['id'] = range(1, len(performance_metric_outlier_df) + 1)
-        performance_metric_outlier_df = performance_metric_outlier_df[['id', 'method', 'layout', 'inflow', 'intersection', 'value']]
-        performance_metric_outlier_df.to_csv(tmp_save_dir_path / 'performance_metric_outlier.csv', index=False, encoding='utf-8')
 
-    return
 if __name__ == '__main__':
     main()

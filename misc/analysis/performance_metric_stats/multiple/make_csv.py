@@ -7,13 +7,8 @@ import pandas as pd
 import yaml
 import re
 
-from libs.figure_config import init_figure_config
-
 
 def main():
-    # reflect figure configuration
-    init_figure_config()
-
     # get config_yaml
     config_file_path = Path(__file__).parent / 'config.yaml'
     with open(config_file_path, 'r', encoding='utf-8') as f:
@@ -111,7 +106,7 @@ def getPerformanceMetricDf(config_yaml):
                     # make performance_metric_map
                     performance_metric_map = {
                         'id': len(performance_metric_map_list) + 1,
-                        'method': 'SCOOT',
+                        'method': config_yaml['name']['method']['scoot'],
                         'layout': layout,
                         'inflow': simulator_dir_path.parent.name,
                         'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
@@ -137,14 +132,20 @@ def getPerformanceMetricDf(config_yaml):
                     method_config = yaml.safe_load(f)
 
                 vehicle_state_info = method_config['state']['vehicle']
+                
+                if all (not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+                    method_name = config_yaml['name']['method']['drl']['macro']
 
-                if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method_name = 'Micro DRL'
-                elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
-                    method_name = 'Macro DRL'
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 4:
+                    method_name = config_yaml['name']['method']['drl']['4-phase']
+
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 17:
+                    method_name = config_yaml['name']['method']['drl']['proposed']
+
                 else:
                     continue
-
+                
+                del method_config['num_phases']
                 del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
 
                 if method_config != config_yaml['drl']:
@@ -210,11 +211,11 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
 
     # add improve_rate column
     improve_rate_list = [None] * len(performance_metric_stat_df)
-    scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == 'SCOOT'].copy()
+    scoot_stat_df = performance_metric_stat_df[performance_metric_stat_df['method'] == config_yaml['name']['method']['scoot']].copy()
     for _, scoot_stat_row in scoot_stat_df.iterrows():
         performance_metric = scoot_stat_row['performance_metric']
         reference_value = scoot_stat_row['mean']
-        for method in ['4-phase MPC', '8-phase MPC', '17-phase MPC']:
+        for method in config_yaml['name']['method']['mpc'].values():
             target_stat_row = performance_metric_stat_df[
                 (performance_metric_stat_df['method'] == method) &
                 (performance_metric_stat_df['performance_metric'] == performance_metric)
@@ -225,7 +226,7 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
             target_value = target_stat_row['mean'].values[0]
             improve_rate_list[target_id - 1] = (target_value - reference_value) / reference_value * 100
         
-        for method in ['Macro DRL', 'Micro DRL']:
+        for method in config_yaml['name']['method']['drl'].values():
             target_stat_row = performance_metric_stat_df[
                 (performance_metric_stat_df['method'] == method) &
                 (performance_metric_stat_df['performance_metric'] == performance_metric)
@@ -263,13 +264,12 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
                 best_method = tmp_performance_metric_df.loc[best_id, 'method']
                 best_count_map[performance_metric][best_method] += 1
 
-                if best_method == 'SCOOT':
+                if best_method == config_yaml['name']['method']['scoot']:
                     scoot_best_scenario_map[performance_metric].append({
                         'layout': layout,
                         'inflow': inflow,
-                        'scoot': tmp_performance_metric_df[tmp_performance_metric_df['method'] == 'SCOOT'].iloc[0][performance_metric],
-                        'micro': tmp_performance_metric_df[tmp_performance_metric_df['method'] == 'Micro DRL'].iloc[0][performance_metric] if not tmp_performance_metric_df[tmp_performance_metric_df['method'] == 'Micro DRL'].empty else None,
-                        'macro': tmp_performance_metric_df[tmp_performance_metric_df['method'] == 'Macro DRL'].iloc[0][performance_metric] if not tmp_performance_metric_df[tmp_performance_metric_df['method'] == 'Macro DRL'].empty else None,
+                        'scoot': tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['scoot']].iloc[0][performance_metric],
+                        'proposed': tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']].iloc[0][performance_metric] if not tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']].empty else None,
                     })
 
     num_best_list = [0] * len(performance_metric_stat_df)
@@ -287,7 +287,7 @@ def getPerformanceMetricStatDf(performance_metric_df, config_yaml):
             print("  SCOOT was not the best in any scenario.")
         else:
             for scenario in best_scenario_list:
-                print(f"  Layout: {scenario['layout']}, Inflow: {scenario['inflow']}, SCOOT {scenario['scoot']:.2f}, Micro DRL {scenario['micro']:.2f}")
+                print(f"  Layout: {scenario['layout']}, Inflow: {scenario['inflow']}, SCOOT {scenario['scoot']:.2f}, Proposed {scenario['proposed']:.2f}")
         print()
 
     return performance_metric_stat_df
