@@ -15,10 +15,10 @@ target:
   performance_metrics: 
     queue_avg: true
     queue_max: false
-    delay_avg: false
+    delay_avg: true
     delay_max: false
     speed_avg: true
-    reward: true
+    reward: false
   seed:
     fix_flg: true
     fix_value: 1
@@ -38,8 +38,8 @@ figure:
         8-phase: 8-phase MPC
         17-phase: 17-phase MPC
       drl:
-        macro: State Ablation
-        4-phase: Action Ablation
+        macro: Macro-State DRL
+        4-phase: 4-Phase DRL
         proposed: Proposed DRL
       scoot: SCOOT
   y_axis:
@@ -47,11 +47,11 @@ figure:
   legend:
     label:
       queue_avg: Queue Length
-      queue_max: Maximum Queue Length [m]
-      delay_avg: Delay
-      delay_max: Maximum Delay [s]
-      speed_avg: Speed
-      reward: Reward
+      queue_max: Maximum Queue Length
+      delay_avg: Delay Time
+      delay_max: Maximum Delay Time
+      speed_avg: Vehicle Speed
+      reward: Total Reward
   color_palette: muted
 
 simulator:

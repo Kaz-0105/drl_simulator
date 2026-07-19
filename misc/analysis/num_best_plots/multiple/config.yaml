@@ -27,10 +27,10 @@ target:
   performance_metrics: 
     queue_avg: true
     queue_max: false
-    delay_avg: false
+    delay_avg: true
     delay_max: false
     speed_avg: true
-    reward: true
+    reward: false
   seed:
     fix_flg: true
     fix_value: 1
@@ -60,10 +60,10 @@ figure:
     label:
       queue_avg: Queue Length
       queue_max: Maximum Queue Length
-      delay_avg: Delay
-      delay_max: Maximum Delay
-      speed_avg: Speed
-      reward: Reward
+      delay_avg: Delay Time
+      delay_max: Maximum Delay Time
+      speed_avg: Vehicle Speed
+      reward: Total Reward
   color_palette: muted
 
 simulator:

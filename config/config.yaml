@@ -2,7 +2,7 @@ simulator:
   control_method : drl              # mpc, drl, scoot
   seed: 1                           # random seed for vissim
   layout_name: 7-4-1         # layout name
-  inflow_name: balanced_700         # inflow name
+  inflow_name: main-minor         # inflow name
   simulation_time: 500             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
@@ -17,7 +17,7 @@ drl:
   num_phases: 17 # 4, 8, or 17
   stop: 
     type: episode        # episode or interval
-    episode: 10
+    episode: 20
     interval: 100
   training:
     learning_rate: 1e-5          # learning rate for drl
@@ -49,9 +49,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: true
-      speed: true
-      route: true
+      position: false
+      speed: false
+      route: false
     lane:
       length: true
       type: true

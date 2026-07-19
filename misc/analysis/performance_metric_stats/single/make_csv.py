@@ -180,6 +180,21 @@ def getPerformanceMetricDf(config_yaml):
     )
     return performance_metric_df
 
+def getMethodOrderList(config_yaml):
+    method_order_list = []
+    if config_yaml['target']['control_method']['scoot']:
+        method_order_list.append(config_yaml['name']['method']['scoot'])
+
+    for method, flg in config_yaml['target']['control_method']['mpc'].items():
+        if not flg: continue
+        method_order_list.append(config_yaml['name']['method']['mpc'][method])
+    
+    for method, flg in config_yaml['target']['control_method']['drl'].items():
+        if not flg: continue
+        method_order_list.append(config_yaml['name']['method']['drl'][method])
+    
+    return method_order_list
+
 def saveStats(performance_metric_df, config_yaml, save_dir_path):
     # make performance_metric_stat_df
     performance_metric_stat_map_list = []
@@ -279,30 +294,26 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
     
     performance_metric_stat_df['num_best'] = num_best_list
 
-    # add num_outlier column
-    outlier_count_list = [0] * len(performance_metric_stat_df)
+    # add num_outliers column
+    num_outliers_list = [0] * len(performance_metric_stat_df)
     for id, stat_row in performance_metric_stat_df.iterrows():
         performance_metric = stat_row['performance_metric']
         method = stat_row['method']
 
         if performance_metric in ['speed_avg', 'reward']:
-            lower_bound = stat_row['q1'] - 1.5 * stat_row['iqr']
-            outlier_count = len(performance_metric_df[
+            num_outliers_list[id] = performance_metric_df[
                 (performance_metric_df['method'] == method) & 
-                (performance_metric_df[performance_metric] < lower_bound)
-            ])
+                (performance_metric_df[performance_metric] < stat_row['q1'] - 1.5 * stat_row['iqr'])
+            ].shape[0]
         elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max']:
-            upper_bound = stat_row['q3'] + 1.5 * stat_row['iqr']
-            outlier_count = len(performance_metric_df[
+            num_outliers_list[id] = performance_metric_df[
                 (performance_metric_df['method'] == method) & 
-                (performance_metric_df[performance_metric] > upper_bound)
-            ])
+                (performance_metric_df[performance_metric] > stat_row['q3'] + 1.5 * stat_row['iqr'])
+            ].shape[0]
         else:
             raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-
-        outlier_count_list[id] = outlier_count
     
-    performance_metric_stat_df['num_outliers'] = outlier_count_list
+    performance_metric_stat_df['num_outliers'] = num_outliers_list
 
 
     # print action_best_scenario_map
@@ -315,6 +326,12 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
                 print(f"  Layout: {scenario['layout']}, Inflow: {scenario['inflow']}, Intersection: {scenario['intersection']}, 4-Phase {scenario['4-phase']:.2f}, Proposed {scenario['proposed']:.2f}")
         print()
 
+    # sort by performance_metric and method
+    performance_metric_stat_df['performance_metric'] = pd.Categorical(performance_metric_stat_df['performance_metric'], categories=config_yaml['target']['performance_metrics'], ordered=True)
+    performance_metric_stat_df['method'] = pd.Categorical(performance_metric_stat_df['method'], categories=getMethodOrderList(config_yaml), ordered=True)
+    performance_metric_stat_df = performance_metric_stat_df.sort_values(by=['performance_metric', 'method']).reset_index(drop=True)
+    performance_metric_stat_df['id'] = range(1, len(performance_metric_stat_df) + 1)
+    
     performance_metric_stat_df[['mean', 'worst', 'std', 'q1', 'q2', 'q3', 'iqr', 'improve_rate']] = performance_metric_stat_df[['mean', 'worst', 'std', 'q1', 'q2', 'q3', 'iqr', 'improve_rate']].round(2)
     performance_metric_stat_df.to_csv(save_dir_path / 'performance_metric_stat.csv', index=False, encoding='utf-8')
     return
