@@ -71,7 +71,7 @@ def getPerformanceMetricDf(config_yaml):
                     # make performance_metric_map
                     performance_metric_map = {
                         'id': len(performance_metric_map_list) + 1,
-                        'method': f"{num_phases}-phase MPC",
+                        'method': config_yaml['figure']['legend']['label']['mpc'][f"{num_phases}-phase"],
                         'layout': layout,
                         'inflow': inflow,
                         'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
@@ -113,7 +113,7 @@ def getPerformanceMetricDf(config_yaml):
                     # make performance_metric_map
                     performance_metric_map = {
                         'id': len(performance_metric_map_list) + 1,
-                        'method': 'SCOOT',
+                        'method': config_yaml['figure']['legend']['label']['scoot'],
                         'layout': layout,
                         'inflow': inflow,
                         'intersection': int(re.match(rf"intersection_(\d+)", intersection_dir_path.name).group(1)),
@@ -146,14 +146,20 @@ def getPerformanceMetricDf(config_yaml):
 
                 vehicle_state_info = method_config['state']['vehicle']
                 
-                if all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['micro']:
-                    method_name = 'Micro DRL'
-                elif all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']) and config_yaml['target']['control_method']['drl']['macro']:
-                    method_name = 'Macro DRL'
+                if all(not vehicle_state_info[key] for key in ['position', 'speed', 'route']):
+                    if not config_yaml['target']['control_method']['drl']['macro']: continue
+                    method_name = config_yaml['figure']['legend']['label']['drl']['macro']
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 4:
+                    if not config_yaml['target']['control_method']['drl']['4-phase']: continue 
+                    method_name = config_yaml['figure']['legend']['label']['drl']['4-phase']
+                elif all(vehicle_state_info[key] for key in ['position', 'speed', 'route']) and method_config['num_phases'] == 17:
+                    if not config_yaml['target']['control_method']['drl']['proposed']: continue
+                    method_name = config_yaml['figure']['legend']['label']['drl']['proposed']
                 else:
                     continue
 
                 del vehicle_state_info['position'], vehicle_state_info['speed'], vehicle_state_info['route']
+                del method_config['num_phases']
 
                 if method_config != config_yaml['drl']:
                     continue
@@ -198,16 +204,15 @@ def getHueOrderList(config_yaml, performance_metric):
     hue_order_list = []
     if performance_metric != 'reward':
         if config_yaml['target']['control_method']['scoot']:
-            hue_order_list.append('SCOOT')
+            hue_order_list.append(config_yaml['figure']['legend']['label']['scoot'])
         
-        for num_phases in [4, 8, 17]:
-            if config_yaml['target']['control_method']['mpc'][f"{num_phases}-phase"]:
-                hue_order_list.append(f"{num_phases}-phase MPC")
+        for method, flg in config_yaml['target']['control_method']['mpc'].items():
+            if not flg: continue
+            hue_order_list.append(config_yaml['figure']['legend']['label']['mpc'][method])
     
-    if config_yaml['target']['control_method']['drl']['macro']:
-        hue_order_list.append('Macro DRL')
-    if config_yaml['target']['control_method']['drl']['micro']:
-        hue_order_list.append('Micro DRL')
+    for method, flg in config_yaml['target']['control_method']['drl'].items():
+        if not flg: continue
+        hue_order_list.append(config_yaml['figure']['legend']['label']['drl'][method])
 
     return hue_order_list
 

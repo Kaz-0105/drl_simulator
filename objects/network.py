@@ -152,6 +152,7 @@ class Network(Common):
         self._makeQueueRecordsMap()
         self._makeDelayRecordsMap()
         self._makeSpeedRecordsMap()
+        self._makeOutflowRecordsMap()
         self._makeCalcTimeRecordsMap()
         self._makePhaseRecordsMap()
 
@@ -216,6 +217,44 @@ class Network(Common):
             record_df = record_df.drop(columns=[key for key in record_df.columns if re.match(rf"road_(\d+)_max", key)])
 
             self.queue_records_map['intersections'][intersection.get('id')] = record_df
+        return
+    
+    def _makeOutflowRecordsMap(self):
+        if not self.save_flg_map['outflow']: return
+
+        # make records_map
+        self.outflow_records_map = {
+            'roads': {},
+            'intersections': {},
+        }
+
+        for road in self.roads.getAll():
+            if not road.has('output_intersection'): continue
+
+            record_df = None
+            for data_collection_point in road.data_collection_points.getAll():
+                if data_collection_point.get('type') != 'intersection': continue
+                tmp_record_df = data_collection_point.get('num_vehs_record')
+
+                if record_df is None:
+                    record_df = tmp_record_df.copy()
+                else:
+                    record_df['num_vehs'] = record_df['num_vehs'].add(tmp_record_df['num_vehs'], fill_value=0)
+            
+            self.outflow_records_map['roads'][road.get('id')] = record_df
+        
+        for intersection in self.intersections.getAll():
+            record_df = None
+            for road in intersection.input_roads.getAll():
+                if road.get('id') not in self.outflow_records_map['roads']: continue
+
+                tmp_record_df = self.outflow_records_map['roads'][road.get('id')]
+                if record_df is None:
+                    record_df = tmp_record_df.copy()
+                else:
+                    record_df['num_vehs'] = record_df['num_vehs'].add(tmp_record_df['num_vehs'], fill_value=0)
+
+            self.outflow_records_map['intersections'][intersection.get('id')] = record_df
         return
 
     def _makeDelayRecordsMap(self):
@@ -515,6 +554,14 @@ class Network(Common):
                     data_map['time'] = tmp_record_df['time'].values
                 
                 data_map['speed_avg'] = tmp_record_df['avg'].values
+
+            if self.save_flg_map['outflow']:
+                tmp_record_df = self.outflow_records_map['intersections'][intersection.get('id')]
+
+                if data_map == {}:
+                    data_map['time'] = tmp_record_df['time'].values
+                
+                data_map['outflow'] = tmp_record_df['num_vehs'].values
             
             if self.save_flg_map['phase']:
                 tmp_record_df = self.phase_records_map[intersection.get('id')]
@@ -593,6 +640,13 @@ class Network(Common):
                         data_map['time'] = tmp_record_df['time'].values
                     
                     data_map['speed'] = tmp_record_df['avg'].values
+
+                if self.save_flg_map['outflow']:
+                    tmp_record_df = self.outflow_records_map['roads'][road.get('id')]
+                    if data_map == {}:
+                        data_map['time'] = tmp_record_df['time'].values
+                    
+                    data_map['outflow'] = tmp_record_df['num_vehs'].values
                 
                 record_df = pd.DataFrame(data_map)
                 record_df.to_csv(

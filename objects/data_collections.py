@@ -72,6 +72,13 @@ class DataCollectionPoint(Object):
         
         return self.data_collection_measurement.get('current_num_vehs')
     
+    @property
+    def num_vehs_record(self):
+        if self.data_collection_measurement is None:
+            raise Exception(f"No single type data collection measurement found for DataCollectionPoint {self.id}, so number of vehicles record is not available")
+        
+        return self.data_collection_measurement.get('num_vehs_record')
+    
     def _initProps(self):
         self.id = self.com.AttValue('No')
 

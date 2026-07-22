@@ -9,7 +9,8 @@ target:
       17-phase: false
     drl:
       macro: true
-      micro: true
+      4-phase: true
+      proposed: true
     scoot: true
   performance_metrics: [
     queue_avg,
@@ -57,6 +58,17 @@ figure:
       speed_avg: Average Vehicle Speed [km/h]
       phase: Number of Phase Changes 
       reward: Total Reward
+  legend:
+    label:
+      scoot: SCOOT
+      mpc:
+        4-phase: 4-Phase MPC
+        8-phase: 8-Phase MPC
+        17-phase: 17-Phase MPC
+      drl:
+        macro: Macro-State DRL
+        4-phase: 4-Phase DRL
+        proposed: Proposed DRL
   palette: viridis # viridis, plasma, inferno, magma, cividis, Set1, Set2, Set3, colorblind
 
 
