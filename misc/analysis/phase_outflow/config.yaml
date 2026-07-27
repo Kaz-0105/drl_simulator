@@ -9,16 +9,31 @@ target:
     - balanced_800
     - unbalanced
     - main-minor
-  control_method:
-    mpc:
-      4-phase: false
-      8-phase: false
-      17-phase: false
-    drl:
-      macro: false
-      4-phase: true
-      proposed: true
-    scoot: false
+  worse_definition:
+    rate:
+      flg: true
+      value: 10 # Threshold to consider deterioration (%)
+    absolute:
+      flg: true
+      value: 18.66 # Threshold to consider deterioration (queue: meter, delay: sec, speed: km/h)
+  type: 
+    upper: 
+      metric: phase
+      group: worse # specific, others, worse, not_worse, all
+    lower:
+      metric: outflow_rate
+      group: worse
+  phase_category:
+    type_1: true
+    type_2: true
+    type_3: true
+    type_4: false
+    type_5: false
+    type_6: false
+    others: true # except for type_1, type_2, and type_3
+    all: true # all types
+  performance_metric: queue_avg # queue_avg, delay_avg, speed_avg
+  start_time: 50
   seed:
     fix_flg: true
     fix_value: 1
@@ -27,11 +42,18 @@ target:
     4-phase: 12
     8-phase: 10
     17-phase: 10
+  specific:
+    layout: 7-4-1-sb
+    inflow: balanced_800
+    intersection: 5
 
 figure:
-  title: Phase Distribution
+  title:
+    outflow_rate: Outflow Rate
+    phase: Phase Distribution
   x_axis:
-    label: 
+    title: ''
+    label:
       scoot: SCOOT
       mpc:
         4-phase: 4-Phase MPC
@@ -42,16 +64,24 @@ figure:
         4-phase: 4-Phase DRL
         proposed: Proposed DRL
   y_axis:
-    label: Phase Selection Ratio
+    label:
+      outflow_rate: Outflow Rate [veh/h]
+      phase: Phase Selection Ratio
+    lim: 
+      outflow_rate: 300
+      phase: 0.1
   legend:
-    title: Phase Category
-    labels:
+    title: Phase Type
+    label:
       type_1: Type 1
       type_2: Type 2
       type_3: Type 3
       others: Others
+      all: Total
   bar:
-    width: 0.3
+    width: 
+      outflow_rate: 0.15
+      phase: 0.2
   color_palette: muted # Set2, husl, pastels, deep, muted, bright, dark, colorblind
 
 simulator:

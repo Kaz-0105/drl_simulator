@@ -1,0 +1,52 @@
+adjustment:
+  cycle:
+    emergency:
+      queue:
+        flg: true
+        threshold:
+          down: 0.2
+          up: 0.5
+      steps: 1
+    normal:
+      saturation:
+        threshold:
+          down: 0.7
+          up: 0.8
+      steps: 1
+  split:
+    emergency:
+      blocked:
+        flg: true
+        max_changes: 3
+      check_order:
+      - queue
+      - blocked
+      - pass
+      pass:
+        flg: true
+        max_changes: 3
+        threshold: 2
+      queue:
+        flg: true
+        max_changes: 3
+        threshold:
+          down: 0.2
+          up: 0.5
+      steps: 1
+    normal:
+      saturation:
+        threshold:
+          down: 0.7
+          up: 0.8
+      steps: 1
+initial:
+  split:
+  - 5
+  - 5
+  - 5
+  - 5
+limits:
+  cycle:
+    max: 60
+  split:
+    min: 4

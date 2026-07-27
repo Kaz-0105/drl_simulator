@@ -1,13 +1,21 @@
 target:
   layout: 7-4-1
   inflow: unbalanced
-  intersection_id: 1
+  intersection_id: 5
   control_method:
     mpc:
-      4-phase: true
-      8-phase: true
+      4-phase: false
+      8-phase: false
       17-phase: false
-    scoot: true
+    drl:
+      macro: false
+      4-phase: true
+      proposed: true
+    scoot: false
+  metric: queue_max
+  seed:
+    fix_flg: true
+    fix_value: 1
   signal_change_weight:
     4-phase: 12
     8-phase: 10
@@ -15,11 +23,15 @@ target:
 
 figure:
   title:
+    scoot: SCOOT
     mpc:
-      4-phase: Temporal Variation of Road-Wise Queue Lengths under 4-Phase MPC
-      8-phase: Temporal Variation of Road-Wise Queue Lengths under 8-Phase MPC
-      17-phase: Temporal Variation of Road-Wise Queue Lengths under 17-Phase MPC
-    scoot: Temporal Variation of Road-Wise Queue Lengths under SCOOT 
+      4-phase: 4-Phase MPC
+      8-phase: 8-Phase MPC
+      17-phase: 17-Phase MPC
+    drl:
+      macro: Macro-State DRL
+      4-phase: 4-Phase DRL
+      proposed: Proposed DRL
   x_axis:
     label: Time [s]
   y_axis:
@@ -40,7 +52,6 @@ simulator:
   num_red_steps: 1            
   simulation_time: 500
   time_step: 2
-  seed: 1
 
 mpc: 
   horizon: 5
@@ -64,18 +75,130 @@ mpc:
       type: global
 
 scoot:
-  initial_parameters:          
-    cycle: 40                 
-    split: [10, 10, 10, 10]    
-  change_steps:
-    cycle: 1                 
-    split: 1                 
-  max_cycle: 60                
-  min_split: 5                
-  spacing_threshold: 20
+  initial:
+    split: [10, 5, 10, 5]        # initial split for each phase (step)
+  limits:
+    cycle: 
+      max: 60
+      min: 20
+    split:
+      min: 4
+  adjustment:
+    split:
+      normal:
+        saturation:
+          threshold:
+            up: 0.8
+            down: 0.7
+          max: 1
+      emergency:
+        priority: [queue, blocked, pass]
+        queue:
+          flg: true
+          threshold:
+            up: 0.5               # relative queue length which the split is incremented above
+            down: 0.2             # relative queue length which the split is decremented below
+          max: 3                  # number of split changes allowed for each split
+        pass:
+          flg: true
+          threshold: 2            # steps that is allowed to continue without vehicle passing the intersection
+          max: 3                  # number of split changes allowed for each split
+        blocked:
+          flg: true
+          max: 3                  # number of split changes allowed for each split
+    cycle:
+      normal: 
+        saturation:
+          threshold:
+            up: 0.8
+            down: 0.7
+          max: 1
+      emergency:
+        queue:
+          flg: true
+          threshold: 
+            up: 0.5               # relative queue length which the split is incremented above
+            down: 0.2             # relative queue length which the split is decremented below
+          max: 2                  # maximum steps that the cycle time is incremented or decremented
+  constants:
+    spillback_length: 0.8 # distance considered as spillback at the branching point (relative to the after-branch lane length) 
+    flow_rate: 0.2        # initial max flow rate for each movement [veh/s]
 
-
-
-
-
-
+drl:
+  architecture:
+    common:
+      activation_function:
+        leaky_relu:
+          alpha: 0.01
+        type: leaky_relu
+      initialization:
+        type: he
+    proto:
+      compression:
+        rate:
+          dueling: 1.0
+          intersection: 0.5
+          intersection_encoder: 5.0
+          lane: 1.0
+          lane_encoder: 5.0
+          lanes: 0.5
+          road: 1.0
+          road_encoder: 5.0
+          roads: 0.5
+          vehicle_encoder: 5.0
+          vehicles: 1.0
+        type: linear
+      hidden_layers:
+        number:
+          dueling: 2
+          intersection: 1
+          intersection_encoder: 2
+          lane: 1
+          lane_encoder: 2
+          lanes: 1
+          road: 1
+          road_encoder: 2
+          roads: 1
+          vehicle_encoder: 2
+          vehicles: 1
+    type: proto
+  duration_steps: 5
+  framework:
+    apex:
+      buffer:
+        file_capacity: 10000
+        size: 200000
+      td_steps: 1
+    type: apex
+  reward:
+    common:
+      gamma: 0.8
+    type: waiting_vehicles
+    waiting_vehicles:
+      bonus:
+        movement: 0.1
+        pass: 1.0
+      scaler:
+        tanh:
+          alpha: 3
+        tanh_linear:
+          alpha: 3
+        type: tanh_linear
+      weight:
+        exponential:
+          half: 50
+        type: queue_exponential
+  state:
+    intersection:
+      phase: true
+    lane:
+      length: true
+      num_vehicles: true
+      type: true
+    road:
+      delay: true
+      queue: true
+      route: true
+      inflow: true
+    vehicle:
+      number: 10

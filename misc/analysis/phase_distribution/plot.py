@@ -318,7 +318,6 @@ def plotFigure(config_yaml, phase_distribution_df, save_dir_path):
     ax.set_xlim(-0.5, len(phase_distribution_df['method']) - 1 + 0.5)
     ax.set_ylim(-0.1, 1.1)
  
-
     # sns.despine(ax=ax, top=True, right=True, left=False, bottom=False)
 
     ax.legend(

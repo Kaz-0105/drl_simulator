@@ -1,0 +1,10 @@
+id,method,layout,inflow,intersection,value
+1,SCOOT,7-4-1,balanced_800,1,49.01
+2,SCOOT,7-4-1-sb,balanced_800,1,53.78
+3,Proposed DRL,7-4-1,balanced_800,5,27.88
+4,Proposed DRL,7-4-1-sb,balanced_800,1,39.18
+5,Proposed DRL,7-4-1-sb,balanced_800,5,39.15
+6,Macro-State DRL,7-4-1,balanced_800,1,38.69
+7,Macro-State DRL,7-4-1-sb,balanced_800,1,46.22
+8,Macro-State DRL,7-4-1-sb,balanced_800,5,49.34
+9,4-Phase DRL,7-4-1-sb,balanced_800,1,35.62

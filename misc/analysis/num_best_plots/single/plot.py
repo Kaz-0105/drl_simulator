@@ -295,7 +295,7 @@ def plotNumBest(performance_metric_stat_df, config_yaml, save_dir_path):
         performance_metric_list.append(config_yaml['figure']['legend']['label'][performance_metric_stat_row['performance_metric']])
     performance_metric_stat_df['performance_metric'] = performance_metric_list
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(16, 7))
     
     sns.barplot(
         ax=ax,
@@ -310,7 +310,9 @@ def plotNumBest(performance_metric_stat_df, config_yaml, save_dir_path):
     )
     
     ax.set_xlabel('')
-    ax.set_ylabel(config_yaml['figure']['y_axis']['label'])
+    for label in ax.get_xticklabels():
+        label.set_fontweight('bold')
+    ax.set_ylabel(config_yaml['figure']['y_axis']['label'], fontweight='bold')
     ax.set_ylim(bottom=-3)
     ax.set_title(config_yaml['figure']['title']['label'])
     ax.legend(title='')

@@ -1,0 +1,8 @@
+id,method,layout,inflow,intersection,value
+1,Proposed DRL,7-4-1-sb,balanced_800,1,126.77
+2,Proposed DRL,7-4-1-sb,balanced_800,2,103.38
+3,Proposed DRL,7-4-1-sb,balanced_800,5,135.64
+4,Proposed DRL,7-4-1-sb,unbalanced,2,98.66
+5,Proposed DRL,7-4-1-sb,unbalanced,5,97.49
+6,Macro-State DRL,7-4-1-sb,balanced_800,1,125.03
+7,Macro-State DRL,7-4-1-sb,balanced_800,5,145.72

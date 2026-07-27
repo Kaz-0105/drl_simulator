@@ -34,9 +34,9 @@ figure:
   title:
     queue_avg: Average Queue Length 
     queue_max: Maximum Queue Length 
-    delay_avg: Average Delay 
-    delay_max: Maximum Delay 
-    speed_avg: Average Speed 
+    delay_avg: Average Delay Time
+    delay_max: Maximum Delay Time
+    speed_avg: Average Vehicle Speed
     num_phase_changes: Number of Phase Changes 
     reward: Total Reward 
   x_axis:

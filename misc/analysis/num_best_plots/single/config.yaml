@@ -43,15 +43,15 @@ figure:
         proposed: Proposed DRL
       scoot: SCOOT
   y_axis:
-    label: Number of Best Performances
+    label: Best Performance Counts
   legend:
     label:
       queue_avg: Queue Length
-      queue_max: Maximum Queue Length
+      queue_max: Queue Length
       delay_avg: Delay Time
-      delay_max: Maximum Delay Time
+      delay_max: Delay Time
       speed_avg: Vehicle Speed
-      reward: Total Reward
+      reward: Reward
   color_palette: muted
 
 simulator:
