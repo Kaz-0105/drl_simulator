@@ -1,9 +1,9 @@
 simulator:
-  control_method : scoot            # mpc, drl, scoot
+  control_method : scoot              # mpc, drl, scoot
   seed: 1                           # random seed for vissim
-  layout_name: 7-4-1                # layout name
-  inflow_name: balanced_800           # inflow name
-  simulation_time: 500              # simulation time for each simulation (seconds)
+  layout_name: 9-4-1-c-1            # layout name
+  inflow_name: balanced_800         # inflow name
+  simulation_time: 1000             # simulation time for each simulation (seconds)
   time_step: 2                      # descrete time in the simulator (seconds)
   num_red_steps: 1                  # number of red steps between phases
   max_workers: 7                    # the number of parallel workers
@@ -14,7 +14,7 @@ simulator:
 
 drl:
   simulation_type: test # train or test
-  num_phases: 17 # 4, 8, or 17
+  num_phases: 4 # 4, 8, or 17
   stop: 
     type: episode        # episode or interval
     episode: 20
@@ -49,9 +49,9 @@ drl:
   state:
     vehicle:
       number : 10
-      position: false
-      speed: false
-      route: false
+      position: true
+      speed: true
+      route: true
     lane:
       length: true
       type: true
