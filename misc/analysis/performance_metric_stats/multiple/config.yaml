@@ -30,7 +30,8 @@ target:
     'delay_avg',
     'delay_max',
     'speed_avg',
-    'reward'
+    'reward',
+    'spillback_events',
   ]
   seed:
     fix_flg: true
@@ -40,6 +41,23 @@ target:
     4-phase: 12
     8-phase: 10
     17-phase: 10
+  spillback:
+    threshold: # meter
+      9-4-1-c-1: 160
+      9-4-1-c-1-sb: 160
+      9-4-1-c-2: 160
+      9-4-1-c-2-sb: 160
+      9-4-1-c-3: 160
+      9-4-1-c-3-sb: 160
+      9-4-1-c-4: 160
+      9-4-1-c-4-sb: 160
+      9-4-1-c-5: 160
+      9-4-1-c-5-sb: 160
+      9-4-1-c-6: 160
+      9-4-1-c-6-sb: 160
+      9-4-1-c-7: 160
+      9-4-1-c-7-sb: 160
+    count_type: intersection # intersection or road
 
 name:
   method:

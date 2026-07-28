@@ -1,0 +1,13 @@
+id,method,layout,inflow,value
+1,Macro-State DRL,9-4-1-c-1-sb,balanced_800,73.11
+2,Macro-State DRL,9-4-1-c-3-sb,balanced_800,133.22
+3,Macro-State DRL,9-4-1-c-4-sb,balanced_800,102.22
+4,Macro-State DRL,9-4-1-c-5-sb,balanced_800,103.44
+5,Macro-State DRL,9-4-1-c-7-sb,balanced_800,90.22
+6,Proposed DRL,9-4-1-c-1-sb,balanced_800,92.78
+7,Proposed DRL,9-4-1-c-3-sb,balanced_800,103.67
+8,Proposed DRL,9-4-1-c-3-sb,unbalanced_1,58.22
+9,Proposed DRL,9-4-1-c-4-sb,balanced_800,71.78
+10,Proposed DRL,9-4-1-c-4-sb,unbalanced_1,69.44
+11,Proposed DRL,9-4-1-c-5-sb,balanced_800,102.33
+12,Proposed DRL,9-4-1-c-5-sb,unbalanced_1,71.67

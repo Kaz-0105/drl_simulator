@@ -23,3 +23,7 @@ id,performance_metric,method,mean,worst,std,q1,q2,q3,iqr,improve_rate,num_best,n
 22,reward,Macro-State DRL,181.49,106.9,29.35,162.79,179.29,202.29,39.5,,0,0
 23,reward,4-Phase DRL,177.83,112.39,30.09,156.15,180.26,201.52,45.36,,0,0
 24,reward,Proposed DRL,199.31,113.49,33.26,177.89,202.77,225.5,47.61,,84,0
+25,spillback_events,SCOOT,37.55,115.0,36.6,0.33,33.33,66.78,66.44,,0,0
+26,spillback_events,Macro-State DRL,18.04,133.22,27.84,0.0,2.33,26.11,26.11,-51.96,22,5
+27,spillback_events,4-Phase DRL,27.55,102.22,30.63,0.0,18.83,47.25,47.25,-26.62,33,0
+28,spillback_events,Proposed DRL,15.03,103.67,24.1,0.0,3.5,20.67,20.67,-59.96,29,7
