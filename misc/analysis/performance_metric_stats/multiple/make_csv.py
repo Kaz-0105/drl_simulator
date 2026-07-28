@@ -51,6 +51,7 @@ def getPerformanceMetricDf(config_yaml):
 
             # get inflow
             inflow = simulator_dir_path.parent.name
+            if inflow not in config_yaml['target']['inflow']: continue
 
             # regarding mpc
             mpc_dir_path = simulator_dir_path / 'mpc'
@@ -151,12 +152,24 @@ def getPerformanceMetricDf(config_yaml):
         columns=['id', 'method', 'layout', 'inflow', 'intersection'] + config_yaml['target']['performance_metrics']
     )
 
-    grouped_performance_metric_df = performance_metric_df.groupby(by=['method', 'layout', 'inflow'])[config_yaml['target']['performance_metrics']]
-    performance_metric_df = grouped_performance_metric_df.mean()
-    performance_metric_df['count'] = grouped_performance_metric_df.count().iloc[:, 0]
-    performance_metric_df = performance_metric_df.reset_index()
-    performance_metric_df['id'] = range(1, len(performance_metric_df) + 1)
-    performance_metric_df = performance_metric_df[['id', 'method', 'layout', 'inflow', 'count'] + config_yaml['target']['performance_metrics']]
+    performance_metric_map_list = []
+    for (method, layout, inflow), group_df in performance_metric_df.groupby(by=['method', 'layout', 'inflow']):
+        performance_metric_map = {
+            'id': len(performance_metric_map_list) + 1,
+            'method': method,
+            'layout': layout,
+            'inflow': inflow,
+            'count': group_df.shape[0],
+        }
+        for performance_metric in config_yaml['target']['performance_metrics']:
+            performance_metric_map[performance_metric] = group_df[performance_metric].mean()
+
+        performance_metric_map_list.append(performance_metric_map)
+
+    performance_metric_df = pd.DataFrame(
+        performance_metric_map_list,
+        columns=['id', 'method', 'layout', 'inflow', 'count'] + config_yaml['target']['performance_metrics']
+    )
     return performance_metric_df
 
 def getPerformanceMetricMap(id, method, layout, inflow, intersection_dir_path, config_yaml):
@@ -179,7 +192,7 @@ def getPerformanceMetricMap(id, method, layout, inflow, intersection_dir_path, c
                 performance_metric_map[performance_metric] = time_series_df['reward'].fillna(0).sum()
         elif performance_metric == 'spillback_events':
             if config_yaml['target']['spillback']['count_type'] == 'intersection':
-                performance_metric_map[performance_metric] = (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum()
+                performance_metric_map[performance_metric] = (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum() * config_yaml['simulator']['time_step'] 
             elif config_yaml['target']['spillback']['count_type'] == 'road':
                 pass
         else:
@@ -191,7 +204,7 @@ def getPerformanceMetricMap(id, method, layout, inflow, intersection_dir_path, c
     for road_dir_path in intersection_dir_path.glob('road_*'):
         with open(road_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
             time_series_df = pd.read_csv(road_dir_path / 'performance_metrics.csv')
-        performance_metric_map['spillback_events'] += (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum()
+        performance_metric_map['spillback_events'] += (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum() * config_yaml['simulator']['time_step']
     
     return performance_metric_map
 
@@ -270,6 +283,7 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
         performance_metric: {method: 0 for method in performance_metric_stat_df['method'].unique().tolist()}
         for performance_metric in config_yaml['target']['performance_metrics']
     }
+    equal_spillback_events_map = {}
     scoot_best_scenario_map = {performance_metric: [] for performance_metric in config_yaml['target']['performance_metrics']}
     for layout in performance_metric_df['layout'].unique().tolist():
         for inflow in performance_metric_df['inflow'].unique().tolist():
@@ -283,12 +297,34 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
             for performance_metric in config_yaml['target']['performance_metrics']:
                 if performance_metric in ['speed_avg', 'reward']:
                     best_id = tmp_performance_metric_df[performance_metric].idxmax()
-                elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max', 'spillback_events']:
+                    best_method = tmp_performance_metric_df.loc[best_id, 'method']
+                    best_count_map[performance_metric][best_method] += 1
+
+                elif performance_metric in ['queue_avg', 'queue_max', 'delay_avg', 'delay_max']:
                     best_id = tmp_performance_metric_df[performance_metric].idxmin()
+                    best_method = tmp_performance_metric_df.loc[best_id, 'method']
+                    best_count_map[performance_metric][best_method] += 1
+
+                elif performance_metric == 'spillback_events':
+                    min_value = tmp_performance_metric_df[performance_metric].min()
+                    best_method_list = tmp_performance_metric_df[tmp_performance_metric_df[performance_metric] == min_value]['method'].tolist()
+                    for best_method in best_method_list:
+                        best_count_map[performance_metric][best_method] += 1
+                    
+                    if len(best_method_list) > 1:  
+                        equal_spillback_events_map[frozenset(best_method_list)] = equal_spillback_events_map[frozenset(best_method_list)] + 1 if frozenset(best_method_list) in equal_spillback_events_map else 1
+                        continue
+
+                    best_id = tmp_performance_metric_df[performance_metric].idxmin()
+
+                    if len(best_method_list) == 1 and best_method_list[0] == config_yaml['name']['method']['drl']['macro']:
+                        macro_count = tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['macro']][performance_metric].values[0]
+                        proposed_count = tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']][performance_metric].values[0]
+                        print(f"macro: {macro_count:.2f}, proposed: {proposed_count:.2f}")
+
                 else:
                     raise NotImplementedError(f"Not supported performance metric: {performance_metric}")
-                best_method = tmp_performance_metric_df.loc[best_id, 'method']
-                best_count_map[performance_metric][best_method] += 1
+                
 
                 if best_method == config_yaml['name']['method']['scoot']:
                     scoot_best_scenario_map[performance_metric].append({
@@ -297,6 +333,9 @@ def saveStats(performance_metric_df, config_yaml, save_dir_path):
                         'scoot': tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['scoot']].iloc[0][performance_metric],
                         'proposed': tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']].iloc[0][performance_metric] if not tmp_performance_metric_df[tmp_performance_metric_df['method'] == config_yaml['name']['method']['drl']['proposed']].empty else None,
                     })
+
+    for best_method_set, count in equal_spillback_events_map.items():
+        print(f"best_method_set = {best_method_set}, count = {count}")
 
     num_best_list = [0] * len(performance_metric_stat_df)
     for id, stat_row in performance_metric_stat_df.iterrows():

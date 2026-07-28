@@ -14,6 +14,13 @@ target:
     - 9-4-1-c-6-sb
     - 9-4-1-c-7
     - 9-4-1-c-7-sb
+  inflow:
+    - balanced_500
+    - balanced_600
+    - balanced_700
+    - balanced_800
+    - main-minor
+    - unbalanced_1
   control_method:
     mpc:
       4-phase: false

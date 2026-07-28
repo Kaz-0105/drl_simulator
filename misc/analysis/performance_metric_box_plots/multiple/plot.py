@@ -54,6 +54,7 @@ def getPerformanceMetricDf(config_yaml):
 
             # get inflow
             inflow = simulator_dir_path.parent.name
+            if inflow not in config_yaml['target']['inflow']: continue
 
             # regarding mpc
             mpc_dir_path = simulator_dir_path / 'mpc'
@@ -163,10 +164,8 @@ def getPerformanceMetricDf(config_yaml):
             'inflow': inflow,
         }
         for performance_metric in config_yaml['target']['performance_metrics']:
-            if performance_metric in ['spillback_events']:
-                performance_metric_map[performance_metric] = group_df[performance_metric].sum()
-            else:
-                performance_metric_map[performance_metric] = group_df[performance_metric].mean()
+            performance_metric_map[f"{performance_metric}_mean"] = group_df[performance_metric].mean()
+            performance_metric_map[f"{performance_metric}_std"] = group_df[performance_metric].std()
 
         performance_metric_map['count'] = group_df.shape[0]
 
@@ -174,7 +173,7 @@ def getPerformanceMetricDf(config_yaml):
 
     performance_metric_df = pd.DataFrame(
         performance_metric_map_list,    
-        columns=['id', 'method', 'layout', 'inflow', 'count'] + config_yaml['target']['performance_metrics']
+        columns=['id', 'method', 'layout', 'inflow', 'count'] + [f"{performance_metric}_mean" for performance_metric in config_yaml['target']['performance_metrics']] + [f"{performance_metric}_std" for performance_metric in config_yaml['target']['performance_metrics']]
     )
     performance_metric_df = performance_metric_df.reset_index()
     performance_metric_df.to_csv(root_dir_path / 'data' / 'analysis' / 'performance_metric_box_plots' / 'multiple' / 'performance_metric_df.csv', index=False)
@@ -203,7 +202,7 @@ def getPerformanceMetricMap(id, method, layout, inflow, intersection_dir_path, c
                 performance_metric_map[performance_metric] = time_series_df['reward'].fillna(0).sum()
         elif performance_metric == 'spillback_events':
             if config_yaml['target']['spillback']['count_type'] == 'intersection':
-                performance_metric_map[performance_metric] = (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum()
+                performance_metric_map[performance_metric] = (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum() * config_yaml['simulator']['time_step']
             elif config_yaml['target']['spillback']['count_type'] == 'road':
                 pass
             else:
@@ -218,7 +217,7 @@ def getPerformanceMetricMap(id, method, layout, inflow, intersection_dir_path, c
     for road_dir_path in intersection_dir_path.glob('road_*'):
         with open(road_dir_path / 'performance_metrics.csv', 'r', encoding='utf-8') as f:
             time_series_df = pd.read_csv(road_dir_path / 'performance_metrics.csv')
-        performance_metric_map['spillback_events'] += (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum()
+        performance_metric_map['spillback_events'] += (time_series_df['queue_max'] > config_yaml['target']['spillback']['threshold'][layout]).sum() * config_yaml['simulator']['time_step']
         
     return performance_metric_map
 
@@ -265,7 +264,7 @@ def getColorMap(config_yaml, figure_type):
     elif figure_type == 'stripplot':
         color_map = {}
         color_list = sns.color_palette(config_yaml['figure']['stripplot']['color']['palette'], n_colors=max([group['color_id'] for group in config_yaml['figure']['stripplot']['color']['group']]))
-        for group_id, group in enumerate(config_yaml['figure']['stripplot']['color']['group']):
+        for _, group in enumerate(config_yaml['figure']['stripplot']['color']['group']):
             color_map[config_yaml['figure']['legend']['label'][group['id']]] = color_list[group['color_id'] - 1]
         return color_map
 
@@ -291,7 +290,7 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
         sns.boxplot(
             ax=ax,
             x='method',
-            y=performance_metric,
+            y=f"{performance_metric}_mean",
             data=performance_metric_df,
             hue='method',
             legend=False,
@@ -313,7 +312,7 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
         sns.stripplot(
             ax=ax,
             x='method',
-            y=performance_metric,
+            y=f"{performance_metric}_mean",
             data=performance_metric_df,
             hue='group',
             palette=getColorMap(config_yaml, 'stripplot'),
@@ -328,9 +327,9 @@ def plotFigure(config_yaml, performance_metric_df, save_dir_path):
             label.set_fontweight('bold')
         ax.set_ylabel(config_yaml['figure']['y_axis']['label'][performance_metric], fontweight='bold')
         if performance_metric == 'spillback_events':
-            ax.set_ylim(bottom=-10, top=performance_metric_df[performance_metric].max() * 1.2)
+            ax.set_ylim(bottom=-10, top=performance_metric_df[f"{performance_metric}_mean"].max() * 1.2)
         else:
-            ax.set_ylim(bottom=0, top=performance_metric_df[performance_metric].max() * 1.2)
+            ax.set_ylim(bottom=0, top=performance_metric_df[f"{performance_metric}_mean"].max() * 1.2)
 
         ax.legend(title=config_yaml['figure']['legend']['title'], ncol=config_yaml['figure']['legend']['ncol'])
 

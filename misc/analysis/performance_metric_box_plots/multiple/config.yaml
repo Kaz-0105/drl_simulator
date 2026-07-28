@@ -14,6 +14,13 @@ target:
     - 9-4-1-c-6-sb
     - 9-4-1-c-7
     - 9-4-1-c-7-sb
+  inflow:
+    - balanced_500
+    - balanced_600
+    - balanced_700
+    - balanced_800
+    - main-minor
+    - unbalanced_1
   control_method:
     mpc:
       4-phase: false
@@ -69,7 +76,7 @@ figure:
     speed_avg: Average Vehicle Speed
     phase_changes: Number of Phase Changes 
     reward: Total Reward 
-    spillback_events: Number of Spillback Events
+    spillback_events: Cumulative Duration of Spillback Events
   x_axis:
     label: 
       scoot: SCOOT
@@ -90,7 +97,7 @@ figure:
       speed_avg: Average Speed [km/h]
       phase_changes: Number of Phase Changes
       reward: Total Reward
-      spillback_events: Number of Spillback Events
+      spillback_events: Duration of Spillback Events [s]
   legend:
     title: Branch Length
     label:
