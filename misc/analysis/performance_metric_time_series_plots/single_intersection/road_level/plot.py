@@ -150,7 +150,9 @@ def plotTimeSeries(time_series_df_map, config_yaml, save_dir_path):
         max_value = max(max_value, tmp_time_series_df[config_yaml['target']['metric']].max())
 
     fig, axes = plt.subplots(2, 1, figsize=(16, 12))
-    for idx, (ax, (method, tmp_time_series_df)) in enumerate(zip(axes, time_series_df_map.items())):
+    for idx, (ax, method) in enumerate(zip(axes, [config_yaml['figure']['title']['drl']['4-phase'], config_yaml['figure']['title']['drl']['proposed']])):
+        tmp_time_series_df = time_series_df_map[method]
+        
         # add line_style column
         tmp_time_series_df['line_style'] = ''
         for road_id in tmp_time_series_df['road'].unique():

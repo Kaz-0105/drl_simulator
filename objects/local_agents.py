@@ -218,15 +218,11 @@ class LocalAgent(Object):
             waiting_vehicles_info = drl_info['reward']['waiting_vehicles']
             self.pass_bonus = waiting_vehicles_info['bonus']['pass']
             self.movement_bonus = waiting_vehicles_info['bonus']['movement']
+            self.spillback_bonus = waiting_vehicles_info['bonus']['spillback']
             self.weight_flg = (waiting_vehicles_info['weight']['type'] is not None)
             if self.weight_flg:
                 self.weight_type = waiting_vehicles_info['weight']['type']
-                if self.weight_type == 'exponential':
-                    self.half_life = waiting_vehicles_info['weight'][self.weight_type]['half']
-                elif self.weight_type == 'queue_exponential':
-                    pass
-                else:
-                    raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
+                self.half_life_map = None
 
             self.reward_scaling_flg = (waiting_vehicles_info['scaler']['type'] is not None)
         
@@ -277,7 +273,7 @@ class LocalAgent(Object):
 
         # set roads
         self.roads = self.intersection.input_roads
-
+            
         # set signal_controller
         self.signal_controller = self.intersection.signal_controller
         self.signal_controller.local_agent = self
@@ -295,6 +291,19 @@ class LocalAgent(Object):
         self.num_lanes_map = self.master_agent.get('num_lanes_map') 
         self.symmetry_phase_map = self.master_agent.get('symmetry_phase_map')
         self.active_phase_list = self.master_agent.get('active_phase_list')
+
+        # set half_life_map
+        if self.reward_type == 'waiting_vehicles' and self.weight_flg:
+            if self.weight_type == 'exponential':
+                waiting_vehicles_info = self.config.get('drl_info')['reward']['waiting_vehicles']
+                self.half_life_map = {road_id: waiting_vehicles_info['weight']['exponential']['half'] for road_id in range(1, self.num_roads + 1)}
+            elif self.weight_type == 'queue_exponential':
+                self.half_life_map = {road_id: self.roads[road_id].get('close_threshold') for road_id in range(1, self.num_roads + 1)}
+            elif self.weight_type == 'queue_all_exponential':
+                max_close_threshold = max([self.roads[road_id].get('close_threshold') for road_id in range(1, self.num_roads + 1)])
+                self.half_life_map = {road_id: max_close_threshold for road_id in range(1, self.num_roads + 1)}
+            else:
+                raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
         
         # set reward_scaling_function
         if self.reward_type == 'waiting_vehicles' and self.reward_scaling_flg:
@@ -802,6 +811,10 @@ class LocalAgent(Object):
             for signal_group_id in self.phase_map[self.previous_action]:
                 bonus_route_list_map[(signal_group_id - 1) // (self.num_roads - 1) + 1].append((signal_group_id - 1) % (self.num_roads - 1) + 1)
 
+        # update half_life_map if needed
+        if self.weight_flg and self.weight_type in ['queue_exponential', 'queue_all_exponential']:
+            self._updateHalfLifeMap()
+        
         # the number of waiting and not-waiting vehicles
         for (road_id, _), vehicles_df in self.vehicles_df_map.items():
             if vehicles_df.shape[0] == 0:
@@ -816,17 +829,20 @@ class LocalAgent(Object):
             else:
                 weight_array = np.ones(vehicles_df.shape[0])
             
-            # get bonus_array (same movement bonus)
-            if self.movement_bonus > 0:
-                bonus_array = self._getBonusArray(
-                    vehicles_df=vehicles_df,
-                    bonus_route_list=bonus_route_list_map[road_id]
-                )
-            else:
-                bonus_array = np.ones(vehicles_df.shape[0])
-
-            # get element-wise multiplication of weight_array and bonus_array
-            weight_bonus_array = weight_array * bonus_array
+            # get movement_bonus_array
+            movement_bonus_array = self._getMovementBonusArray(
+                vehicles_df=vehicles_df,
+                bonus_route_list=bonus_route_list_map[road_id]
+            )
+            
+            # get spillback_bonus_array
+            spillback_bonus_array = self._getSpillbackBonusArray(
+                vehicles_df=vehicles_df,
+                road_id=road_id
+            )
+            
+            # get element-wise multiplication of weight_array and movement_bonus_array
+            weight_bonus_array = weight_array * movement_bonus_array * spillback_bonus_array
 
             # get num_vehs and not-normalized reward
             num_vehs += (weight_bonus_array).sum()
@@ -850,10 +866,13 @@ class LocalAgent(Object):
                     num_pass_vehs = num_vehs_record['num_vehs'].tail(self.duration_steps).sum()
 
                     # update not-normalized reward and num_vehs
+                    bonus = 1 + self.pass_bonus
+
                     if data_collection_point.get('route_id') in bonus_route_list_map[road_id]:
-                        bonus = (1 + self.pass_bonus) * (1 + self.movement_bonus)
-                    else:
-                        bonus = (1 + self.pass_bonus)
+                        bonus *= (1 + self.movement_bonus)
+
+                    if self.roads[road_id].get('spillback_flg'):
+                        bonus *= (1 + self.spillback_bonus)
 
                     reward += num_pass_vehs * bonus
                     num_vehs += num_pass_vehs * bonus
@@ -866,23 +885,34 @@ class LocalAgent(Object):
         
         reward = self.reward_scaling_function(reward).item()
         return reward
-    
-    def _getWeightArray(self, vehicles_df, road_id):
-        if self.weight_type == 'exponential':
-            decay_constant = np.log(2) / self.half_life
-            return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
-        
-        elif self.weight_type == 'queue_exponential':
-            decay_constant = np.log(2) / self.roads[road_id].get('close_threshold')
-            return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
+
+    def _updateHalfLifeMap(self):
+        if self.weight_type == 'queue_exponential':
+            for road_id, road in self.roads.items():
+                self.half_life_map[road_id] = road.get('close_threshold')
+        elif self.weight_type == 'queue_all_exponential':
+            max_close_threshold = max([self.roads[road_id].get('close_threshold') for road_id in range(1, self.num_roads + 1)])
+            for road_id in range(1, self.num_roads + 1):
+                self.half_life_map[road_id] = max_close_threshold
         else:
             raise NotImplementedError(f"Not supported weight_type: {self.weight_type}")
+        return
+    
+    def _getWeightArray(self, vehicles_df, road_id):
+        decay_constant = np.log(2) / self.half_life_map[road_id]
+        return np.exp(-decay_constant * vehicles_df['position_2'].to_numpy())
         
-    def _getBonusArray(self, vehicles_df, bonus_route_list):
-        movement_bonus_array = np.ones(vehicles_df.shape[0])
+    def _getMovementBonusArray(self, vehicles_df: pd.DataFrame, bonus_route_list: list) -> np.ndarray:
+        bonus_array = np.ones(vehicles_df.shape[0])
         mask = np.isin(vehicles_df['route_id'].to_numpy(), bonus_route_list) & (~vehicles_df['wait_flg'].to_numpy())
-        movement_bonus_array[mask] += self.movement_bonus
-        return movement_bonus_array
+        bonus_array[mask] += self.movement_bonus
+        return bonus_array
+
+    def _getSpillbackBonusArray(self, vehicles_df: pd.DataFrame, road_id: int) -> np.ndarray:
+        bonus_array = np.ones(vehicles_df.shape[0])
+        if self.roads[road_id].get('spillback_flg'): 
+            bonus_array += self.spillback_bonus
+        return bonus_array
     
     def _getSpeedyVehiclesReward(self):
         reward = 0

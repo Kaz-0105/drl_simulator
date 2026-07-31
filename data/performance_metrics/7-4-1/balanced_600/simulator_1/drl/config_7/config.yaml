@@ -1,4 +1,3 @@
-num_phases: 17
 architecture:
   common:
     activation_function:
@@ -44,6 +43,7 @@ framework:
       size: 200000
     td_steps: 1
   type: apex
+num_phases: 17
 reward:
   common:
     gamma: 0.8
@@ -52,6 +52,7 @@ reward:
     bonus:
       movement: 0.3
       pass: 1.0
+      spillback: 0.0
     scaler:
       tanh:
         alpha: 3

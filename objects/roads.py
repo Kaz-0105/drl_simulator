@@ -128,6 +128,10 @@ class Road(Object):
     @property
     def max_queue_length(self):
         return self.queue_counters.get('max_queue_length')
+
+    @property
+    def spillback_flg(self):
+        return self.max_queue_length > self.length * 0.8
     
     @property
     def main_queue_length(self):

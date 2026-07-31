@@ -8,7 +8,6 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import re
-import numpy as np
 from matplotlib.container import BarContainer
 
 from libs.figure_config import init_figure_config
@@ -39,15 +38,15 @@ def main():
     save_dir_path = root_dir_path / 'data' / 'analysis' / 'phase_outflow'
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # get phase_outflow_df
-    phase_outflow_df = getPhaseOutflowDf(config_yaml, save_dir_path)
+    # get metric_df
+    metric_df = getMetricDf(config_yaml, save_dir_path)
 
     # plot figure
-    plotFigure(config_yaml, phase_outflow_df, save_dir_path)
+    plotFigure(config_yaml, metric_df, save_dir_path)
     return
 
-def getPhaseOutflowMap(id, layout, method, inflow, intersection_dir_path, config_yaml):
-    phase_outflow_map = {
+def getMetricMap(id, layout, method, inflow, intersection_dir_path, config_yaml):
+    metric_map = {
         'id': id,
         'method': method,
         'layout': layout,
@@ -59,23 +58,31 @@ def getPhaseOutflowMap(id, layout, method, inflow, intersection_dir_path, config
         time_series_df = pd.read_csv(intersection_dir_path / 'performance_metrics.csv')
 
     # queue, delay, speed
-    phase_outflow_map['queue_avg'] = time_series_df['queue_avg'].mean()
-    phase_outflow_map['delay_avg'] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].mean()
-    phase_outflow_map['speed_avg'] = time_series_df['speed_avg'].mean()
+    metric_map['queue_avg'] = time_series_df['queue_avg'].mean()
+    metric_map['delay_avg'] = time_series_df[f"delay_avg_{config_yaml['target']['delay_type']}"].mean()
+    metric_map['speed_avg'] = time_series_df['speed_avg'].mean()
     
-    for phase_type in ['type_1', 'type_2', 'type_3', 'others', 'all']:
+    for phase_type in TYPE_PHASE_MAP.keys():
         phase_list = TYPE_PHASE_MAP[phase_type]
 
         tmp_time_series_df = time_series_df[time_series_df['phase'].isin(phase_list)]
-        tmp_time_series_df = tmp_time_series_df[tmp_time_series_df['time'] > config_yaml['target']['start_time']] # remove the first 100 seconds to avoid the effect of initial condition
-        phase_outflow_map[f"outflow_{phase_type}"] = None if tmp_time_series_df.shape[0] == 0 else tmp_time_series_df['outflow'].sum()
-        phase_outflow_map[f"phase_{phase_type}"] = tmp_time_series_df.shape[0] * config_yaml['simulator']['time_step'] / 3600
-        phase_outflow_map[f"outflow_rate_{phase_type}"] = None if tmp_time_series_df.shape[0] == 0 else tmp_time_series_df['outflow'].sum() / (tmp_time_series_df.shape[0] * config_yaml['simulator']['time_step'])
-    
-    return phase_outflow_map
+        tmp_time_series_df = tmp_time_series_df[tmp_time_series_df['time'] > config_yaml['target']['start_time']]
 
-def getPhaseOutflowDf(config_yaml, save_dir_path):
-    phase_outflow_map_list = []
+        if tmp_time_series_df.shape[0] == 0:
+            metric_map[f"outflow_{phase_type}"] = None
+            metric_map[f"phase_{phase_type}"] = 0
+            metric_map[f"outflow_rate_{phase_type}"] = None
+            metric_map[f"reward_{phase_type}"] = None
+        else:
+            metric_map[f"outflow_{phase_type}"] = tmp_time_series_df['outflow'].sum()
+            metric_map[f"phase_{phase_type}"] = tmp_time_series_df.shape[0] * config_yaml['simulator']['time_step'] / 3600
+            metric_map[f"outflow_rate_{phase_type}"] = tmp_time_series_df['outflow'].mean() * (3600 / config_yaml['simulator']['time_step'])
+            metric_map[f"reward_{phase_type}"] = tmp_time_series_df['reward'].dropna().mean()
+
+    return metric_map
+
+def getMetricDf(config_yaml, save_dir_path):
+    metric_map_list = []
     for layout in config_yaml['target']['layout']:
         layout_dir_path = root_dir_path / 'data' / 'performance_metrics' / layout
         for simulator_dir_path in layout_dir_path.rglob('simulator_*'):
@@ -116,8 +123,8 @@ def getPhaseOutflowDf(config_yaml, save_dir_path):
                     continue
                 
                 for intersection_dir_path in method_dir_path.glob('intersection_*'):
-                    phase_outflow_map_list.append(getPhaseOutflowMap(
-                        id=len(phase_outflow_map_list) + 1,
+                    metric_map_list.append(getMetricMap(
+                        id=len(metric_map_list) + 1,
                         method=method,
                         layout=layout,
                         inflow=inflow,
@@ -125,28 +132,29 @@ def getPhaseOutflowDf(config_yaml, save_dir_path):
                         config_yaml=config_yaml,
                     ))
 
-    outflow_columns = [f"outflow_type_{phase_type}" for phase_type in [1, 2, 3]] + ['outflow_others', 'outflow_all']
-    phase_columns = [f"phase_type_{phase_type}" for phase_type in [1, 2, 3]] + ['phase_others', 'phase_all']
-    outflow_rate_columns = [f"outflow_rate_type_{phase_type}" for phase_type in [1, 2, 3]] + ['outflow_rate_others', 'outflow_rate_all']
+    outflow_columns = [f"outflow_{phase_type}" for phase_type in TYPE_PHASE_MAP.keys()]
+    phase_columns = [f"phase_{phase_type}" for phase_type in TYPE_PHASE_MAP.keys()]
+    outflow_rate_columns = [f"outflow_rate_{phase_type}" for phase_type in TYPE_PHASE_MAP.keys()]
+    reward_columns = [f"reward_{phase_type}" for phase_type in TYPE_PHASE_MAP.keys()]
     performance_columns = ['queue_avg', 'delay_avg', 'speed_avg']
-    phase_outflow_df = pd.DataFrame(
-        phase_outflow_map_list, 
-        columns=['id', 'method', 'layout', 'inflow', 'intersection'] + outflow_columns + phase_columns + outflow_rate_columns + performance_columns
+    metric_df = pd.DataFrame(
+        metric_map_list, 
+        columns=['id', 'method', 'layout', 'inflow', 'intersection'] + outflow_columns + phase_columns + outflow_rate_columns + reward_columns + performance_columns
     )
 
     # sort by method, layout, inflow, intersection
     for param in ['method', 'layout', 'inflow']:
         order_list = getOrderList(config_yaml, param)
-        phase_outflow_df[param] = pd.Categorical(phase_outflow_df[param], categories=order_list, ordered=True)
-    phase_outflow_df = phase_outflow_df.sort_values(by=['method', 'layout', 'inflow', 'intersection']).reset_index(drop=True)
+        metric_df[param] = pd.Categorical(metric_df[param], categories=order_list, ordered=True)
+    metric_df = metric_df.sort_values(by=['method', 'layout', 'inflow', 'intersection']).reset_index(drop=True)
     
-    phase_outflow_df['id'] = range(1, phase_outflow_df.shape[0] + 1)
+    metric_df['id'] = range(1, metric_df.shape[0] + 1)
 
     # validate outflow_df
-    if phase_outflow_df[phase_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['proposed']].shape[0] != phase_outflow_df[phase_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['4-phase']].shape[0]:
-        raise ValueError(f"The number of scenarios for proposed DRL and 4-phase DRL are not equal: proposed = {phase_outflow_df[phase_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['proposed']].shape[0]}, 4-phase = {phase_outflow_df[phase_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['4-phase']].shape[0]}")
+    if metric_df[metric_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['proposed']].shape[0] != metric_df[metric_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['4-phase']].shape[0]:
+        raise ValueError(f"The number of scenarios for proposed DRL and 4-phase DRL are not equal: proposed = {metric_df[metric_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['proposed']].shape[0]}, 4-phase = {metric_df[metric_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['4-phase']].shape[0]}")
     
-    return phase_outflow_df
+    return metric_df
 
 def getOrderList(config_yaml, param):
     if param == 'method':
@@ -163,9 +171,9 @@ def getColorMap(hue_list, config_yaml):
     color_map = {hue: color_list[i] for i, hue in enumerate(hue_list)}
     return color_map
 
-def getWorseListMap(config_yaml, phase_outflow_df):
+def getWorseListMap(config_yaml, metric_df):
     worse_list_map = {'4-phase': [], 'proposed': []}
-    for _, tmp_outflow_df in phase_outflow_df.groupby(['layout', 'inflow', 'intersection'], observed=True):
+    for _, tmp_outflow_df in metric_df.groupby(['layout', 'inflow', 'intersection'], observed=True):
         proposed_drl_row = tmp_outflow_df[tmp_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['proposed']].iloc[0]
         action_ablation_drl_row = tmp_outflow_df[tmp_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl']['4-phase']].iloc[0]
 
@@ -194,15 +202,15 @@ def getWorseListMap(config_yaml, phase_outflow_df):
         
     return worse_list_map
 
-def plotFigure(config_yaml, phase_outflow_df, save_dir_path):
-    worse_list_map = getWorseListMap(config_yaml, phase_outflow_df)
+def plotFigure(config_yaml, metric_df, save_dir_path):
+    worse_list_map = getWorseListMap(config_yaml, metric_df)
     
-    fig, axes = plt.subplots(2, 1, figsize=(16, 12))
+    fig, axes = plt.subplots(3, 1, figsize=(16, 18))
 
     # upper subplot
     plotSubplot(
         config_yaml=config_yaml,
-        phase_outflow_df=phase_outflow_df,
+        metric_df=metric_df,
         worse_list_map=worse_list_map,
         ax=axes[0],
         metric=config_yaml['target']['type']['upper']['metric'],
@@ -210,12 +218,23 @@ def plotFigure(config_yaml, phase_outflow_df, save_dir_path):
         pos='upper',
     )
 
+    # middle subplot
+    plotSubplot(
+        config_yaml=config_yaml,
+        metric_df=metric_df,
+        worse_list_map=worse_list_map,
+        ax=axes[1],
+        metric=config_yaml['target']['type']['middle']['metric'],
+        group=config_yaml['target']['type']['middle']['group'],
+        pos='middle',
+    )
+
     # lower subplot
     plotSubplot(
         config_yaml=config_yaml,
-        phase_outflow_df=phase_outflow_df,
+        metric_df=metric_df,
         worse_list_map=worse_list_map,
-        ax=axes[1],
+        ax=axes[2],
         metric=config_yaml['target']['type']['lower']['metric'],
         group=config_yaml['target']['type']['lower']['group'],
         pos='lower',
@@ -234,7 +253,7 @@ def getPhaseCategoryList(config_yaml, metric):
         phase_category_list.append(phase_category)
     return phase_category_list
 
-def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group, pos):
+def plotSubplot(config_yaml, metric_df, worse_list_map, ax, metric, group, pos):
     plot_map_list = []
 
     phase_category_list = getPhaseCategoryList(config_yaml, metric)
@@ -244,7 +263,7 @@ def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group
             'method': config_yaml['figure']['x_axis']['label']['drl'][method],
         }
 
-        method_outflow_df = phase_outflow_df[phase_outflow_df['method'] == config_yaml['figure']['x_axis']['label']['drl'][method]]
+        method_outflow_df = metric_df[metric_df['method'] == config_yaml['figure']['x_axis']['label']['drl'][method]]
 
         if group == 'worse':
             tmp_outflow_df = method_outflow_df[
@@ -285,6 +304,11 @@ def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group
             sum_phase = sum([plot_map[phase_category] for phase_category in phase_category_list])
             for phase_category in phase_category_list:
                 plot_map[phase_category] = None if plot_map[phase_category] == 0 else plot_map[phase_category] / sum_phase
+
+        elif metric == 'reward':
+            for phase_category in phase_category_list:
+                plot_map[phase_category] = tmp_outflow_df[f"reward_{phase_category}"].mean()
+
         else:
             raise NotImplementedError(f"Not implemented metric: {metric}")
         
@@ -295,7 +319,7 @@ def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group
         columns=['id', 'method'] + phase_category_list
     )
     
-    if metric == 'outflow_rate':
+    if metric in ['outflow_rate', 'reward']:
         x_pos_map = {
             config_yaml['figure']['x_axis']['label']['drl']['4-phase']: 0,
             config_yaml['figure']['x_axis']['label']['drl']['proposed']: 1,
@@ -315,14 +339,24 @@ def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group
                     edgecolor='black'
                 )
 
-                ax.bar_label(
-                    rects,
-                    fmt="%.0f",
-                    label_type='center',
-                    color='white',
-                    fontsize=20,
-                    fontweight='bold'
-                )
+                if metric == 'outflow_rate':
+                    ax.bar_label(
+                        rects,
+                        fmt="%.0f",
+                        label_type='center',
+                        color='white',
+                        fontsize=20,
+                        fontweight='bold'
+                    )
+                elif metric == 'reward':
+                    ax.bar_label(
+                        rects,
+                        fmt="%.2f",
+                        label_type='center',
+                        color='white',
+                        fontsize=20,
+                        fontweight='bold'
+                    )
     elif metric == 'phase':
         # get color_map
         color_map = getColorMap(phase_category_list, config_yaml)
@@ -363,8 +397,6 @@ def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group
         x1 = x_pos_map[config_yaml['figure']['x_axis']['label']['drl']['4-phase']] + config_yaml['figure']['bar']['width'][metric] / 2
         x2 = x_pos_map[config_yaml['figure']['x_axis']['label']['drl']['proposed']] - config_yaml['figure']['bar']['width'][metric] / 2
         for y1, y2 in zip(action_bottom_list, proposed_bottom_list):
-            if y1 == y2 == 0: continue
-
             ax.plot(
                 [x1, x2],
                 [y1, y2],
@@ -398,14 +430,14 @@ def plotSubplot(config_yaml, phase_outflow_df, worse_list_map, ax, metric, group
     ax.set_xticklabels(list(x_pos_map.keys()) if pos == 'lower' else [''] * len(x_pos_map), fontweight='bold')
     ax.set_xlim(left=-0.5, right=1+0.5)
     ax.set_xlabel(config_yaml['figure']['x_axis']['title'] if pos == 'lower' else '', fontweight='bold')
-    if metric == 'outflow_rate':
+    if metric in ['outflow_rate', 'reward']:
         ax.set_ylim(bottom=-config_yaml['figure']['y_axis']['lim'][metric], top=plot_df[tmp_phase_category_list].max().max() + config_yaml['figure']['y_axis']['lim'][metric])
     elif metric == 'phase':
         ax.set_ylim(bottom=-config_yaml['figure']['y_axis']['lim'][metric], top=1 + config_yaml['figure']['y_axis']['lim'][metric])
     else:
         raise NotImplementedError(f"Not implemented metric: {metric}")
     ax.set_ylabel(config_yaml['figure']['y_axis']['label'][metric], fontweight='bold')
-    if pos == 'upper':
+    if pos in ['upper', 'middle']:
         legend = ax.get_legend()
         if legend is not None:
             legend.remove()

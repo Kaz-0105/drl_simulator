@@ -18,10 +18,13 @@ target:
       value: 18.66 # Threshold to consider deterioration (queue: meter, delay: sec, speed: km/h)
   type: 
     upper: 
-      metric: phase
+      metric: phase # phase, reward, or outflow_rate
       group: worse # specific, others, worse, not_worse, all
+    middle:
+      metric: outflow_rate # phase, reward, or outflow_rate
+      group: worse
     lower:
-      metric: outflow_rate
+      metric: reward 
       group: worse
   phase_category:
     type_1: true
@@ -49,8 +52,9 @@ target:
 
 figure:
   title:
-    outflow_rate: Outflow Rate
-    phase: Phase Distribution
+    outflow_rate: Phase-Specific Outflow Rate
+    phase: Phase Selection Ratio
+    reward: Phase-Specific Average Reward
   x_axis:
     title: ''
     label:
@@ -66,9 +70,11 @@ figure:
   y_axis:
     label:
       outflow_rate: Outflow Rate [veh/h]
-      phase: Phase Selection Ratio
+      reward: Average Reward
+      phase: Selection Ratio
     lim: 
       outflow_rate: 300
+      reward: 0.1
       phase: 0.1
   legend:
     title: Phase Type
@@ -81,6 +87,7 @@ figure:
   bar:
     width: 
       outflow_rate: 0.15
+      reward: 0.15
       phase: 0.2
   color_palette: muted # Set2, husl, pastels, deep, muted, bright, dark, colorblind
 

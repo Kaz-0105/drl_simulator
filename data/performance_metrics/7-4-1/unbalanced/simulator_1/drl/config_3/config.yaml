@@ -52,6 +52,7 @@ reward:
     bonus:
       movement: 0.1
       pass: 1.0
+      spillback: 0.0
     scaler:
       tanh:
         alpha: 3
